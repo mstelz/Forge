@@ -1,0 +1,6 @@
+{
+  "name": "exercise-detail",
+  "device": "MOBILE",
+  "screenId": "7297156795c34895b64fdf3dc107a8a7",
+  "prompt": "Exercise detail screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, #17181A surfaces, amber #F59E0B accent, #26272A borders, Inter typography, oversized tabular numerics for stats.\n\nTOP BAR: back arrow left, 'Exercise' small muted title, kebab menu right (edit / delete / add to routine).\n\nCONTENT:\n1. HEADER — exercise name 'Barbell Back Squat' large bold, type chip 'STRENGTH' amber outlined, small muted line 'Quadriceps · Glutes · Barbell · Squat Rack', aliases muted 'aka: back squat, high-bar squat'.\n2. INSTRUCTIONAL CARD — thumbnail frame with play icon overlay (video link), 'Watch: Form Guide (YouTube)' caption. Description text 3 lines muted.\n3. STATS ROW — three tiles: 'EST 1RM' 315 lb, 'BEST SET' 275×5, 'TOTAL SESSIONS' 42. Oversized numbers.\n4. RECENT HISTORY heading with 'View all ›' link.\n5. HISTORY LIST — 5 compact rows: date left muted, top set or summary bold ('245×5, 5, 4'), small RPE/e1RM muted right ('RPE 8 · e1RM 283').\n   - Apr 21 · 245×5, 5, 4 · RPE 8 · e1RM 283\n   - Apr 14 · 235×5, 5, 5 · RPE 8 · e1RM 274\n   - Apr 7 · 235×5, 5, 4 · RPE 9 · e1RM 270\n   - Mar 31 · 225×5, 5, 5 · RPE 8 · e1RM 263\n   - Mar 24 · 225×6, 5, 5 · RPE 8 · e1RM 270\n\nNo bottom tab bar."
+}

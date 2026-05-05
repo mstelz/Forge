@@ -1,0 +1,6 @@
+{
+  "name": "program-detail",
+  "device": "MOBILE",
+  "screenId": "410c123debb3467f856f85197f7728a1",
+  "prompt": "Program detail / week grid screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, surfaces #17181A, amber #F59E0B accent, #26272A borders, Inter typography.\n\nTOP BAR: back arrow left, 'Hypertrophy Block' title (truncate if long), kebab menu right (edit / duplicate / end program).\n\n1. SUMMARY STRIP — '8 weeks · Upper/Lower split · Started Apr 3'. Small progress bar and chip 'Week 3 of 8'.\n2. TAB SEGMENT: 'Schedule' (active) | 'Overview' | 'Stats'.\n3. WEEK GRID — each week is a row card showing week number left ('WEEK 3' amber highlighted current; 'WEEK 1', 'WEEK 2' dim done; 'WEEK 4' outlined upcoming), and 7 small day cells across: day cells show either a routine name abbreviation in a small pill ('Upper A', 'Lower A', 'Upper B', etc.), or a muted dash for rest day, or a green check overlay for completed. Current day has an amber outline.\n   Render at least 5 weeks stacked so the pattern is obvious. Weeks 1-2 fully checked (done), week 3 partially checked with today outlined, weeks 4-5 upcoming.\n4. Bottom button: 'COPY WEEK PATTERN' outlined, and 'EDIT PROGRAM' amber primary.\n\nNo bottom tab bar."
+}

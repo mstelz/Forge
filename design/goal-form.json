@@ -1,0 +1,6 @@
+{
+  "name": "goal-form",
+  "device": "MOBILE",
+  "screenId": "3b89112980744ec492b89ddf1fae8a38",
+  "prompt": "New/Edit Goal form screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, surfaces #17181A, amber #F59E0B, Inter, 14px rounding, 1px borders #26272A.\n\nTOP BAR: back arrow left, 'New Goal' title, 'Save' amber text button right.\n\nFORM sections, each grouped in a subtle card:\n1. TYPE — segmented control with 6 options in 2 rows: 'Strength' (selected, amber fill) 'Cardio' 'Weight' | 'Measurement' 'Program' 'Other'\n2. TITLE — text input 'Squat 315 lb'\n3. TARGET / START VALUE — two side-by-side numeric inputs with unit dropdown 'lb': 'Start 245' '→ Target 315'. Small muted helper 'Current: auto-filled from exercise PR'.\n4. EXERCISE LINK (visible because type is Strength) — outlined button 'Barbell Back Squat ›' (tap to change)\n5. DEADLINE — large date field 'Jun 1, 2026' with small 'calendar pick' icon.\n6. NOTES — multiline field 'Focus on form and progressive overload. Peak by end of block.'\n7. Bottom: large amber 'CREATE GOAL' button.\n\nNo bottom tab bar."
+}

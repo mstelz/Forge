@@ -1,0 +1,15 @@
+[
+  { "id": "2ad2d3cf-01da-4062-a330-52880844a2da", "name": "Barbell",         "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "1f6f2c21-1371-4677-8740-22e6dddc99fc", "name": "Dumbbells",       "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "4a8dbf16-5d1e-402d-b874-f0f4d6b0a868", "name": "Cable Machine",   "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "0ce3abb8-674b-4053-b648-292ce05653d1", "name": "Machine",         "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "469d7263-103f-422b-afb3-9dec6bd1122e", "name": "Squat Rack",      "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "f368b409-3600-41e1-baff-5451ff2c5b43", "name": "Bench",           "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "127257b4-387c-4aec-8bac-7a759b1a6959", "name": "Pull-up Bar",     "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "56984d5d-b63b-4ff5-87ae-371bcc4fac7b", "name": "Kettlebell",      "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "f7199c25-cb03-4640-b7e5-8c741dc2c4e4", "name": "Treadmill",       "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "c5fe4354-8e69-46bd-87cc-5cd427cfd44e", "name": "Rower",           "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "bfa2f545-e038-4880-93a8-c79c4c290381", "name": "Stationary Bike", "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "d6a5ce17-25d0-4111-8deb-e307f92d4ec5", "name": "Bodyweight",      "createdAt": 1700000000000, "updatedAt": 1700000000000 },
+  { "id": "0d1dd40d-a9ab-4e89-baee-6a8d2b5f148f", "name": "None",            "createdAt": 1700000000000, "updatedAt": 1700000000000 }
+]

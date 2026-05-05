@@ -1,0 +1,6 @@
+{
+  "name": "history-list",
+  "device": "MOBILE",
+  "screenId": "5fd3fbd8748f49ec85f7d2487109f49b",
+  "prompt": "Workout history list screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, #17181A surfaces, amber #F59E0B, #26272A borders, Inter, 14px rounding, oversized tabular numerics for stats.\n\nTOP BAR: hamburger left, 'History' title, search icon right.\n\n1. STATS STRIP — 3 small tiles: 'THIS MONTH' 12 workouts, 'VOLUME' 248,400 lb, 'AVG DURATION' 52 min.\n2. Filter chip row: 'All' (active amber) · 'This week' · 'This month' · 'Routines' · 'Freeform'.\n3. GROUPED LIST by date (small muted sticky date headers 'APR 23 · WEDNESDAY'):\n   Each workout row:\n   - Left: small colored square day-number 23 (amber if PR)\n   - Center: routine name 'Push Day A' bold, small muted 'Hypertrophy Block · Week 3' subtitle, tiny chips '5 exercises · 18 sets · 52 min'\n   - Right: muted 'PR' amber pill if applicable, right-arrow\n   Examples stacked under different date headers:\n   - Apr 23 · Push Day A · 5 ex · 18 sets · 52 min · PR\n   - Apr 21 · Pull Day A · 6 ex · 20 sets · 58 min\n   - Apr 19 · Lower A · 5 ex · 17 sets · 61 min\n   - Apr 17 · Push Day B · 5 ex · 18 sets · 49 min\n   - Apr 15 · Freeform · 3 ex · 9 sets · 28 min\n\nNo bottom tab bar."
+}

@@ -1,0 +1,6 @@
+{
+  "name": "programs-list",
+  "device": "MOBILE",
+  "screenId": "18de8dc94022412a95e976d35b948ce9",
+  "prompt": "Programs list screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, #17181A surfaces, amber accent #F59E0B, Inter, 14px rounding.\n\nTOP BAR: hamburger left, 'Programs' title, '+' plus right.\n\n1. ACTIVE PROGRAM card — amber left edge, prominent. 'ACTIVE' tiny amber label, 'Hypertrophy Block' title, 'Week 3 of 8 · Upper/Lower Split' subtitle. Progress bar 38% amber. Small row of 8 week dots below the bar (weeks 1-2 filled, week 3 half-filled current, 4-8 empty). Small 'VIEW PROGRAM ›' text link right.\n2. 'OTHER PROGRAMS' section label.\n3. LIST of program cards (outlined, no amber):\n   - 5/3/1 Beginner · 4 weeks · completed 3 months ago\n   - Classic PPL · 6 weeks · draft\n   - Strength Block A · 12 weeks · never started\n4. Bottom 'Browse templates' muted link.\n\nNo bottom tab bar."
+}

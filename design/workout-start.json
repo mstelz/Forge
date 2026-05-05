@@ -1,0 +1,7 @@
+{
+  "name": "workout-start",
+  "device": "MOBILE",
+  "screenId": "5fa383cc2fea41d7b59d44f1ff63e089",
+  "prompt": "Workout launcher screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, #17181A surfaces, amber #F59E0B accent, #26272A borders, Inter typography, 14px rounding, 1px borders, no heavy shadows, oversized tabular numerics where appropriate.\n\nTOP BAR: hamburger (drawer) icon left, 'Start Workout' title centered, empty right.\n\nSECTIONS (top to bottom):\n1. PLANNED TODAY card — prominent, amber left edge. Shows 'From your program' tiny muted label, routine name 'Push Day A', 'Hypertrophy Block · Week 3, Day 2' subtitle, 5 exercise preview list (small bullet rows: 'Bench Press · 4×5', 'Overhead Press · 4×6', 'Incline DB Press · 3×10', etc.), '~52 min' chip. Big full-width amber 'START PLANNED' button at bottom of card.\n2. 'OR' small muted divider.\n3. RECENT ROUTINES list — 3 compact rows, each: routine name, small muted 'last done X days ago', right-arrow. Examples: 'Pull Day A · 3 days ago', 'Leg Day · 6 days ago', 'Upper Accessory · 9 days ago'.\n4. FREEFORM card — outlined, muted icon, 'Freeform session' title, 'Start without a routine — add exercises as you go' subtitle, right-arrow.\n5. Tiny 'All routines ›' text link at bottom.\n\nQuiet, utilitarian, native feel.",
+  "lastEdit": "Remove the bottom tab bar entirely (Launch/Library/History/Profile). This app uses a slide-out drawer for navigation, not bottom tabs. Screen should end at the 'All routines' link with normal bottom padding. Keep everything else the same."
+}

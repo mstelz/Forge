@@ -1,0 +1,26 @@
+node_modules
+dist
+.env
+.env.local
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+coverage
+.playwright
+playwright-report
+test-results
+
+design/.stitch-project.json
+
+# Local/Private Agent Data
+.claude/settings.local.json
+.claude/projects/
+.playwright-mcp/

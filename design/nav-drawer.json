@@ -1,0 +1,7 @@
+{
+  "name": "nav-drawer",
+  "device": "MOBILE",
+  "screenId": "b1f4e54a5fd84208b71d951d3c5ef4c3",
+  "prompt": "Slide-out navigation drawer overlay for Forge workout tracker. DARK MODE.\nDrawer slides in from left, covers ~80% of screen width, with dimmed content visible on the right edge.\nBackground #0F1012, amber #F59E0B accent, Inter typography.\n\nCONTENTS (top to bottom):\n1. User header: circular avatar, \"Mike Stelzer\" name, small muted \"Self-hosted\" subtitle.\n2. Divider.\n3. Nav items with leading icons and generous vertical padding (tappable):\n   - Today (home icon) — ACTIVE state with amber left bar and slightly lighter bg\n   - Workouts / History (clock icon)\n   - Routines (list icon)\n   - Programs (calendar icon)\n   - Exercises (dumbbell icon)\n   - Goals (target icon)\n4. Divider.\n5. Settings (gear icon)\n6. Bottom pinned: subtle \"v0.1 · offline ready\" muted text, and a small sun/moon theme toggle pill.\n\nDim overlay on right 20% shows a sliver of the Today screen behind. Quiet, utilitarian, not flashy.",
+  "lastEdit": "Remove the '7 DAY STREAK / PRO MEMBER' card under the user name entirely — this is a self-hosted single-user app with no membership tiers. Replace the cartoon avatar with a simple circular avatar showing the initials 'MS' in a muted gray circle with amber text, or just the initials. The user header should be: initials circle, 'Mike Stelzer' name, and the muted 'Self-hosted' subtitle — nothing else. Keep everything else the same."
+}

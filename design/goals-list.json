@@ -1,0 +1,6 @@
+{
+  "name": "goals-list",
+  "device": "MOBILE",
+  "screenId": "eedb7d38b7d7443ab41077226e14e37b",
+  "prompt": "Goals list screen for Forge workout tracker. DARK MODE.\n#0B0B0C bg, #17181A surfaces, amber #F59E0B, Inter, 14px rounding, oversized tabular numerics.\n\nTOP BAR: hamburger left, 'Goals' title, '+' plus right.\n\nFILTER CHIP ROW: 'Active' (amber fill) · 'Completed' · 'All' · '|' · 'Strength' · 'Cardio' · 'Weight' · 'Measurement' · 'Program' · 'Other'.\n\nGOAL CARDS — each a card with:\n- Top row: small muted category pill ('STRENGTH' / 'WEIGHT' / etc.), title big, right-side 'X weeks left' small muted\n- Current value / target (big tabular numbers) with unit\n- Amber progress bar with percentage label\n- Small muted 'Started Feb 14 · Target Jun 1' line\n\nExamples (stacked):\n- STRENGTH · 'Squat 315 lb' · 285/315 lb · 80% progress · 6 weeks left\n- WEIGHT · 'Bodyweight 180 lb' · 188/180 lb (descending) · 60% progress · 10 weeks left\n- CARDIO · 'Run 5k under 25:00' · 26:40/25:00 · 45% progress · 8 weeks left\n- PROGRAM · 'Finish Hypertrophy Block' · Week 3/8 · 38% · 5 weeks left\n- MEASUREMENT · 'Waist 32 in' · 34/32 in · 50% · 6 weeks left\n\nNo bottom tab bar."
+}

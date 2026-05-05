@@ -1,0 +1,64 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --radius-card: 14px;
+
+  --color-amber: #F59E0B;
+  --color-amber-hover: #FBBF24;
+  --color-amber-press: #D97706;
+}
+
+/* Theme tokens — swap the whole palette via data-theme on <html> */
+:root,
+:root[data-theme="dark"] {
+  --bg: #0B0B0C;
+  --surface: #17181A;
+  --surface-elevated: #1E1F22;
+  --border: #26272A;
+  --border-strong: #3A3B3F;
+  --text: #FAFAF9;
+  --text-muted: #A1A1AA;
+  --text-subtle: #71717A;
+  --accent: #F59E0B;
+  --accent-fg: #0B0B0C;
+  --danger: #EF4444;
+  --success: #22C55E;
+}
+
+:root[data-theme="light"] {
+  --bg: #FAFAF9;
+  --surface: #FFFFFF;
+  --surface-elevated: #F5F5F4;
+  --border: #E7E5E4;
+  --border-strong: #D6D3D1;
+  --text: #0A0A0A;
+  --text-muted: #78716C;
+  --text-subtle: #A8A29E;
+  --accent: #F59E0B;
+  --accent-fg: #0A0A0A;
+  --danger: #DC2626;
+  --success: #16A34A;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Tabular numerics for weight/reps/timer readouts */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
