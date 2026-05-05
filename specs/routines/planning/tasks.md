@@ -13,6 +13,19 @@ Authoritative spec: `/home/mike/Development/Forge/specs/routines/planning/spec.m
 
 Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
+## Phase status
+
+- [x] Phase 1 — Shared Zod schemas + derived types
+- [x] Phase 2 — Drizzle schema + migration
+- [x] Phase 3 — Hono API routes (verified via curl)
+- [x] Phase 4 — Client storage (Dexie store + outbox + repository + hooks)
+- [x] Phase 5 — List page (`/routines`)
+- [ ] Phase 6 — Builder shell + exercise picker reuse
+- [ ] Phase 7 — Builder block list + drag-to-reorder
+- [ ] Phase 8 — Prescription editor (expanded row)
+- [ ] Phase 9 — Polish (validation, empty states, error UX, missing-exercise placeholder)
+- [ ] Phase 10 — Manual verification against mockup
+
 ---
 
 ## Phase 1: Shared Zod schemas + derived types
@@ -78,28 +91,28 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 1.
 
-### 2.1 [ ] Add `routines` Drizzle table
+### 2.1 [x] Add `routines` Drizzle table
 - Columns: `id` (text PK), `name` (text NN), `notes` (text), `estimatedDurationMin` (int), `createdAt`, `updatedAt` (`integer` `timestamp_ms`, NN).
 - Indexes: `idx_routines_name` on `name`, `idx_routines_updated_at` on `updatedAt`.
 - Files: `src/db/schema.ts`.
 
-### 2.2 [ ] Add `routine_blocks` Drizzle table
+### 2.2 [x] Add `routine_blocks` Drizzle table
 - Columns per spec § Drizzle tables. FK `routineId` → `routines.id` with `onDelete: 'cascade'`.
 - `type` text, `roundCount` int, `restSec` int, `tempo` text, `notes` text, `order` int NN.
 - Index: `idx_routine_blocks_routine_order` on `(routineId, order)`.
 - Files: `src/db/schema.ts`.
 
-### 2.3 [ ] Add `routine_items` Drizzle table
+### 2.3 [x] Add `routine_items` Drizzle table
 - Columns: `id`, `blockId` (FK cascade), `routineId` (FK cascade, denormalized), `order`, `exerciseId` (text — soft reference, NO FK constraint, mirroring exercise.equipmentIds tolerance), `setCount`, `repMode`, `rpeMode`, `setTypeMode`, all `uniform*` fields, `durationSec`, `durationMinSec`, `durationMaxSec`, `notes`.
 - Indexes: `idx_routine_items_block_order` on `(blockId, order)`, `idx_routine_items_routine` on `routineId`, `idx_routine_items_exercise` on `exerciseId`.
 - Files: `src/db/schema.ts`.
 
-### 2.4 [ ] Add `routine_set_targets` Drizzle table
+### 2.4 [x] Add `routine_set_targets` Drizzle table
 - Columns: `id`, `itemId` (FK cascade), `routineId` (FK cascade, denormalized), `order`, `reps`, `repsMin`, `repsMax`, `rpe` (real), `setType` text NN, `techniqueNotes` text.
 - Index: `idx_routine_set_targets_item_order` on `(itemId, order)`.
 - Files: `src/db/schema.ts`.
 
-### 2.5 [ ] Generate and commit Drizzle migration
+### 2.5 [x] Generate and commit Drizzle migration
 - Run `bun run db:generate`; verify generated SQL creates all four tables, FKs cascade correctly, and indexes exist.
 - Done when: `bun run db:migrate` runs cleanly against a fresh `./data/forge.db` containing the existing exercise/equipment tables.
 - Files: `src/db/migrations/<timestamp>_*.sql` (generated).
@@ -113,39 +126,39 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 1, Phase 2.
 
-### 3.1 [ ] Scaffold `/api/v1/routines` sub-router
+### 3.1 [x] Scaffold `/api/v1/routines` sub-router
 - Create `src/server/routes/routines.ts` as a Hono sub-router; mount from `src/server/routes/api.ts` under `/routines`.
 - Done when: `GET /api/v1/routines` returns `200 { routines: [] }` against an empty DB.
 - Files: `src/server/routes/api.ts`, `src/server/routes/routines.ts` (new).
 
-### 3.2 [ ] Implement a `loadRoutine(id)` server-side helper
+### 3.2 [x] Implement a `loadRoutine(id)` server-side helper
 - Joins `routines` + `routine_blocks` + `routine_items` + `routine_set_targets` and returns the nested Zod-shaped `Routine`. Sorts blocks/items/setTargets by `order`.
 - Files: `src/server/routes/routines.ts`, optionally `src/server/lib/routine-loader.ts` (new).
 - Depends on: 3.1.
 
-### 3.3 [ ] Implement Routines GET routes
+### 3.3 [x] Implement Routines GET routes
 - `GET /routines` → `200 { routines: Routine[] }` (uses 3.2 per row).
 - `GET /routines/:id` → `200 Routine` | `404 { error: 'not_found' }`.
 - Done when: both endpoints return correctly-shaped nested payloads.
 - Depends on: 3.2.
 
-### 3.4 [ ] Implement `POST /routines`
+### 3.4 [x] Implement `POST /routines`
 - Body validated with `RoutineCreateInput`. Run a single SQLite transaction inserting the routine + blocks + items + set targets. On top-level id collision return `409 { error: 'id_conflict', id }`. `400` on Zod failure.
 - Server bumps timestamps if absent: `createdAt = updatedAt = Date.now()` when missing; preserves client value otherwise.
 - Done when: 201 with the canonical loaded routine; duplicate POST returns 409.
 - Depends on: 3.3.
 
-### 3.5 [ ] Implement `PATCH /routines/:id` (full-document replace)
+### 3.5 [x] Implement `PATCH /routines/:id` (full-document replace)
 - Body validated with `RoutineUpdateInput`. In a single transaction: assert routine exists (404 if not); delete existing `routine_blocks` (cascades to items/set_targets); re-insert from payload; update `routines` row; bump `updatedAt = max(body.updatedAt, Date.now())`.
 - 200 with reloaded nested payload; 400 on validation; 404 if missing.
 - Soft-warn (do not reject) when `exerciseId`s don't exist — same convention as Exercise Library's `equipmentIds`.
 - Depends on: 3.4.
 
-### 3.6 [ ] Implement `DELETE /routines/:id`
+### 3.6 [x] Implement `DELETE /routines/:id`
 - 204 on success or if already gone (idempotent). FK cascades clean up children.
 - Depends on: 3.3.
 
-### 3.7 [ ] Reuse error helper from `src/server/lib/errors.ts`
+### 3.7 [x] Reuse error helper from `src/server/lib/errors.ts`
 - All routes return `{ error, issues?, id? }` with appropriate status codes per Exercise Library convention.
 - Files: `src/server/routes/routines.ts`.
 - Depends on: 3.1.
@@ -158,22 +171,22 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 1, Phase 3.
 
-### 4.1 [ ] Add `routines` Dexie store (schema bump)
+### 4.1 [x] Add `routines` Dexie store (schema bump)
 - Bump `forge-db.ts` to a new Dexie version; add `routines` store with `keyPath: 'id'` and indexes on `name`, `updatedAt`.
 - Each Dexie row stores the full nested routine document (whole-document mirror, matching Exercise Library convention).
 - Files: `src/client/db/forge-db.ts`.
 
-### 4.2 [ ] Implement transactional routine write helpers
+### 4.2 [x] Implement transactional routine write helpers
 - `createRoutine(routine)`, `updateRoutine(routine)`, `deleteRoutine(id)`. Each runs ONE Dexie transaction touching `routines` + `pendingWrites`. Payload for create/update is the full nested document; payload for delete is `{ id }`. `entity = 'routine'`.
 - Files: `src/client/db/mutations.ts` (extend).
 - Depends on: 4.1.
 
-### 4.3 [ ] Implement Dexie read helpers + query keys
+### 4.3 [x] Implement Dexie read helpers + query keys
 - `listRoutines()`, `getRoutineById(id)`. Add to `query-keys.ts`.
 - Files: `src/client/db/queries.ts`, `src/client/db/query-keys.ts`.
 - Depends on: 4.1.
 
-### 4.4 [ ] Wire routine entity into the existing flusher
+### 4.4 [x] Wire routine entity into the existing flusher
 - Extend `src/client/sync/flusher.ts` so `entity='routine'` dispatches against `/api/v1/routines` with the same FIFO + retry/backoff loop. Status code handling identical to exercises:
   - create 201 → drop entry; 409 id_conflict → log + drop
   - update 200 → drop; 404 → drop (treated as gone)
@@ -182,12 +195,12 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/sync/flusher.ts`.
 - Depends on: 4.2, Phase 3.
 
-### 4.5 [ ] Wire routine entity into reconcile (pull)
+### 4.5 [x] Wire routine entity into reconcile (pull)
 - Extend `src/client/sync/reconcile.ts` to GET `/api/v1/routines` and apply the same merge rules as Exercise Library: local wins for any id with a pending outbox entry; otherwise server replaces local; missing locals get added; locals not on server with no pending `create` get removed.
 - Files: `src/client/sync/reconcile.ts`.
 - Depends on: 4.4.
 
-### 4.6 [ ] Tanstack Query hooks
+### 4.6 [x] Tanstack Query hooks
 - `useRoutines()` and `useRoutine(id)` reading from Dexie via `useLiveQuery` under the hood, mirroring `useExercises`/`useExercise` shape.
 - Files: `src/client/hooks/use-routines.ts` (new).
 - Depends on: 4.3.
@@ -200,36 +213,36 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4.
 
-### 5.1 [ ] Register routes + page skeleton
+### 5.1 [x] Register routes + page skeleton
 - Add `/routines`, `/routines/new`, `/routines/:id` to the router (`src/client/main.tsx` or wherever routes live alongside `/exercises`).
 - Top bar: hamburger, "Routines" title, `+` action linking to `/routines/new`. Add drawer-nav entry "Routines".
 - Files: `src/client/pages/routines/list.tsx` (new), router config, drawer component.
 
-### 5.2 [ ] Search input
+### 5.2 [x] Search input
 - Full-width input with placeholder `Search routines`. Case-insensitive substring over `name`. Trimmed. Visually-hidden label + `aria-label`.
 - Files: `src/client/pages/routines/search.tsx` (new) or inline.
 - Depends on: 5.1.
 
-### 5.3 [ ] Dense routine row component
+### 5.3 [x] Dense routine row component
 - Bold `name`, muted secondary line `<N> blocks · ~<estimatedDurationMin> min` (gracefully omit `~M min` when null; collapse the separator).
 - Right-side overflow menu: Edit (→ `/routines/:id`) and Delete (opens confirm dialog).
 - Single focusable Link wrapping the body.
 - Files: `src/client/pages/routines/row.tsx` (new).
 - Depends on: 5.1.
 
-### 5.4 [ ] Filter + sort pipeline (search + alpha sort)
+### 5.4 [x] Filter + sort pipeline (search + alpha sort)
 - Memoized selector: trim + lowercase search, substring match on `name`, then sort by `name` ASC, locale-aware. No filter chips in this slice.
 - Files: `src/client/pages/routines/use-filtered-routines.ts` (new).
 - Depends on: 5.2.
 
-### 5.5 [ ] Empty + zero-match + loading states
+### 5.5 [x] Empty + zero-match + loading states
 - Loading: skeleton rows during first Dexie read.
 - Full-empty: centered "No routines yet" + create CTA routing to `/routines/new`.
 - Zero-match: inline "No matches" row with "Clear search" button.
 - Files: `src/client/pages/routines/empty-states.tsx` (new) or inline.
 - Depends on: 5.4.
 
-### 5.6 [ ] Delete confirmation flow on the list
+### 5.6 [x] Delete confirmation flow on the list
 - Radix Dialog confirming destructive delete; on confirm call `deleteRoutine(id)` (Dexie + outbox).
 - Files: `src/client/pages/routines/delete-dialog.tsx` (new).
 - Depends on: 4.2, 5.3.

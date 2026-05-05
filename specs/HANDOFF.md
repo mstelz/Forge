@@ -19,13 +19,13 @@ Working through the missing PRD slices, building out specs in dependency order. 
 ## Resume here
 
 Implementation in progress. Status:
-- exercise-library: Phases 1–10 complete; Phase 11 (manual verification) is the only remaining item.
-- routines: Phase 1 (shared Zod schemas) complete — `src/shared/routine.ts` added, `pending-write.ts` entity union extended with `'routine'`, barrel re-exports wired. Typecheck clean. Phases 2–10 (Drizzle schema, Hono routes, Dexie + outbox, list page, builder shell, drag/drop, prescription editor, polish, manual verification) are next.
+- exercise-library: Phases 1–10 complete; Phase 11 (manual verification) deferred.
+- routines: Phases 1–5 complete — foundational schemas, Drizzle migrations, Hono routes, Dexie store, and list page UI are all verified. Phase 6 (builder shell + exercise picker reuse) is the current task.
 
 Suggested implementation order, mirroring dependency direction:
 
-1. exercise-library (Phases 1–10 done; Phase 11 manual verification pending)
-2. routines (Phase 1 done; Phases 2–10 pending)
+1. exercise-library (Phases 1–10 done; Phase 11 deferred)
+2. routines (Phases 1–5 done; Phases 6–10 pending)
 3. workout-sessions
 4. workout-history
 5. programs
