@@ -1,7 +1,19 @@
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog } from "../../shared";
 
-const uuid = () => crypto.randomUUID();
+import { uuidv4 as uuid } from "../lib/uuid";
+
+export class SessionFinishedError extends Error {
+  constructor() {
+    super("Session is finished and cannot be mutated");
+    this.name = "SessionFinishedError";
+  }
+}
+
+async function guardNotFinished(sessionId: string): Promise<void> {
+  const session = await forgeDB.sessions.get(sessionId);
+  if (session?.status === "finished") throw new SessionFinishedError();
+}
 
 const enqueue = (
   entity: PendingWrite["entity"],
@@ -83,6 +95,65 @@ export async function deleteRoutine(id: string): Promise<void> {
   await forgeDB.transaction("rw", forgeDB.routines, forgeDB.pendingWrites, async () => {
     await forgeDB.routines.delete(id);
     await forgeDB.pendingWrites.add(enqueue("routine", "delete", { id }));
+  });
+}
+
+export async function createSession(record: Session): Promise<Session> {
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.add(record);
+    await forgeDB.pendingWrites.add(enqueue("session", "create", record));
+  });
+  return record;
+}
+
+export async function updateSession(record: Session): Promise<Session> {
+  await guardNotFinished(record.id);
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.put(record);
+    await forgeDB.pendingWrites.add(enqueue("session", "update", record));
+  });
+  return record;
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("session", "delete", { id }));
+  });
+}
+
+export async function finishSession(record: Session): Promise<Session> {
+  await guardNotFinished(record.id);
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.put(record);
+    await forgeDB.pendingWrites.add(enqueue("session", "update", record));
+  });
+  return record;
+}
+
+export async function createSessionLog(record: SessionSetLog): Promise<SessionSetLog> {
+  await guardNotFinished(record.sessionId);
+  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessionSetLogs.add(record);
+    await forgeDB.pendingWrites.add(enqueue("session_log", "create", record));
+  });
+  return record;
+}
+
+export async function updateSessionLog(record: SessionSetLog): Promise<SessionSetLog> {
+  await guardNotFinished(record.sessionId);
+  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessionSetLogs.put(record);
+    await forgeDB.pendingWrites.add(enqueue("session_log", "update", record));
+  });
+  return record;
+}
+
+export async function deleteSessionLog(id: string, sessionId: string): Promise<void> {
+  await guardNotFinished(sessionId);
+  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessionSetLogs.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("session_log", "delete", { id, sessionId }));
   });
 }
 

@@ -18,10 +18,33 @@ export const subscribe = (fn: FlushListener) => {
 const endpointFor = (entity: PendingWrite["entity"]) => {
   if (entity === "exercise") return `${API_BASE}/exercises`;
   if (entity === "routine") return `${API_BASE}/routines`;
+  if (entity === "session") return `${API_BASE}/sessions`;
+  if (entity === "session_log") return `${API_BASE}/sessions`; // URL built in send()
   return `${API_BASE}/equipment`;
 };
 
 const send = async (entry: PendingWrite): Promise<Response> => {
+  // Session logs use nested URL: /sessions/:sessionId/logs[/:logId]
+  if (entry.entity === "session_log") {
+    const p = entry.payload as { id: string; sessionId: string };
+    const logsBase = `${API_BASE}/sessions/${p.sessionId}/logs`;
+    if (entry.op === "create") {
+      return fetch(logsBase, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry.payload),
+      });
+    }
+    if (entry.op === "update") {
+      return fetch(`${logsBase}/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry.payload),
+      });
+    }
+    return fetch(`${logsBase}/${p.id}`, { method: "DELETE" });
+  }
+
   const base = endpointFor(entry.entity);
   if (entry.op === "create") {
     return fetch(base, {
@@ -32,6 +55,17 @@ const send = async (entry: PendingWrite): Promise<Response> => {
   }
   const id = (entry.payload as { id: string }).id;
   if (entry.op === "update") {
+    // Finished-session updates route to /finish, not PATCH
+    if (entry.entity === "session") {
+      const payload = entry.payload as { id: string; status?: string; endedAt?: number | null };
+      if (payload.status === "finished") {
+        return fetch(`${base}/${id}/finish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endedAt: payload.endedAt }),
+        });
+      }
+    }
     return fetch(`${base}/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -41,9 +75,16 @@ const send = async (entry: PendingWrite): Promise<Response> => {
   return fetch(`${base}/${id}`, { method: "DELETE" });
 };
 
-const isSuccess = (op: PendingWrite["op"], status: number) => {
-  if (op === "create") return status === 201 || status === 409;
-  if (op === "update") return status === 200 || status === 404;
+const isSuccess = (entry: PendingWrite, status: number): boolean => {
+  if (
+    entry.entity === "session" &&
+    entry.op === "update" &&
+    (entry.payload as { status?: string }).status === "finished"
+  ) {
+    return status === 200 || status === 409 || status === 404;
+  }
+  if (entry.op === "create") return status === 201 || status === 409;
+  if (entry.op === "update") return status === 200 || status === 404;
   return status === 204 || status === 404;
 };
 
@@ -69,7 +110,7 @@ const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
     return "retry";
   }
 
-  if (isSuccess(entry.op, res.status)) {
+  if (isSuccess(entry, res.status)) {
     if (entry.op === "create" && res.status === 409) {
       console.warn(`[flusher] id_conflict on create ${entry.entity} ${entry.id}`);
     }

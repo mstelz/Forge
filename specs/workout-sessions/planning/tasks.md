@@ -25,12 +25,12 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Existing `src/db/schema.ts` (exercises, equipment, routines + children).
 
-### 1.1 [ ] Add `sessions` Drizzle table
+### 1.1 [x] Add `sessions` Drizzle table
 - Columns per spec § Domain model — sessions: `id` (text PK), `status` (text NN — `'in_progress' | 'finished' | 'discarded'`), `sourceType` (text NN), `sourceRoutineId`, `sourceProgramId`, `sourceProgramWeekIndex` (int), `sourceProgramDayIndex` (int), `templateSnapshot` (text — JSON, nullable), `liveStructure` (text NN — JSON), `restTimer` (text — JSON, nullable), `title`, `notes`, `startedAt`, `endedAt`, `pausedAt` (`timestamp_ms` ints), `createdAt`, `updatedAt` (`timestamp_ms` NN).
 - Indexes: `idx_sessions_status` on `status`, `idx_sessions_started_at` on `startedAt`, `idx_sessions_source_routine` on `sourceRoutineId`.
 - Files: `src/db/schema.ts`.
 
-### 1.2 [ ] Add `session_set_logs` Drizzle table
+### 1.2 [x] Add `session_set_logs` Drizzle table
 - Columns per spec § Domain model — session_set_logs. FK `sessionId` → `sessions.id` `onDelete: 'cascade'`. `exerciseId` is a soft reference (no FK, matching `routine_items.exerciseId`).
 - Fields: `id`, `sessionId`, `performedExerciseId`, `exerciseId`, `sessionItemId`, `plannedSetId` (nullable), `order` (int NN), `reps` (int), `weightKg` (real), `rpe` (real), `durationSec` (int), `distanceM` (real), `notes`, `setType` (text NN), `status` (text NN), `loggedAt` (`timestamp_ms` NN), `restAfterSec` (int), `enteredWeight` (real), `enteredWeightUnit` (text), `enteredDistance` (real), `enteredDistanceUnit` (text).
 - Indexes: `idx_logs_session` on `sessionId`, `idx_logs_exercise_logged` on `(exerciseId, loggedAt)`, `idx_logs_session_performed` on `(sessionId, performedExerciseId, order)`, `idx_logs_planned_set` on `plannedSetId`.
@@ -41,7 +41,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Server route in Phase 3 also enforces this at runtime as a fallback.
 - Files: `src/db/schema.ts`, generated migration SQL.
 
-### 1.4 [ ] Generate and commit migration
+### 1.4 [x] Generate and commit migration
 - `bun run db:generate`; verify the two tables, FK cascade, and indexes (including the partial unique). `bun run db:migrate` runs cleanly against an existing DB containing exercise/equipment/routine tables.
 - Files: `src/db/migrations/<timestamp>_*.sql`.
 
@@ -53,26 +53,26 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 1 conceptually; runtime independent. Imports `RoutineSchema` shape from `src/shared/routine.ts`.
 
-### 2.1 [ ] Define enums in `src/shared/session.ts`
+### 2.1 [x] Define enums in `src/shared/session.ts`
 - `SessionSourceTypeEnum = z.enum(['routine','program_day','freeform'])`.
 - `SessionStatusEnum = z.enum(['in_progress','finished','discarded'])`.
 - `RestTimerStatusEnum = z.enum(['idle','running','paused'])`.
 - Files: `src/shared/session.ts` (new).
 
-### 2.2 [ ] Define `RestTimerSchema`
+### 2.2 [x] Define `RestTimerSchema`
 - `{ status: RestTimerStatusEnum, startedAt: int().nullable(), durationSec: int().min(0).max(3600), pausedAt: int().nullable(), remainingSec: int().nullable() }`.
 - Cross-field: `status='running'` requires `startedAt`; `status='paused'` requires `pausedAt` + `remainingSec`.
 - Files: `src/shared/session.ts`.
 - Depends on: 2.1.
 
-### 2.3 [ ] Define `LiveStructureItemSchema` / `LiveStructureBlockSchema` / `LiveStructureSchema`
+### 2.3 [x] Define `LiveStructureItemSchema` / `LiveStructureBlockSchema` / `LiveStructureSchema`
 - Mirrors `RoutineSchema` shape. Adds `performedExerciseId: uuid` per item, `sessionItemId: uuid` per item, `plannedSetId: uuid` per slot.
 - `setTargets[]` is ALWAYS materialized (length === `setCount`) for predictability — even when modes are `uniform`. Each entry includes `id` (= `plannedSetId`), `order`, `reps`/`repsMin`/`repsMax`, `rpe`, `setType`, optional `techniqueNotes`, optional `restSec`.
 - Block-level fields `type`, `roundCount` (supersets), `restSec`, `tempo`, `notes` carry over from `RoutineBlockSchema`.
 - Files: `src/shared/session.ts`.
 - Depends on: 2.1.
 
-### 2.4 [ ] Define `SessionSchema`, `SessionCreateInput`, `SessionUpdateInput`, `SessionFinishInput`
+### 2.4 [x] Define `SessionSchema`, `SessionCreateInput`, `SessionUpdateInput`, `SessionFinishInput`
 - `SessionSchema`: `{ id, status, sourceType, sourceRoutineId?, sourceProgramId?, sourceProgramWeekIndex?, sourceProgramDayIndex?, templateSnapshot?: nullable RoutineSchema clone, liveStructure: LiveStructureSchema, restTimer?: RestTimerSchema | null, title?, notes? (max 2000), startedAt, endedAt?, pausedAt?, createdAt, updatedAt }`.
 - `SessionCreateInput`: `sourceType` required; conditional refinements (`'routine'` requires `sourceRoutineId`; `'program_day'` requires `sourceProgramId` + week/day indices; `'freeform'` requires all source fields null and `templateSnapshot=null` and `liveStructure.blocks=[]`).
 - `SessionUpdateInput`: full document; rejects when caller passes `status='finished'` (server enforces immutability — see 3.5).
@@ -80,12 +80,12 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/shared/session.ts`.
 - Depends on: 2.2, 2.3.
 
-### 2.5 [ ] Define `SetTypeEnum`, `SessionLogStatusEnum` in `src/shared/session-log.ts`
+### 2.5 [x] Define `SetTypeEnum`, `SessionLogStatusEnum` in `src/shared/session-log.ts`
 - `SetTypeEnum = z.enum(['normal','warmup','drop','failure','amrap','rest_pause'])` — extends routines' set-type enum with `'warmup'` and `'failure'`.
 - `SessionLogStatusEnum = z.enum(['logged','skipped','extra'])`.
 - Files: `src/shared/session-log.ts` (new).
 
-### 2.6 [ ] Define `SessionSetLogSchema`, `SessionSetLogCreateInput`, `SessionSetLogUpdateInput`
+### 2.6 [~] Define `SessionSetLogSchema`, `SessionSetLogCreateInput`, `SessionSetLogUpdateInput`
 - Full record per spec § Domain model — session_set_logs.
 - Cross-field rules:
   - `status='logged'` AND `setType ∈ {'normal','drop','amrap','failure'}` AND `weightKg` present → `reps` must be > 0.
@@ -98,11 +98,11 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/shared/session-log.ts`.
 - Depends on: 2.5.
 
-### 2.7 [ ] Extend `PendingEntityEnum` with `'session'` and `'session_log'`
+### 2.7 [x] Extend `PendingEntityEnum` with `'session'` and `'session_log'`
 - Extend `src/shared/pending-write.ts` `entity` enum. No structural change to `PendingWriteSchema`.
 - Files: `src/shared/pending-write.ts`.
 
-### 2.8 [ ] Re-export from `src/shared/index.ts`
+### 2.8 [x] Re-export from `src/shared/index.ts`
 - Add `session.ts` and `session-log.ts` exports so `import { SessionSchema, SessionSetLogSchema, type Session, type SessionSetLog } from '@/shared'` works on both client and server.
 - Files: `src/shared/index.ts`, `src/shared/types.ts`.
 
@@ -125,41 +125,41 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 1, Phase 2.
 
-### 3.1 [ ] Scaffold session sub-router
+### 3.1 [x] Scaffold session sub-router
 - Create `src/server/routes/sessions.ts` mounted from `src/server/routes/api.ts` under `/sessions`. Reuse `src/server/lib/errors.ts` shape.
 - Done when: `GET /api/v1/sessions` returns `200 { sessions: [] }` against an empty DB.
 - Files: `src/server/routes/api.ts`, `src/server/routes/sessions.ts` (new).
 
-### 3.2 [ ] Implement `loadSession(id)` server-side helper
+### 3.2 [x] Implement `loadSession(id)` server-side helper
 - Reads the `sessions` row, parses `templateSnapshot` / `liveStructure` / `restTimer` JSON columns into objects, returns the nested `Session`.
 - Files: `src/server/routes/sessions.ts` or `src/server/lib/session-loader.ts` (new).
 
-### 3.3 [ ] Implement Sessions GET routes
+### 3.3 [x] Implement Sessions GET routes
 - `GET /sessions` → `200 { sessions: Session[] }` ordered by `startedAt DESC` server-side.
 - `GET /sessions/:id` → `200 Session` | `404 { error: 'not_found' }`.
 - Depends on: 3.2.
 
-### 3.4 [ ] Implement `POST /sessions`
+### 3.4 [x] Implement `POST /sessions`
 - Body validated with `SessionCreateInput`. Pre-check: if any row has `status='in_progress'`, return `409 { error: 'in_progress_exists', id }`. On id collision return `409 { error: 'id_conflict', id }`.
 - Server stamps `status='in_progress'`, `startedAt`/`createdAt`/`updatedAt` if absent.
 - `201 Session` | `400 validation` | `409`.
 - Depends on: 3.3.
 
-### 3.5 [ ] Implement `PATCH /sessions/:id`
+### 3.5 [x] Implement `PATCH /sessions/:id`
 - Body validated with `SessionUpdateInput` (full document; mutates `liveStructure`, `title`, `notes`, `restTimer`, `pausedAt`).
 - Reject with `409 { error: 'finished' }` if existing row has `status='finished'`.
 - `200` | `404` | `400` | `409`.
 - Bumps `updatedAt = max(body.updatedAt, Date.now())`.
 - Depends on: 3.3.
 
-### 3.6 [ ] Implement `POST /sessions/:id/finish`
+### 3.6 [x] Implement `POST /sessions/:id/finish`
 - Body: `{ endedAt }`. Server stamps `status='finished'`, `endedAt`, clears `restTimer = null`. Returns `200 Session` | `404` | `409 finished` (idempotent on already-finished — return current row with `200`? — spec says reject as `409 finished`; honor that).
 - Depends on: 3.3.
 
-### 3.7 [ ] Implement `DELETE /sessions/:id`
+### 3.7 [x] Implement `DELETE /sessions/:id`
 - `204` (idempotent). Hard-deletes session + cascades all child logs.
 
-### 3.8 [ ] Implement Session Set Logs sub-resource routes
+### 3.8 [x] Implement Session Set Logs sub-resource routes
 - `GET /sessions/:id/logs` → `200 { logs: SessionSetLog[] }` ordered by `loggedAt ASC`.
 - `POST /sessions/:id/logs` — body `SessionSetLogCreateInput` (client `id`); reject `409 finished` if parent finished; `409 id_conflict` on collision.
 - `PATCH /sessions/:id/logs/:logId` — body `SessionSetLogUpdateInput` (full record); `409 finished` if parent finished.
@@ -177,13 +177,13 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 2, Phase 3.
 
-### 4.1 [ ] Add `sessions` and `sessionSetLogs` Dexie stores
+### 4.1 [x] Add `sessions` and `sessionSetLogs` Dexie stores
 - Bump `forge-db.ts` Dexie version. Add:
   - `sessions` (keyPath `id`; indexes `status`, `startedAt`, `sourceRoutineId`) — full nested document per row.
   - `sessionSetLogs` (keyPath `id`; indexes `sessionId`, `[exerciseId+loggedAt]`, `[sessionId+performedExerciseId+order]`, `plannedSetId`).
 - Files: `src/client/db/forge-db.ts`.
 
-### 4.2 [ ] Implement transactional write helpers in `src/client/db/mutations.ts`
+### 4.2 [~] Implement transactional write helpers in `src/client/db/mutations.ts`
 - `createSession(session)`, `updateSession(session)`, `finishSession(id, endedAt)`, `deleteSession(id)`. Each is ONE Dexie transaction touching `sessions` + `pendingWrites`.
 - `finishSession` mutates the local row to `status='finished'`, `endedAt`, `restTimer=null`, then enqueues an `entity='session'`, `op='update'` outbox entry carrying the finished record. (Server-side `/finish` is invoked by the flusher; see 4.4.)
 - `createSessionLog(log)`, `updateSessionLog(log)`, `deleteSessionLog({id, sessionId})`. Each is ONE Dexie transaction touching `sessionSetLogs` + `pendingWrites` with `entity='session_log'`.
@@ -191,13 +191,13 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/db/mutations.ts`.
 - Depends on: 4.1.
 
-### 4.3 [ ] Implement Dexie read helpers + query keys
+### 4.3 [~] Implement Dexie read helpers + query keys
 - `getActiveSession()` (returns the at-most-one row with `status='in_progress'`).
 - `getSessionById(id)`, `listFinishedSessions()` (ordered by `startedAt` DESC), `listLogsBySession(sessionId)`, `listLogsByExercise(exerciseId)` (ordered by `loggedAt` DESC), `getLastLogForExercise(exerciseId)` (most recent `status='logged'` row — used for `last time` line and pre-fill).
 - Files: `src/client/db/queries.ts`, `src/client/db/query-keys.ts`.
 - Depends on: 4.1.
 
-### 4.4 [ ] Wire `entity='session'` and `entity='session_log'` into the flusher
+### 4.4 [~] Wire `entity='session'` and `entity='session_log'` into the flusher
 - Extend `src/client/sync/flusher.ts` dispatch:
   - `session.create` → `POST /api/v1/sessions`. `201` drop entry; `409 in_progress_exists` → surface to UI (pause flushing of session entries until UI resolves; do NOT drop).
   - `session.update` → if outgoing payload has `status='finished'`, route to `POST /api/v1/sessions/:id/finish` with `{ endedAt }` and drop on `200`/`409 finished`/`404`. Otherwise `PATCH /api/v1/sessions/:id`. `409 finished` → drop entry (server is the truth).
@@ -213,7 +213,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
   - For non-finished: pending-wins guard — if any outbox entry exists for that session id (or its child logs), keep local; else server replaces local.
 - Files: `src/client/sync/reconcile.ts`.
 
-### 4.6 [ ] Tanstack Query hooks
+### 4.6 [~] Tanstack Query hooks
 - `useActiveSession()`, `useSession(id)`, `useFinishedSessions()`.
 - `useSessionLogs(sessionId)` (live), `useExerciseLogs(exerciseId)` (live, used by per-exercise history wiring), `useLastLogForExercise(exerciseId)` (used by last-time line + pre-fill).
 - Files: `src/client/hooks/use-session.ts` (new), `src/client/hooks/use-session-logs.ts` (new).
@@ -238,23 +238,23 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 2, Phase 4.
 
-### 5.1 [ ] Implement stateless next-set cursor (`computeNextCursor`)
+### 5.1 [~] Implement stateless next-set cursor (`computeNextCursor`)
 - Pure function: `(liveStructure, logs) => { performedExerciseId, sessionItemId, plannedSetId, blockIndex, itemIndex, roundIndex, slotIndex, exhausted: boolean }` or `null` when no slots exist.
 - Algorithm: walk planned slots in render order (single block: by `slotIndex`; superset block: round-major — A1@r1, A2@r1, …, A1@r2, …). Skip slots that already have a log row with `status ∈ {'logged','skipped'}` matching `performedExerciseId` + `plannedSetId`. The cursor is the lowest such unresolved slot. If none, `exhausted=true`.
 - Total planned slots derivation also lives here (excludes extras).
 - Files: `src/client/lib/session/cursor.ts` (new).
 
-### 5.2 [ ] Implement Epley 1RM utility (`epley`)
+### 5.2 [~] Implement Epley 1RM utility (`epley`)
 - `epley(weightKg, reps) = weightKg * (1 + reps / 30)`.
 - `bestEpleyForExercise(logs, exerciseId)` → returns `{ weightKg, reps, epley1RM, logId } | null` over eligible logs (`status='logged'` AND `setType='normal'` AND `reps>0` AND `weightKg>0`).
 - Files: `src/client/lib/session/epley.ts` (new).
 
-### 5.3 [ ] Implement `getLastLogValuesForExercise` (pre-fill helper)
+### 5.3 [~] Implement `getLastLogValuesForExercise` (pre-fill helper)
 - `(exerciseId) => { weightKg?, reps?, rpe?, durationSec?, distanceM? } | null` from the most recent `status='logged'` row for that exercise in Dexie. Used by both the "last time" line on the exercise card and the inline editor pre-fill.
 - Files: `src/client/lib/session/prior-values.ts` (new).
 - Depends on: 4.3.
 
-### 5.4 [ ] Implement `summarizeSessionForHistory` (totals helpers)
+### 5.4 [~] Implement `summarizeSessionForHistory` (totals helpers)
 - For the post-finish detail view: `totalVolumeKg`, `totalLoggedSets`, `prCount` (count of distinct exerciseIds where this session set a new Epley peak vs all prior sessions).
 - Files: `src/client/lib/session/summary.ts` (new).
 
@@ -277,30 +277,30 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4. Mockup `design/workout-start.png`.
 
-### 6.1 [ ] Register routes + drawer entry
+### 6.1 [x] Register routes + drawer entry
 - Add `/workout/start` (entrypoint), `/workout/active` (logger — phases 7–10), `/workout/sessions/:id` (post-finish detail — phase 10) to the router. Add drawer-nav "Start workout".
 - Files: router config, `src/client/layouts/app-shell.tsx` (drawer), `src/client/pages/workout/start.tsx` (new).
 
-### 6.2 [ ] Top bar + page skeleton
+### 6.2 [x] Top bar + page skeleton
 - Top bar: hamburger, amber "START WORKOUT" title.
 - Files: `src/client/pages/workout/start.tsx`.
 
-### 6.3 [ ] "From your program" card (hidden when no program)
+### 6.3 [~] "From your program" card (hidden when no program)
 - Surfaces when v1 has any program data wired (it does not — feature gated; render hidden by default with a TODO comment for the programs slice).
 - When visible: routine name, week/day subtitle, 5-row exercise summary, estimated duration chip, primary amber **START PLANNED** CTA. Tapping POSTs a session with `sourceType='program_day'`.
 - Files: `src/client/pages/workout/program-card.tsx` (new).
 
-### 6.4 [ ] "OR" divider + "RECENT ROUTINES" list
+### 6.4 [x] "OR" divider + "RECENT ROUTINES" list
 - Reads routines from Dexie. For each, derive `daysAgo` from the latest finished session's `endedAt` for that `sourceRoutineId` (via `useFinishedSessions`). Rows: routine name, muted "X days ago" (or no subtitle when never used), chevron.
 - Tapping a row: hydrate-from-routine flow — POST a session with `sourceType='routine'`, `sourceRoutineId`, `templateSnapshot` = the routine's full nested document, `liveStructure` = deep clone with fresh `performedExerciseId`/`sessionItemId`/`plannedSetId` UUIDs minted at every level, `setTargets[]` always materialized.
 - Files: `src/client/pages/workout/recent-routines.tsx` (new), `src/client/lib/session/hydrate.ts` (new — owns the deep clone + UUID minting logic).
 
-### 6.5 [ ] "Freeform session" row + "ALL ROUTINES >" footer
+### 6.5 [x] "Freeform session" row + "ALL ROUTINES >" footer
 - Lightning glyph row: "Start without a routine — add exercises as you go". Tapping POSTs a freeform session (`sourceType='freeform'`, `templateSnapshot=null`, `liveStructure.blocks=[]`).
 - Footer link to `/routines`.
 - Files: `src/client/pages/workout/freeform-row.tsx` (new).
 
-### 6.6 [ ] Resume / Discard / Cancel guard
+### 6.6 [~] Resume / Discard / Cancel guard
 - Component reads `useActiveSession()`. If a session exists with `status='in_progress'`:
   - Render a sticky **Resume in-progress** banner above the page content, linking to `/workout/active`.
   - Intercept any other start-attempt: show a Radix Dialog with three actions — **Resume** (route to `/workout/active`), **Discard** (call `deleteSession(activeId)` then proceed with the originally-attempted start), **Cancel** (no-op).
@@ -315,29 +315,29 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4, Phase 5, Phase 6. Mockups `design/logger-dark.png` + `design/logger-light.png`.
 
-### 7.1 [ ] `/workout/active` route + page shell
+### 7.1 [x] `/workout/active` route + page shell
 - Renders `<LoggerPage />`. Reads `useActiveSession()`; redirects to `/workout/start` when no active session.
 - Files: `src/client/pages/workout/logger/index.tsx` (new), router config.
 
-### 7.2 [ ] Header counter + overflow menu
+### 7.2 [~] Header counter + overflow menu
 - Header: "Set <currentSlotIndex+1> of <totalPlannedSlots>" derived from `computeNextCursor` (extras excluded). Right-aligned overflow kebab.
 - Overflow items: **Pause and leave** (sets `pausedAt` and routes back to `/workout/start`), **Discard** (Radix Dialog → `deleteSession`), **Add note** (focuses session-level notes textarea), **Edit structure** (opens the structure-edit sheet from Phase 8).
 - Files: `src/client/pages/workout/logger/header.tsx` (new).
 
-### 7.3 [ ] Exercise card component
+### 7.3 [x] Exercise card component
 - Bold exercise name, optional `SUPERSET A` tag with round pip dots (filled = logged this round, hollow = pending, current = highlighted).
 - Muted `last time: <reps × weight × sets · <date>>` line sourced from `getLastLogForExercise`. Hidden when no prior history.
 - Compact prescription chips row: `<setCount> sets`, `<reps> reps`, `RPE <rpe>`, `<mm:ss> rest` (chip omitted when its source value is null).
 - Files: `src/client/pages/workout/logger/exercise-card.tsx` (new), `src/client/pages/workout/logger/superset-pips.tsx` (new).
 
-### 7.4 [ ] Set row component (placeholder / active / logged states)
+### 7.4 [~] Set row component (placeholder / active / logged states)
 - Placeholder: muted row showing prescription target (`225 × 5  RPE 8`). Tapping focuses the inline editor on that slot (does NOT auto-skip earlier slots; the cursor still tracks state-derived order).
 - Active: amber-highlighted row pointing at the cursor slot.
 - Logged: row with a green check glyph showing logged values (`<weight> × <reps>` plus optional `RPE <rpe>`); tapping enters correct-mode (Phase 9).
 - `+ ADD SET` and `+ ADD NOTE` affordances render under the active exercise card.
 - Files: `src/client/pages/workout/logger/set-row.tsx` (new).
 
-### 7.5 [ ] Rest timer strip + persistence
+### 7.5 [~] Rest timer strip + persistence
 - Strip above the editor: `mm:ss` countdown, play/pause toggle. Reads `session.restTimer` and recomputes `remainingSec` from wall-clock against `startedAt` on every render.
 - Auto-start on **LOG SET**: write `restTimer = { status: 'running', startedAt: Date.now(), durationSec: <slot's restSec or 90>, pausedAt: null, remainingSec: durationSec }` in the same `updateSession` call.
 - Tap on the duration label opens a numeric stepper to override `durationSec` mid-rest; remaining time recomputes.
@@ -346,7 +346,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/workout/logger/rest-timer.tsx` (new).
 - Depends on: 4.2.
 
-### 7.6 [ ] Inline editor (weight/reps steppers, setType chip, note chip, LOG SET CTA)
+### 7.6 [~] Inline editor (weight/reps steppers, setType chip, note chip, LOG SET CTA)
 - Paired number steppers for **WEIGHT** and **REPS**. Pre-fill from `getLastLogValuesForExercise(exerciseId)` (overwritten on user input).
 - `setType` chip (`N`, `D`, `W`, `F`, `A`, `RP`) — toggling changes setType for the CURRENT slot only (per spec § Logging interactions, Phase 9).
 - `+ Note` chip opens a small inline note textarea (max 500 chars).
@@ -354,7 +354,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Mobile-first: tap-tab focus order; numpad keyboard via `inputmode="decimal"`.
 - Files: `src/client/pages/workout/logger/inline-editor.tsx` (new).
 
-### 7.7 [ ] Cursor exhaustion behavior
+### 7.7 [x] Cursor exhaustion behavior
 - When `cursor.exhausted === true`, the inline editor renders an **Add extra set** chip + a **Finish workout** primary CTA.
 - Files: extends `inline-editor.tsx`.
 
@@ -436,24 +436,24 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4, Phase 7.
 
-### 9.1 [ ] LOG SET interaction
+### 9.1 [x] LOG SET interaction
 - Tapping LOG SET writes a `session_set_logs` row in Dexie + outbox in one transaction via `createSessionLog`. Fields: `id` (new UUID), `sessionId`, `performedExerciseId`, `exerciseId`, `sessionItemId`, `plannedSetId`, `order`, `reps`, `weightKg`, `rpe`, `setType`, `status='logged'`, `loggedAt=Date.now()`, `restAfterSec=null` (back-filled at next-log-time or finish), `enteredWeight`/`enteredWeightUnit` from the user's input units. Cursor advances on next render.
 - If a log already exists for the slot, route through `updateSessionLog` (correct-mode).
 - Files: `src/client/pages/workout/logger/log-set.ts` (new).
 
-### 9.2 [ ] Skip set interaction
+### 9.2 [x] Skip set interaction
 - Skip CTA on the active row (or in placeholder long-press menu) creates a `status='skipped'` log row with no metric values. Allows the cursor to advance past the slot.
 - Files: extends `log-set.ts`.
 
-### 9.3 [ ] Correct-mode (tap a logged row to edit)
+### 9.3 [x] Correct-mode (tap a logged row to edit)
 - Tapping a logged row opens the inline editor pre-filled with that log's values. Saving routes through `updateSessionLog`; the row updates in place; rest timer is NOT restarted on a correction.
 - Files: extends `inline-editor.tsx` and `log-set.ts`.
 
-### 9.4 [ ] Add extra set
+### 9.4 [~] Add extra set
 - After cursor exhaustion (or via long-press on an exercise card "+ ADD SET"), inserting an extra set creates a log row with `plannedSetId=null`, `status='extra'`, `order = max(order)+1` for that `performedExerciseId`. Extras do NOT increment the header counter total.
 - Files: `src/client/pages/workout/logger/extra-set.ts` (new).
 
-### 9.5 [ ] setType scope = single set only
+### 9.5 [x] setType scope = single set only
 - Changing the setType chip in the inline editor updates ONLY the current set's `setType` on its log row (or its `setTargets[i].setType` for unlogged slots). Does NOT propagate to siblings.
 - Files: extends `inline-editor.tsx`.
 
@@ -461,12 +461,12 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - For exercises with `type='cardio'` or `type='mixed'`, the inline editor shows `durationSec` and `distanceM` inputs (mm:ss + numeric in display unit) alongside or instead of weight/reps. Pre-fill rules apply to whichever fields exist.
 - Files: extends `inline-editor.tsx`, reuse mm:ss helper from routines slice.
 
-### 9.7 [ ] Notes + RPE inputs
+### 9.7 [~] Notes + RPE inputs
 - RPE input: optional, half-step `1.0–10.0`.
 - Notes input: optional textarea max 500 chars per log; opens via `+ Note` chip.
 - Files: extends `inline-editor.tsx`.
 
-### 9.8 [ ] Mobile-first numpad + steppers
+### 9.8 [~] Mobile-first numpad + steppers
 - Number inputs use `inputmode="decimal"` and provide `+`/`-` stepper buttons. Tap targets ≥ 44px.
 - Files: shared component `src/client/components/numpad-input.tsx` (new) used by Weight/Reps/RPE/Distance fields.
 
@@ -493,28 +493,28 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4, Phase 5, Phase 7, Phase 9. Mockup `design/history-detail.png`.
 
-### 10.1 [ ] Finish workout confirm + flow
+### 10.1 [x] Finish workout confirm + flow
 - Tapping **Finish workout** opens a Radix Dialog: "Finish this workout? You won't be able to edit it after this." On confirm:
   - Call `finishSession(id, endedAt=Date.now())` → mutates local row to `status='finished'`, `endedAt`, `restTimer=null`, enqueues outbox `session.update` (which the flusher routes to `/finish` per 4.4).
   - Navigate to `/workout/sessions/:id` (post-finish detail).
 - Files: `src/client/pages/workout/logger/finish-dialog.tsx` (new).
 
-### 10.2 [ ] Post-finish detail page route + skeleton
+### 10.2 [x] Post-finish detail page route + skeleton
 - `/workout/sessions/:id` renders `<SessionDetailPage />`. Reads via `useSession(id)`; if local missing, render "Session not found" with link to history list.
 - Top bar: back arrow, "WORKOUT SUMMARY" muted label, share icon (no-op v1).
 - Files: `src/client/pages/workout/sessions/detail.tsx` (new), router config.
 
-### 10.3 [ ] Header block + optional program subtitle
+### 10.3 [x] Header block + optional program subtitle
 - Bold session title (default routine name or "Freeform session"). Muted date line `<weekday>, <date> · <duration>` (duration = `endedAt - startedAt` formatted as `Hh Mm`).
 - When `sourceType='program_day'`, a muted line `<programName> · Week <N>, Day <M>` (programName resolved best-effort; v1 stub: render the program id when no program data exists).
 - Files: `src/client/pages/workout/sessions/header.tsx` (new).
 
-### 10.4 [ ] Three top metric tiles (VOLUME / SETS / PRs)
+### 10.4 [~] Three top metric tiles (VOLUME / SETS / PRs)
 - Uses `summarizeSessionForHistory` from 5.4. VOLUME rendered in display units; SETS = count of `status='logged'`; PRs = count of new EST 1RM peaks vs prior history.
 - Files: `src/client/pages/workout/sessions/metrics.tsx` (new).
 - Depends on: 5.4.
 
-### 10.5 [ ] Per-exercise summary blocks
+### 10.5 [~] Per-exercise summary blocks
 - Bold exercise name, optional `EST 1RM` chip when this session set a new peak for that exercise. Ordered list of logs:
   - Logged: `<weight> lb × <reps>` (in display units) with green check glyph.
   - Skipped: muted dash row.
@@ -524,11 +524,11 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - "Previous attempt" treatment: when a slot's logs reference a different `exerciseId` than the slot's current `exerciseId` (post-swap), render those logs in a muted "previous attempt" sub-section.
 - Files: `src/client/pages/workout/sessions/exercise-block.tsx` (new), `superset-block.tsx` (new), `cardio-row.tsx` (new).
 
-### 10.6 [ ] Footer (notes, Export stub, Done)
+### 10.6 [x] Footer (notes, Export stub, Done)
 - Read-only notes block. **Export** button (CSV stub — disabled with tooltip "Coming soon"). **Done** routes back to history list.
 - Files: `src/client/pages/workout/sessions/footer.tsx` (new).
 
-### 10.7 [ ] Strict immutability guards
+### 10.7 [~] Strict immutability guards
 - Page is strictly read-only. All mutation paths (`updateSession`, `createSessionLog`, etc.) refuse for `status='finished'` parents (already enforced at 4.2). Server enforcement covered by 3.5/3.8.
 - Files: no new code; verify guard.
 
@@ -550,24 +550,24 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 4, Phase 5. Mockup `design/exercise-detail.png`.
 
-### 11.1 [ ] Wire EST 1RM tile
+### 11.1 [x] Wire EST 1RM tile
 - On `/exercises/:id`, replace the v1-empty EST 1RM tile with a value computed via `bestEpleyForExercise(exerciseLogs, exerciseId)` from Phase 5. Render in display units; show empty-state dash when no eligible logs exist.
 - Files: `src/client/pages/exercises/detail.tsx`, `src/client/pages/exercises/stat-tiles/est-1rm.tsx` (new).
 - Depends on: 4.6, 5.2.
 
-### 11.2 [ ] Wire BEST SET tile
+### 11.2 [x] Wire BEST SET tile
 - Single log row with the highest Epley estimate, rendered as `<weight> × <reps>` in display units.
 - Files: `src/client/pages/exercises/stat-tiles/best-set.tsx` (new).
 
-### 11.3 [ ] Wire TOTAL SESSIONS tile
+### 11.3 [x] Wire TOTAL SESSIONS tile
 - Count of distinct `sessionId` values where this `exerciseId` has at least one `status='logged'` log.
 - Files: `src/client/pages/exercises/stat-tiles/total-sessions.tsx` (new).
 
-### 11.4 [ ] Wire RECENT HISTORY list
+### 11.4 [x] Wire RECENT HISTORY list
 - List of recent logged sets for this exercise, newest first, grouped by session `endedAt` date. Format: `<weight> × <reps> · RPE <rpe>` (omit RPE chip when null). "VIEW ALL >" routes to `/history?exerciseId=<id>` (history list filtering deferred — link target may 404 in v1; render the link regardless).
 - Files: `src/client/pages/exercises/recent-history.tsx` (replace existing placeholder from exercise-library Phase 7.5).
 
-### 11.5 [ ] Empty-state preservation
+### 11.5 [x] Empty-state preservation
 - When no logs exist for the exercise, all four tiles + recent history render the existing v1 "No history yet" empty state. Tiles populate as soon as logs land in Dexie.
 - Files: extends 11.1–11.4.
 
