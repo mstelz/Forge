@@ -1,4 +1,4 @@
-import type { LiveStructure, LiveStructureBlock, LiveStructureItem, LiveSetTarget } from "../../../../shared";
+import type { LiveStructure, LiveStructureBlock, LiveStructureItem, LiveSetTarget } from "../../../lib/session/cursor";
 import { uuidv4 as uuid } from "../../../lib/uuid";
 
 // ─── Add a new single-block exercise at the end of liveStructure ──────────────

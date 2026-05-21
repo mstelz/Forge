@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { LiveStructure, LiveStructureBlock, LiveStructureItem, LiveSetTarget } from "../../../../../shared";
+import type { LiveStructure, LiveStructureBlock, LiveStructureItem, LiveSetTarget } from "../../../../lib/session/cursor";
 import { removeBlock, swapExercise, removeExerciseFromSuperset } from "../exercise-ops";
 import { addRoundToSuperset } from "../round-ops";
 

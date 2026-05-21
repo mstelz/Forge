@@ -1,6 +1,7 @@
 import Dexie from "dexie";
 import { forgeDB } from "./forge-db";
 import type { Exercise, Equipment, Routine, Session, SessionSetLog } from "../../shared";
+import type { HistoryFilter } from "../../shared/history";
 
 export const listExercises = (): Promise<Exercise[]> =>
   forgeDB.exercises.orderBy("name").toArray();
@@ -51,6 +52,71 @@ export const getLastLogForExercise = async (exerciseId: string): Promise<Session
 
 export const listAllSessionLogs = (): Promise<SessionSetLog[]> =>
   forgeDB.sessionSetLogs.toArray();
+
+// ---------------------------------------------------------------------------
+// History helpers
+// ---------------------------------------------------------------------------
+
+function rangeSpan(
+  range: HistoryFilter["range"],
+  from?: number,
+  to?: number,
+): { from: number; to: number } | null {
+  if (range === "all") return null;
+  if (range === "custom") {
+    if (from != null && to != null) return { from, to };
+    return null;
+  }
+  const now = Date.now();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (range === "week") {
+    const day = today.getDay();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - day);
+    return { from: weekStart.getTime(), to: now };
+  }
+  if (range === "month") {
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { from: monthStart.getTime(), to: now };
+  }
+  if (range === "year") {
+    const yearStart = new Date(today.getFullYear(), 0, 1);
+    return { from: yearStart.getTime(), to: now };
+  }
+  return null;
+}
+
+export const listFinishedSessions = async (
+  filters?: Partial<HistoryFilter>,
+): Promise<Session[]> => {
+  const sessions = await forgeDB.sessions.where("status").equals("finished").toArray();
+  sessions.sort((a, b) => b.startedAt - a.startedAt);
+  if (!filters || Object.keys(filters).length === 0) return sessions;
+
+  const span = rangeSpan(filters.range ?? "all", filters.from, filters.to);
+
+  let sessionIdsWithExercise: Set<string> | null = null;
+  if (filters.exercise) {
+    const logs = await forgeDB.sessionSetLogs
+      .where("[exerciseId+loggedAt]")
+      .between([filters.exercise, Dexie.minKey], [filters.exercise, Dexie.maxKey])
+      .toArray();
+    sessionIdsWithExercise = new Set(logs.map((l) => l.sessionId));
+  }
+
+  return sessions.filter((s) => {
+    if (s.endedAt == null) return false;
+    if (span && (s.endedAt < span.from || s.endedAt > span.to)) return false;
+    if (filters.routine && s.sourceRoutineId !== filters.routine) return false;
+    if (sessionIdsWithExercise && !sessionIdsWithExercise.has(s.id)) return false;
+    if (filters.q) {
+      const q = filters.q.toLowerCase().trim();
+      if (!(s.title?.toLowerCase().includes(q) ?? false) && !(s.notes?.toLowerCase().includes(q) ?? false)) return false;
+    }
+    return true;
+  });
+};
 
 export const countExercisesReferencingEquipment = async (
   equipmentId: string,

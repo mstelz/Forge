@@ -1,16 +1,22 @@
 import type { SessionSetLog } from "../../../shared";
 
-export type LiveStructureSlot = { id: string; [key: string]: unknown };
+export type LiveStructureSlot = { id: string; setType?: string; order?: number; [key: string]: unknown };
+export type LiveSetTarget = LiveStructureSlot;
 export type LiveStructureItem = {
+  id: string;
   performedExerciseId: string;
   sessionItemId: string;
+  exerciseId: string;
+  setCount: number;
   setTargets: LiveStructureSlot[];
   [key: string]: unknown;
 };
 export type LiveStructureBlock = {
+  id: string;
   type: "single" | "superset";
   items: LiveStructureItem[];
   roundCount?: number | null;
+  order?: number;
   [key: string]: unknown;
 };
 export type LiveStructure = { blocks: LiveStructureBlock[] };

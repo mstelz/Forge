@@ -1,5 +1,5 @@
 import { forgeDB } from "../db/forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session } from "../../shared";
 
 const API_BASE = "/api/v1";
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -74,20 +74,50 @@ async function reconcileRoutines(serverRows: Routine[], pending: PendingWrite[])
   });
 }
 
+async function reconcileSessions(serverRows: Session[], pending: PendingWrite[]) {
+  // Build a set of sessionIds (and their child log sessionIds) that have pending writes.
+  const pendingSessionIds = new Set<string>();
+  for (const r of pending) {
+    if (r.entity === "session") {
+      const id = (r.payload as { id?: string }).id;
+      if (id) pendingSessionIds.add(id);
+    }
+    if (r.entity === "session_log") {
+      const sessionId = (r.payload as { sessionId?: string }).sessionId;
+      if (sessionId) pendingSessionIds.add(sessionId);
+    }
+  }
+
+  await forgeDB.transaction("rw", forgeDB.sessions, async () => {
+    for (const s of serverRows) {
+      // Pending-wins: if any outbox entry exists for this session, keep local.
+      if (pendingSessionIds.has(s.id)) continue;
+      // Server is authoritative — upsert unconditionally.
+      // For finished sessions this enforces immutability once the outbox drains.
+      await forgeDB.sessions.put(s);
+    }
+  });
+  // NOTE (v1 limitation): session_set_logs are not pulled during reconcile.
+  // Logs are written client-first and the server is authoritative only for
+  // session-level state. Full log reconciliation is deferred to a future version.
+}
+
 export async function reconcileNow(): Promise<void> {
   if (running) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   running = true;
   try {
-    const [exResp, eqResp, rtResp, pending] = await Promise.all([
+    const [exResp, eqResp, rtResp, sessResp, pending] = await Promise.all([
       fetchJson<{ exercises: Exercise[] }>(`${API_BASE}/exercises`),
       fetchJson<{ equipment: Equipment[] }>(`${API_BASE}/equipment`),
       fetchJson<{ routines: Routine[] }>(`${API_BASE}/routines`),
+      fetchJson<{ sessions: Session[] }>(`${API_BASE}/sessions`),
       forgeDB.pendingWrites.toArray(),
     ]);
     await reconcileExercises(exResp.exercises, pending);
     await reconcileEquipment(eqResp.equipment, pending);
     await reconcileRoutines(rtResp.routines, pending);
+    await reconcileSessions(sessResp.sessions, pending);
   } catch (err) {
     console.warn("[reconcile] failed", err);
   } finally {

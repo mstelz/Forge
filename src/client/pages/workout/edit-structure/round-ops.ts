@@ -1,4 +1,4 @@
-import type { LiveStructure, LiveSetTarget } from "../../../../shared";
+import type { LiveStructure, LiveSetTarget } from "../../../lib/session/cursor";
 import { uuidv4 as uuid } from "../../../lib/uuid";
 
 /**

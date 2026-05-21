@@ -18,7 +18,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { LiveStructure, LiveStructureBlock, Session, SessionSetLog } from "../../../../shared";
+import type { LiveStructure, LiveStructureBlock } from "../../../lib/session/cursor";
+import type { Session, SessionSetLog } from "../../../../shared";
 import { updateSession, updateSessionLog } from "../../../db/mutations";
 import { ExercisePicker } from "../../../components/exercise-picker";
 import {

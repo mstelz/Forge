@@ -1,4 +1,4 @@
-import type { LiveStructure, LiveStructureBlock } from "../../../../shared";
+import type { LiveStructure, LiveStructureBlock } from "../../../lib/session/cursor";
 import { uuidv4 as uuid } from "../../../lib/uuid";
 
 /**
