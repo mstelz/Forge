@@ -4,10 +4,12 @@ import { createExercise } from "../../db/mutations";
 import type { Exercise } from "../../../shared";
 import { ExerciseForm, emptyFormState } from "./form";
 
+import { uuidv4 } from "../../lib/uuid";
+
 export function ExerciseNewPage() {
   const navigate = useNavigate();
   const baseRecord = useMemo(
-    () => ({ id: crypto.randomUUID(), createdAt: Date.now(), lastUsedAt: null as number | null }),
+    () => ({ id: uuidv4(), createdAt: Date.now(), lastUsedAt: null as number | null }),
     [],
   );
 

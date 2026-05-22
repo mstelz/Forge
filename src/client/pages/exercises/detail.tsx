@@ -6,7 +6,7 @@ import { deleteExercise } from "../../db/mutations";
 import { DetailHeader } from "./detail-header";
 import { InstructionalCard } from "./instructional-card";
 import { Instructions } from "./instructions";
-import { HistoryPlaceholder } from "./history-placeholder";
+import { ExerciseHistorySection } from "./history-placeholder";
 import { DetailMenu } from "./detail-menu";
 import { DeleteExerciseDialog } from "./delete-dialog";
 
@@ -69,7 +69,7 @@ export function ExerciseDetailPage() {
               description={exercise.description ?? null}
             />
             <Instructions instructions={exercise.instructions ?? null} />
-            <HistoryPlaceholder />
+            <ExerciseHistorySection exerciseId={id!} />
           </>
         )}
       </main>

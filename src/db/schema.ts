@@ -156,3 +156,66 @@ export const pendingWrites = sqliteTable(
     entityOpIdx: index("idx_pending_writes_entity_op").on(t.entity, t.op),
   }),
 );
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(), // 'in_progress' | 'finished' | 'discarded'
+    sourceType: text("source_type").notNull(), // 'routine' | 'program_day' | 'freeform'
+    sourceRoutineId: text("source_routine_id"),
+    sourceProgramId: text("source_program_id"),
+    sourceProgramWeekIndex: integer("source_program_week_index"),
+    sourceProgramDayIndex: integer("source_program_day_index"),
+    templateSnapshot: text("template_snapshot"), // JSON-encoded routine snapshot at start; null for freeform
+    liveStructure: text("live_structure").notNull(), // JSON-encoded mutable structure
+    restTimer: text("rest_timer"), // JSON: rest timer state
+    title: text("title"),
+    notes: text("notes"),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    pausedAt: integer("paused_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    statusIdx: index("idx_sessions_status").on(t.status),
+    startedAtIdx: index("idx_sessions_started_at").on(t.startedAt),
+    sourceRoutineIdx: index("idx_sessions_source_routine").on(t.sourceRoutineId),
+  }),
+);
+
+export const sessionSetLogs = sqliteTable(
+  "session_set_logs",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    performedExerciseId: text("performed_exercise_id").notNull(),
+    exerciseId: text("exercise_id").notNull(),
+    sessionItemId: text("session_item_id").notNull(),
+    plannedSetId: text("planned_set_id"),
+    order: integer("order").notNull(),
+    reps: integer("reps"),
+    weightKg: real("weight_kg"),
+    rpe: real("rpe"),
+    durationSec: integer("duration_sec"),
+    distanceM: real("distance_m"),
+    notes: text("notes"),
+    setType: text("set_type").notNull(), // 'normal' | 'warmup' | 'drop' | 'failure' | 'amrap' | 'rest_pause'
+    status: text("status").notNull(), // 'logged' | 'skipped' | 'extra'
+    loggedAt: integer("logged_at", { mode: "timestamp_ms" }).notNull(),
+    restAfterSec: integer("rest_after_sec"),
+    enteredWeight: real("entered_weight"),
+    enteredWeightUnit: text("entered_weight_unit"), // 'kg' | 'lb'
+    enteredDistance: real("entered_distance"),
+    enteredDistanceUnit: text("entered_distance_unit"), // 'm' | 'km' | 'mi'
+  },
+  (t) => ({
+    sessionIdx: index("idx_logs_session").on(t.sessionId),
+    exerciseLoggedIdx: index("idx_logs_exercise_logged").on(t.exerciseId, t.loggedAt),
+    sessionPerformedIdx: index("idx_logs_session_performed").on(t.sessionId, t.performedExerciseId, t.order),
+    plannedSetIdx: index("idx_logs_planned_set").on(t.plannedSetId),
+  }),
+);

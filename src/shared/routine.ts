@@ -74,13 +74,6 @@ export const SetTargetSchema = z
         message: "repsMin must be ≤ repsMax",
       });
     }
-    if (!hasAnyRep && !REP_OPTIONAL_TYPES.has(val.setType)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["reps"],
-        message: `reps required when setType is ${val.setType}`,
-      });
-    }
   });
 export type SetTarget = z.infer<typeof SetTargetSchema>;
 
@@ -247,7 +240,7 @@ export const RoutineItemSchema = z
       });
     }
 
-    // Per-set rep gating: if repMode is uniform, per-set reps fields must be absent
+    // Per-set rep gating
     if (val.repMode === "uniform" && val.setTargets) {
       for (let i = 0; i < val.setTargets.length; i++) {
         const t = val.setTargets[i]!;
@@ -256,6 +249,19 @@ export const RoutineItemSchema = z
             code: z.ZodIssueCode.custom,
             path: ["setTargets", i, "reps"],
             message: "per-set reps must be absent when repMode is uniform",
+          });
+        }
+      }
+    }
+    if (val.repMode === "per_set" && val.setTargets) {
+      for (let i = 0; i < val.setTargets.length; i++) {
+        const t = val.setTargets[i]!;
+        const hasAnyRep = t.reps != null || t.repsMin != null || t.repsMax != null;
+        if (!hasAnyRep && REP_REQUIRED_TYPES.has(t.setType)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["setTargets", i, "reps"],
+            message: `reps required when setType is ${t.setType}`,
           });
         }
       }

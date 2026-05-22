@@ -20,8 +20,10 @@ export function AppShell() {
 export type AppShellOutletContext = { openDrawer: () => void };
 
 const NAV_ITEMS: { to: string; label: string }[] = [
+  { to: "/workout/start", label: "Workout" },
   { to: "/exercises", label: "Exercises" },
   { to: "/routines", label: "Routines" },
+  { to: "/history", label: "History" },
   { to: "/equipment", label: "Equipment" },
 ];
 

@@ -1,0 +1,1704 @@
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { liveQuery } from "dexie";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+} from "@radix-ui/react-dialog";
+import { forgeDB } from "../../db/forge-db";
+import { getActiveSession, listSessionLogs, listLogsForExercise } from "../../db/queries";
+import { queryKeys } from "../../db/query-keys";
+import {
+  createSessionLog,
+  updateSession,
+  updateSessionLog,
+  finishSession,
+  deleteSession,
+} from "../../db/mutations";
+import { uuidv4 } from "../../lib/uuid";
+import { ExercisePicker } from "../../components/exercise-picker";
+import { EditStructureSheet } from "./edit-structure/index";
+import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
+
+// ─── Internal types ──────────────────────────────────────────────────────────
+
+type PlannedSlot = {
+  id: string;
+  reps?: number;
+  repsMin?: number;
+  repsMax?: number;
+  rpe?: number;
+  setType?: string;
+};
+
+type LiveItem = {
+  performedExerciseId: string;
+  sessionItemId: string;
+  exerciseId: string;
+  setCount: number;
+  uniformReps?: number;
+  uniformRpe?: number;
+  restSec?: number;
+  notes?: string;
+  setTargets: PlannedSlot[];
+};
+
+type LiveBlock = {
+  id: string;
+  type: "single" | "superset";
+  roundCount?: number;
+  restSec?: number;
+  items: LiveItem[];
+};
+
+type LiveStructure = {
+  blocks: LiveBlock[];
+};
+
+type CursorPos = {
+  blockIdx: number;
+  itemIdx: number;
+  slotIdx: number;
+  /** When true, this position represents a newly-added extra set (no plannedSetId). */
+  isExtra?: boolean;
+};
+
+type RestTimerData = {
+  status: "idle" | "running" | "paused";
+  startedAt: number | null;
+  durationSec: number;
+  pausedAt: number | null;
+  remainingSec: number | null;
+};
+
+type LogSetType = "normal" | "warmup" | "drop" | "failure" | "amrap" | "rest_pause";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseLiveStructure(json: string): LiveStructure {
+  try {
+    return JSON.parse(json) as LiveStructure;
+  } catch {
+    return { blocks: [] };
+  }
+}
+
+function parseRestTimer(json: string | null | undefined): RestTimerData {
+  if (!json) {
+    return { status: "idle", startedAt: null, durationSec: 90, pausedAt: null, remainingSec: null };
+  }
+  try {
+    return JSON.parse(json) as RestTimerData;
+  } catch {
+    return { status: "idle", startedAt: null, durationSec: 90, pausedAt: null, remainingSec: null };
+  }
+}
+
+function deriveCursor(
+  liveStructure: LiveStructure,
+  logs: SessionSetLog[],
+): CursorPos | null {
+  const doneIds = new Set<string>();
+  for (const log of logs) {
+    if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
+      doneIds.add(log.plannedSetId);
+    }
+  }
+
+  for (let blockIdx = 0; blockIdx < liveStructure.blocks.length; blockIdx++) {
+    const block = liveStructure.blocks[blockIdx]!;
+
+    if (block.type === "single") {
+      const item = block.items[0];
+      if (!item) continue;
+      for (let slotIdx = 0; slotIdx < item.setTargets.length; slotIdx++) {
+        const slot = item.setTargets[slotIdx]!;
+        if (!doneIds.has(slot.id)) {
+          return { blockIdx, itemIdx: 0, slotIdx };
+        }
+      }
+    } else {
+      // superset: walk by round
+      const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+      for (let round = 0; round < roundCount; round++) {
+        for (let itemIdx = 0; itemIdx < block.items.length; itemIdx++) {
+          const item = block.items[itemIdx];
+          if (!item) continue;
+          const slot = item.setTargets[round];
+          if (!slot) continue;
+          if (!doneIds.has(slot.id)) {
+            return { blockIdx, itemIdx, slotIdx: round };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function totalSlotCount(liveStructure: LiveStructure): number {
+  let total = 0;
+  for (const block of liveStructure.blocks) {
+    for (const item of block.items) {
+      total += item.setTargets.length;
+    }
+  }
+  return total;
+}
+
+function countDoneSlots(
+  liveStructure: LiveStructure,
+  logs: SessionSetLog[],
+): number {
+  const doneIds = new Set<string>();
+  for (const log of logs) {
+    if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
+      doneIds.add(log.plannedSetId);
+    }
+  }
+  let count = 0;
+  for (const block of liveStructure.blocks) {
+    for (const item of block.items) {
+      for (const slot of item.setTargets) {
+        if (doneIds.has(slot.id)) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function formatTimer(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function formatDaysAgo(ts: number): string {
+  const days = Math.floor((Date.now() - ts) / 86_400_000);
+  if (days === 0) return "today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
+
+function formatRepsTarget(slot: PlannedSlot): string {
+  if (slot.repsMin != null && slot.repsMax != null) return `${slot.repsMin}–${slot.repsMax} reps`;
+  if (slot.reps != null) return `${slot.reps} reps`;
+  return "";
+}
+
+function formatRpeTarget(slot: PlannedSlot): string {
+  if (slot.rpe != null) return `RPE ${slot.rpe}`;
+  return "";
+}
+
+function formatDuration(secs: number): string {
+  const s = Math.max(0, secs);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+// ─── Set Row ──────────────────────────────────────────────────────────────────
+
+type SetRowState = "logged" | "cursor" | "future" | "skipped";
+
+interface SetRowProps {
+  setNumber: number;
+  rowState: SetRowState;
+  slot: PlannedSlot;
+  log?: SessionSetLog;
+  isCursor: boolean;
+  onClick: () => void;
+}
+
+function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
+  const repsTarget = formatRepsTarget(slot);
+  const rpeTarget = formatRpeTarget(slot);
+
+  if (rowState === "logged" && log) {
+    if (isCursor) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/8 px-3 py-2.5 text-left"
+        >
+          <span className="w-5 text-xs font-bold text-[var(--accent)] tabular-nums">{setNumber}</span>
+          <div className="flex flex-1 items-center gap-2">
+            <span className="text-sm font-semibold text-[var(--text)]">
+              {log.weightKg != null ? `${log.weightKg} kg` : "—"} × {log.reps ?? "—"}
+            </span>
+          </div>
+          <span className="text-xs text-[var(--accent)]">editing</span>
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
+      >
+        <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
+        <div className="flex flex-1 items-center gap-2">
+          <span className="text-sm font-semibold text-[var(--text)]">
+            {log.weightKg != null ? `${log.weightKg} kg` : "—"} × {log.reps ?? "—"}
+          </span>
+          {log.rpe != null && (
+            <span className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
+              RPE {log.rpe}
+            </span>
+          )}
+        </div>
+        <CheckIcon className="text-green-500" />
+      </button>
+    );
+  }
+
+  if (rowState === "skipped") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
+      >
+        <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
+        <span className="text-sm text-[var(--text-subtle)]">— skipped</span>
+      </button>
+    );
+  }
+
+  if (isCursor) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2.5 text-left"
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--accent-fg)]">
+          {setNumber}
+        </span>
+        <div className="flex flex-1 items-center gap-2">
+          {repsTarget && (
+            <span className="text-sm font-semibold text-[var(--accent)]">{repsTarget}</span>
+          )}
+          {rpeTarget && (
+            <span className="rounded bg-[var(--accent)]/20 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)]">
+              {rpeTarget}
+            </span>
+          )}
+          {!repsTarget && !rpeTarget && (
+            <span className="text-sm text-[var(--accent)]">—</span>
+          )}
+        </div>
+        <span className="text-xs text-[var(--accent)]">Tap to edit</span>
+      </button>
+    );
+  }
+
+  // future placeholder
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+    >
+      <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
+      <div className="flex flex-1 items-center gap-2">
+        {repsTarget ? (
+          <span className="text-sm text-[var(--text-subtle)]">{repsTarget}</span>
+        ) : (
+          <span className="text-sm text-[var(--text-subtle)]">— —</span>
+        )}
+        {rpeTarget && (
+          <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-xs text-[var(--text-subtle)]">
+            {rpeTarget}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── Last time summary ────────────────────────────────────────────────────────
+
+function useLastTimeForExercise(exerciseId: string) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const sub = liveQuery(() => forgeDB.sessionSetLogs.count()).subscribe({
+      next: () =>
+        qc.invalidateQueries({
+          queryKey: queryKeys.exerciseHistory.byExerciseId(exerciseId),
+        }),
+    });
+    return () => sub.unsubscribe();
+  }, [exerciseId, qc]);
+
+  return useQuery({
+    queryKey: queryKeys.exerciseHistory.byExerciseId(exerciseId),
+    queryFn: () => listLogsForExercise(exerciseId),
+  });
+}
+
+function LastTimeLine({
+  exerciseId,
+  sessionId,
+}: {
+  exerciseId: string;
+  sessionId: string;
+}) {
+  const { data: allLogs } = useLastTimeForExercise(exerciseId);
+
+  const summary = useMemo(() => {
+    if (!allLogs || allLogs.length === 0) return null;
+    const prev = allLogs.filter(
+      (l) => l.sessionId !== sessionId && l.status === "logged",
+    );
+    if (prev.length === 0) return null;
+
+    const mostRecentAt = Math.max(...prev.map((l) => l.loggedAt));
+    // Group logs by session proximity (within 4h of most recent log)
+    const sessionLogs = prev
+      .filter((l) => mostRecentAt - l.loggedAt < 4 * 3_600_000)
+      .sort((a, b) => a.order - b.order);
+
+    if (sessionLogs.length === 0) return null;
+
+    const firstLog = sessionLogs[0]!;
+    const weightKg = firstLog.weightKg;
+    const repsArr = sessionLogs.map((l) => l.reps).filter((r): r is number => r != null);
+    const weightStr = weightKg != null ? `${weightKg} kg` : null;
+    const repsStr = repsArr.length > 0 ? repsArr.join(", ") : null;
+    const when = formatDaysAgo(mostRecentAt);
+
+    if (weightStr && repsStr) return `Last time: ${weightStr} × ${repsStr} · ${when}`;
+    if (repsStr) return `Last time: ${repsStr} reps · ${when}`;
+    return null;
+  }, [allLogs, sessionId]);
+
+  if (!summary) return null;
+  return <p className="mt-0.5 text-xs text-[var(--text-muted)]">{summary}</p>;
+}
+
+// ─── Superset round pips ──────────────────────────────────────────────────────
+
+function SupersetRoundPips({
+  block,
+  blockIdx,
+  logs,
+  cursor,
+  roundCount,
+}: {
+  block: LiveBlock;
+  blockIdx: number;
+  logs: SessionSetLog[];
+  cursor: CursorPos | null;
+  roundCount: number;
+}) {
+  const doneIds = new Set<string>();
+  for (const log of logs) {
+    if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
+      doneIds.add(log.plannedSetId);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {Array.from({ length: roundCount }).map((_, round) => {
+        const allDoneInRound = block.items.every((item) => {
+          const slot = item.setTargets[round];
+          return slot ? doneIds.has(slot.id) : false;
+        });
+        const isCurrentRound =
+          cursor?.blockIdx === blockIdx && cursor?.slotIdx === round;
+
+        return (
+          <span
+            key={round}
+            className={[
+              "h-2 w-2 rounded-full transition-colors",
+              allDoneInRound
+                ? "bg-[var(--text-muted)]"
+                : isCurrentRound
+                  ? "bg-[var(--accent)]"
+                  : "border border-[var(--border)] bg-transparent",
+            ].join(" ")}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Exercise Card ────────────────────────────────────────────────────────────
+
+interface ExerciseCardProps {
+  block: LiveBlock;
+  blockIdx: number;
+  session: Session;
+  logs: SessionSetLog[];
+  cursor: CursorPos | null;
+  exerciseNames: Map<string, string>;
+  onSlotTap: (blockIdx: number, itemIdx: number, slotIdx: number) => void;
+  onAddSet: (blockIdx: number, itemIdx: number) => void;
+}
+
+function ExerciseCard({
+  block,
+  blockIdx,
+  session,
+  logs,
+  cursor,
+  exerciseNames,
+  onSlotTap,
+  onAddSet,
+}: ExerciseCardProps) {
+  const isSuperset = block.type === "superset";
+  const supersetLabel = `SUPERSET ${String.fromCharCode(65 + blockIdx)}`;
+  const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+
+  return (
+    <div className="rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-4">
+      {isSuperset && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="rounded bg-[var(--accent)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--accent)]">
+            {supersetLabel}
+          </span>
+          <SupersetRoundPips
+            block={block}
+            blockIdx={blockIdx}
+            logs={logs}
+            cursor={cursor}
+            roundCount={roundCount}
+          />
+        </div>
+      )}
+
+      {block.items.map((item, itemIdx) => {
+        const name = exerciseNames.get(item.exerciseId) ?? "Exercise";
+        const prefix = isSuperset
+          ? `${String.fromCharCode(65 + blockIdx)}${itemIdx + 1}. `
+          : "";
+
+        // Build a map of plannedSetId → log for this specific exercise item
+        const logMap = new Map<string, SessionSetLog>();
+        for (const log of logs) {
+          if (log.performedExerciseId === item.performedExerciseId && log.plannedSetId) {
+            logMap.set(log.plannedSetId, log);
+          }
+        }
+
+        return (
+          <div
+            key={item.performedExerciseId}
+            className={isSuperset && itemIdx > 0 ? "mt-5 border-t border-[var(--border)] pt-4" : ""}
+          >
+            <h2 className="text-lg font-bold text-[var(--text)]">
+              {prefix}{name}
+            </h2>
+            <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} />
+
+            <div className="mt-3 space-y-1">
+              {item.setTargets.map((slot, slotIdx) => {
+                const isCursor =
+                  cursor?.blockIdx === blockIdx &&
+                  cursor?.itemIdx === itemIdx &&
+                  cursor?.slotIdx === slotIdx;
+
+                const log = logMap.get(slot.id);
+                let rowState: SetRowState = "future";
+                if (log?.status === "logged") rowState = "logged";
+                else if (log?.status === "skipped") rowState = "skipped";
+                else if (isCursor) rowState = "cursor";
+
+                return (
+                  <SetRow
+                    key={slot.id}
+                    setNumber={slotIdx + 1}
+                    rowState={rowState}
+                    slot={slot}
+                    log={log}
+                    isCursor={isCursor}
+                    onClick={() => onSlotTap(blockIdx, itemIdx, slotIdx)}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex gap-4">
+              <button
+                type="button"
+                onClick={() => onAddSet(blockIdx, itemIdx)}
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+              >
+                <PlusSmIcon />
+                ADD SET
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+              >
+                <NoteIcon />
+                ADD NOTE
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Rest Timer Strip ─────────────────────────────────────────────────────────
+
+interface RestTimerStripProps {
+  timer: RestTimerData;
+  displaySecs: number;
+  onToggle: () => void;
+}
+
+function RestTimerStrip({ timer, displaySecs, onToggle }: RestTimerStripProps) {
+  if (timer.status === "idle") return null;
+
+  const progress =
+    timer.durationSec > 0
+      ? Math.max(0, Math.min(1, displaySecs / timer.durationSec))
+      : 0;
+
+  return (
+    <div className="relative overflow-hidden border-b border-[var(--border)] bg-[var(--surface)]">
+      {/* progress bar */}
+      <div
+        className="absolute bottom-0 left-0 h-0.5 bg-[var(--accent)] transition-all duration-1000"
+        style={{ width: `${progress * 100}%` }}
+      />
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={timer.status === "running" ? "Pause rest timer" : "Resume rest timer"}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-fg)]"
+        >
+          {timer.status === "running" ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+            Rest
+          </p>
+          <p className="text-2xl font-bold tabular-nums text-[var(--text)]">
+            {formatTimer(displaySecs)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bottom Panel ─────────────────────────────────────────────────────────────
+
+interface BottomPanelProps {
+  cursor: CursorPos | null;
+  liveStructure: LiveStructure;
+  logs: SessionSetLog[];
+  session: Session;
+  timer: RestTimerData;
+  timerDisplaySecs: number;
+  onTimerToggle: () => void;
+  onFinishWorkout: () => void;
+  onSkipSet: () => void;
+  exerciseTypes: Map<string, ExerciseType>;
+}
+
+function BottomPanel({
+  cursor,
+  liveStructure,
+  logs,
+  session,
+  timer,
+  timerDisplaySecs,
+  onTimerToggle,
+  onFinishWorkout,
+  onSkipSet,
+  exerciseTypes,
+}: BottomPanelProps) {
+  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [reps, setReps] = useState<number | null>(null);
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [durationSec, setDurationSec] = useState<number | null>(null);
+  const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [setType, setSetType] = useState<LogSetType>("normal");
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [logging, setLogging] = useState(false);
+
+  const currentSlot = useMemo<PlannedSlot | null>(() => {
+    if (!cursor) return null;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return null;
+    const item = block.items[cursor.itemIdx];
+    if (!item) return null;
+    return item.setTargets[cursor.slotIdx] ?? null;
+  }, [cursor, liveStructure]);
+
+  const currentItem = useMemo<LiveItem | null>(() => {
+    if (!cursor) return null;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return null;
+    return block.items[cursor.itemIdx] ?? null;
+  }, [cursor, liveStructure]);
+
+  const currentExerciseType = currentItem
+    ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
+    : "strength";
+  const showWeightReps = currentExerciseType !== "cardio";
+  const showDurationDistance = currentExerciseType === "cardio" || currentExerciseType === "mixed";
+
+  const isEditingExisting = useMemo(
+    () =>
+      !!(
+        currentItem &&
+        currentSlot &&
+        logs.some(
+          (l) =>
+            l.performedExerciseId === currentItem.performedExerciseId &&
+            l.plannedSetId === currentSlot.id &&
+            l.status === "logged",
+        )
+      ),
+    [currentItem, currentSlot, logs],
+  );
+
+  // Pre-fill from the existing log for this slot (if editing) or from the last log
+  // for this exercise. Re-runs whenever the active slot changes.
+  const prevSlotKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentItem || !currentSlot) return;
+    const slotKey = `${currentItem.performedExerciseId}:${currentSlot.id}`;
+    if (prevSlotKey.current === slotKey) return;
+    prevSlotKey.current = slotKey;
+
+    // If this slot already has a logged entry, pre-fill from it so the user
+    // edits the existing values rather than getting stale defaults.
+    const existingLog = logs.find(
+      (l) =>
+        l.performedExerciseId === currentItem.performedExerciseId &&
+        l.plannedSetId === currentSlot.id &&
+        l.status === "logged",
+    );
+
+    if (existingLog) {
+      if (existingLog.weightKg != null) setWeightKg(existingLog.weightKg);
+      if (existingLog.reps != null) setReps(existingLog.reps);
+      if (existingLog.rpe != null) setRpe(existingLog.rpe);
+      if (existingLog.durationSec != null) setDurationSec(existingLog.durationSec);
+      if (existingLog.distanceM != null) setDistanceM(existingLog.distanceM);
+      setSetType((existingLog.setType as LogSetType) ?? "normal");
+      return;
+    }
+
+    // No existing log — pre-fill from the last logged set for this exercise.
+    const prevLogs = logs
+      .filter(
+        (l) =>
+          l.performedExerciseId === currentItem.performedExerciseId &&
+          l.status === "logged",
+      )
+      .sort((a, b) => b.loggedAt - a.loggedAt);
+
+    if (prevLogs.length > 0) {
+      const prev = prevLogs[0]!;
+      if (prev.weightKg != null) setWeightKg(prev.weightKg);
+      if (prev.reps != null) setReps(prev.reps);
+      if (prev.durationSec != null) setDurationSec(prev.durationSec);
+      if (prev.distanceM != null) setDistanceM(prev.distanceM);
+      // Do not pre-fill RPE — it is per-set
+    } else {
+      if (currentSlot.reps != null) setReps(currentSlot.reps);
+    }
+  }, [currentItem, currentSlot, logs]);
+
+  const handleLogSet = async () => {
+    if (!cursor || !currentSlot || !currentItem || logging) return;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return;
+
+    setLogging(true);
+    try {
+      const now = Date.now();
+
+      // Check if this planned slot already has a log (user is editing a logged set)
+      const existingLog = logs.find(
+        (l) =>
+          l.performedExerciseId === currentItem.performedExerciseId &&
+          l.plannedSetId === currentSlot.id &&
+          l.status === "logged",
+      );
+
+      const updatedFields = {
+        reps,
+        weightKg,
+        rpe,
+        durationSec: showDurationDistance ? (durationSec ?? null) : null,
+        distanceM: showDurationDistance ? (distanceM ?? null) : null,
+        notes: note.trim() || null,
+        setType,
+        loggedAt: now,
+        enteredWeight: weightKg,
+        enteredWeightUnit: (weightKg != null ? "kg" : null) as "kg" | "lb" | null,
+      };
+
+      if (existingLog) {
+        // Update in place — don't advance rest timer or backfill restAfterSec
+        await updateSessionLog({ ...existingLog, ...updatedFields });
+      } else {
+        // New log: back-fill restAfterSec on the previous logged set first
+        const prevLogged = logs
+          .filter((l) => l.status === "logged")
+          .sort((a, b) => b.loggedAt - a.loggedAt)[0];
+        if (prevLogged && prevLogged.restAfterSec == null) {
+          const elapsedSec = Math.round((now - prevLogged.loggedAt) / 1000);
+          await updateSessionLog({
+            ...prevLogged,
+            restAfterSec: Math.min(3600, Math.max(0, elapsedSec)),
+          });
+        }
+
+        const order = logs.filter((l) => l.status === "logged").length;
+        const record: SessionSetLog = {
+          id: uuidv4(),
+          sessionId: session.id,
+          performedExerciseId: currentItem.performedExerciseId,
+          exerciseId: currentItem.exerciseId,
+          sessionItemId: currentItem.sessionItemId,
+          plannedSetId: currentSlot.id,
+          order,
+          restAfterSec: null,
+          enteredDistance: null,
+          enteredDistanceUnit: null,
+          status: "logged",
+          ...updatedFields,
+        };
+        await createSessionLog(record);
+      }
+
+      // Auto-start rest timer only when logging a new set (not editing an existing one)
+      if (!existingLog) {
+        const restSec = block.restSec ?? currentItem.restSec ?? 90;
+        const newTimer: RestTimerData = {
+          status: "running",
+          startedAt: now,
+          durationSec: restSec,
+          pausedAt: null,
+          remainingSec: restSec,
+        };
+        await updateSession({
+          ...session,
+          restTimer: JSON.stringify(newTimer),
+          updatedAt: now,
+        });
+      }
+
+      setNote("");
+      setNoteOpen(false);
+      setRpe(null);
+      // Reset slot tracking so the next cursor position pre-fills fresh
+      prevSlotKey.current = null;
+    } finally {
+      setLogging(false);
+    }
+  };
+
+  const SET_TYPE_CHIPS: { key: LogSetType; label: string }[] = [
+    { key: "normal", label: "N" },
+    { key: "drop", label: "D" },
+    { key: "warmup", label: "W" },
+    { key: "failure", label: "F" },
+    { key: "amrap", label: "A" },
+    { key: "rest_pause", label: "RP" },
+  ];
+
+  if (!cursor) {
+    return (
+      <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
+        <button
+          type="button"
+          onClick={onFinishWorkout}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
+        >
+          <CheckIcon className="text-[var(--accent-fg)]" />
+          FINISH WORKOUT
+        </button>
+        <button
+          type="button"
+          className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+        >
+          Add extra set
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)]">
+      <RestTimerStrip
+        timer={timer}
+        displaySecs={timerDisplaySecs}
+        onToggle={onTimerToggle}
+      />
+
+      <div className="px-4 pb-5 pt-3 space-y-4">
+        {/* Metric inputs */}
+        <div className="flex flex-wrap gap-4">
+          {showWeightReps && (
+            <>
+              <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  Weight kg
+                </p>
+                <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                  <button
+                    type="button"
+                    onClick={() => setWeightKg((w) => Math.max(0, Number(((w ?? 0) - 2.5).toFixed(2))))}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    −
+                  </button>
+                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                    {weightKg != null ? weightKg : "—"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWeightKg((w) => Number(((w ?? 0) + 2.5).toFixed(2)))}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  Reps
+                </p>
+                <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                  <button
+                    type="button"
+                    onClick={() => setReps((r) => Math.max(1, (r ?? 1) - 1))}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    −
+                  </button>
+                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                    {reps ?? "—"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReps((r) => (r ?? 0) + 1)}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {showDurationDistance && (
+            <>
+              <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  Duration
+                </p>
+                <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                  <button
+                    type="button"
+                    onClick={() => setDurationSec((d) => Math.max(0, (d ?? 0) - 10))}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    −
+                  </button>
+                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                    {durationSec != null ? formatDuration(durationSec) : "—"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDurationSec((d) => (d ?? 0) + 10)}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  Distance m
+                </p>
+                <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                  <button
+                    type="button"
+                    onClick={() => setDistanceM((d) => Math.max(0, (d ?? 0) - 100))}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    −
+                  </button>
+                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                    {distanceM != null ? distanceM : "—"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDistanceM((d) => (d ?? 0) + 100)}
+                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* RPE stepper */}
+        <div className="flex flex-col gap-1.5" style={{ maxWidth: "160px" }}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+            RPE
+          </p>
+          <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            <button
+              type="button"
+              onClick={() => setRpe((r) => r != null ? Math.max(0, Math.round((r - 0.5) * 2) / 2) : null)}
+              className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              −
+            </button>
+            <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+              {rpe != null ? rpe : "—"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRpe((r) => Math.min(10, Math.round(((r ?? 5) + 0.5) * 2) / 2))}
+              className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* Set type chips + note */}
+        <div className="flex flex-wrap items-center gap-2">
+          {SET_TYPE_CHIPS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSetType(key)}
+              className={[
+                "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                setType === key
+                  ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+                  : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setNoteOpen((o) => !o)}
+            className={[
+              "flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+              noteOpen
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
+            ].join(" ")}
+          >
+            <NoteIcon />
+            Note
+          </button>
+        </div>
+
+        {/* Note input */}
+        {noteOpen && (
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Add a note…"
+            rows={2}
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:border-[var(--accent)] focus:outline-none"
+          />
+        )}
+
+        {/* LOG SET (+ optional SKIP button) */}
+        {!isEditingExisting && !cursor?.isExtra ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleLogSet}
+              disabled={logging}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
+            >
+              <CheckIcon className="text-[var(--accent-fg)]" />
+              {logging ? "Saving…" : "LOG SET"}
+            </button>
+            <button
+              type="button"
+              onClick={onSkipSet}
+              disabled={logging}
+              className="flex items-center justify-center rounded-2xl border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50"
+            >
+              Skip
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleLogSet}
+            disabled={logging}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
+          >
+            <CheckIcon className="text-[var(--accent-fg)]" />
+            {logging ? "Saving…" : isEditingExisting ? "SAVE EDIT" : "LOG SET"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Overflow menu ────────────────────────────────────────────────────────────
+
+interface OverflowMenuProps {
+  onFinish: () => void;
+  onDiscard: () => void;
+  onEditStructure: () => void;
+  onPauseAndLeave: () => void;
+}
+
+function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }: OverflowMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="More options"
+        className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <KebabIcon />
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+            role="presentation"
+          />
+          <div className="absolute right-0 z-50 mt-1 w-48 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onEditStructure(); }}
+              className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
+            >
+              Edit workout
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onPauseAndLeave(); }}
+              className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
+            >
+              Pause and leave
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onFinish(); }}
+              className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
+            >
+              Finish Workout
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onDiscard(); }}
+              className="flex w-full items-center px-4 py-2.5 text-sm text-red-500 hover:bg-[var(--surface-elevated)]"
+            >
+              Discard Workout
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Page skeleton ────────────────────────────────────────────────────────────
+
+function PageSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="h-8 w-8 animate-pulse rounded-lg bg-[var(--surface)]" />
+        <div className="h-4 w-24 animate-pulse rounded bg-[var(--surface)]" />
+        <div className="h-8 w-8 animate-pulse rounded-lg bg-[var(--surface)]" />
+      </div>
+      <div className="flex-1 space-y-4 px-4 py-4">
+        <div className="h-48 animate-pulse rounded-[var(--radius-card)] bg-[var(--surface)]" />
+        <div className="h-32 animate-pulse rounded-[var(--radius-card)] bg-[var(--surface)]" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export function ActiveWorkoutPage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  // ── Reactive live-query invalidation ──────────────────────────────────────
+  useEffect(() => {
+    const sub = liveQuery(() => forgeDB.sessions.count()).subscribe({
+      next: () => {
+        qc.invalidateQueries({ queryKey: queryKeys.sessions.active() });
+      },
+    });
+    return () => sub.unsubscribe();
+  }, [qc]);
+
+  const { data: session, isLoading: sessionLoading } = useQuery({
+    queryKey: queryKeys.sessions.active(),
+    queryFn: getActiveSession,
+  });
+
+  useEffect(() => {
+    if (!sessionLoading && !session) {
+      navigate("/workout/start", { replace: true });
+    }
+  }, [session, sessionLoading, navigate]);
+
+  const sessionId = session?.id;
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const sub = liveQuery(() => forgeDB.sessionSetLogs.count()).subscribe({
+      next: () => {
+        qc.invalidateQueries({ queryKey: queryKeys.sessions.logs(sessionId) });
+      },
+    });
+    return () => sub.unsubscribe();
+  }, [sessionId, qc]);
+
+  const { data: rawLogs } = useQuery({
+    queryKey: sessionId
+      ? queryKeys.sessions.logs(sessionId)
+      : ["sessions", "logs", "_disabled"],
+    queryFn: () => (sessionId ? listSessionLogs(sessionId) : undefined),
+    enabled: !!sessionId,
+  });
+  const logs: SessionSetLog[] = rawLogs ?? [];
+
+  // ── Live structure ─────────────────────────────────────────────────────────
+  const liveStructure = useMemo<LiveStructure>(() => {
+    if (!session) return { blocks: [] };
+    return parseLiveStructure(session.liveStructure);
+  }, [session]);
+
+  // ── Exercise names + types (lazy-load from IndexedDB) ────────────────────
+  const exerciseNamesRef = useRef<Map<string, string>>(new Map());
+  const exerciseTypesRef = useRef<Map<string, ExerciseType>>(new Map());
+  const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const block of liveStructure.blocks) {
+      for (const item of block.items) {
+        ids.add(item.exerciseId);
+      }
+    }
+    const toFetch = [...ids].filter((id) => !exerciseNamesRef.current.has(id));
+    if (toFetch.length === 0) return;
+
+    Promise.all(
+      toFetch.map((id) =>
+        forgeDB.exercises
+          .get(id)
+          .then((ex) => [id, ex?.name ?? "Exercise", ex?.type ?? "strength"] as const),
+      ),
+    ).then((pairs) => {
+      for (const [id, name, type] of pairs) {
+        exerciseNamesRef.current.set(id, name);
+        exerciseTypesRef.current.set(id, type as ExerciseType);
+      }
+      forceRender((n) => n + 1);
+    });
+  }, [liveStructure]);
+
+  // ── Cursor (auto-derived) ──────────────────────────────────────────────────
+  const cursor = useMemo(
+    () => deriveCursor(liveStructure, logs),
+    [liveStructure, logs],
+  );
+
+  // ── User can tap any row to override the active editor slot ───────────────
+  const [selectedPos, setSelectedPos] = useState<CursorPos | null>(null);
+
+  const prevCursorRef = useRef<CursorPos | null>(null);
+  useEffect(() => {
+    if (cursor === null) {
+      setSelectedPos(null);
+      prevCursorRef.current = null;
+      return;
+    }
+    const prev = prevCursorRef.current;
+    const moved =
+      prev === null ||
+      cursor.blockIdx !== prev.blockIdx ||
+      cursor.itemIdx !== prev.itemIdx ||
+      cursor.slotIdx !== prev.slotIdx;
+    if (moved) {
+      setSelectedPos(cursor);
+    }
+    prevCursorRef.current = cursor;
+  }, [cursor]);
+
+  const activeCursor = selectedPos ?? cursor;
+
+  // ── Rest timer ─────────────────────────────────────────────────────────────
+  const timer = useMemo(
+    () => parseRestTimer(session?.restTimer),
+    [session?.restTimer],
+  );
+
+  const [timerDisplaySecs, setTimerDisplaySecs] = useState<number>(0);
+
+  useEffect(() => {
+    const t = parseRestTimer(session?.restTimer);
+    if (t.status === "idle") {
+      setTimerDisplaySecs(0);
+      return;
+    }
+    if (t.status === "paused") {
+      setTimerDisplaySecs(t.remainingSec ?? 0);
+      return;
+    }
+    // running
+    const computeRemaining = () => {
+      if (!t.startedAt) return t.remainingSec ?? t.durationSec;
+      const elapsed = Math.floor((Date.now() - t.startedAt) / 1000);
+      return Math.max(0, t.durationSec - elapsed);
+    };
+
+    setTimerDisplaySecs(computeRemaining());
+    const id = setInterval(() => {
+      const remaining = computeRemaining();
+      setTimerDisplaySecs(remaining);
+      if (remaining <= 0 && session) {
+        clearInterval(id);
+        const expired: RestTimerData = { ...t, status: "idle", remainingSec: 0 };
+        updateSession({
+          ...session,
+          restTimer: JSON.stringify(expired),
+          updatedAt: Date.now(),
+        }).catch(console.error);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [session?.restTimer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTimerToggle = useCallback(async () => {
+    if (!session) return;
+    const t = parseRestTimer(session.restTimer);
+    let updated: RestTimerData;
+    if (t.status === "running") {
+      const remaining =
+        t.startedAt != null
+          ? Math.max(0, t.durationSec - Math.floor((Date.now() - t.startedAt) / 1000))
+          : (t.remainingSec ?? t.durationSec);
+      updated = { ...t, status: "paused", pausedAt: Date.now(), remainingSec: remaining };
+    } else if (t.status === "paused") {
+      const alreadyElapsed = t.durationSec - (t.remainingSec ?? t.durationSec);
+      updated = {
+        ...t,
+        status: "running",
+        startedAt: Date.now() - alreadyElapsed * 1000,
+        pausedAt: null,
+      };
+    } else {
+      return;
+    }
+    await updateSession({ ...session, restTimer: JSON.stringify(updated), updatedAt: Date.now() });
+  }, [session]);
+
+  // ── Edit workout structure ─────────────────────────────────────────────────
+  const [structureOpen, setStructureOpen] = useState(false);
+
+  // ── Add exercise (freeform / mid-session) ─────────────────────────────────
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const handleAddExercise = useCallback(
+    async (exerciseId: string) => {
+      if (!session) return;
+      setPickerOpen(false);
+      const sid = uuidv4();
+      const newBlock = {
+        id: uuidv4(),
+        type: "single" as const,
+        items: [
+          {
+            id: sid,
+            performedExerciseId: uuidv4(),
+            sessionItemId: sid,
+            exerciseId,
+            setCount: 3,
+            setTargets: [
+              { id: uuidv4(), order: 0, setType: "normal" },
+              { id: uuidv4(), order: 1, setType: "normal" },
+              { id: uuidv4(), order: 2, setType: "normal" },
+            ],
+          },
+        ],
+      };
+      const updated = { ...liveStructure, blocks: [...liveStructure.blocks, newBlock] };
+      await updateSession({ ...session, liveStructure: JSON.stringify(updated), updatedAt: Date.now() });
+    },
+    [session, liveStructure],
+  );
+
+  // ── Finish / Discard ───────────────────────────────────────────────────────
+  const [finishing, setFinishing] = useState(false);
+  const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
+
+  const handleFinish = useCallback(async () => {
+    if (!session || finishing) return;
+    setFinishing(true);
+    try {
+      const finished: Session = {
+        ...session,
+        status: "finished",
+        endedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await finishSession(finished);
+      navigate(`/workout/sessions/${session.id}`);
+    } finally {
+      setFinishing(false);
+      setFinishConfirmOpen(false);
+    }
+  }, [session, finishing, navigate]);
+
+  const handleDiscard = useCallback(async () => {
+    if (!session) return;
+    if (!window.confirm("Discard this workout? This cannot be undone.")) return;
+    await deleteSession(session.id);
+    navigate("/workout/start", { replace: true });
+  }, [session, navigate]);
+
+  // ── Pause and leave ────────────────────────────────────────────────────────
+  const handlePauseAndLeave = useCallback(async () => {
+    if (!session) return;
+    await updateSession({ ...session, pausedAt: Date.now(), updatedAt: Date.now() });
+    navigate("/workout/start", { replace: true });
+  }, [session, navigate]);
+
+  // ── Skip set ───────────────────────────────────────────────────────────────
+  const handleSkipSet = useCallback(async () => {
+    if (!activeCursor || !session) return;
+    const block = liveStructure.blocks[activeCursor.blockIdx];
+    if (!block) return;
+    const item = block.items[activeCursor.itemIdx];
+    if (!item) return;
+    const slot = item.setTargets[activeCursor.slotIdx];
+    if (!slot) return;
+
+    // Only skip unlogged planned sets (not extra sets, not already logged)
+    if (activeCursor.isExtra) return;
+    const alreadyLogged = logs.some(
+      (l) =>
+        l.performedExerciseId === item.performedExerciseId &&
+        l.plannedSetId === slot.id &&
+        l.status === "logged",
+    );
+    if (alreadyLogged) return;
+
+    const order = logs.filter((l) => l.status === "logged" || l.status === "skipped").length;
+    const record: SessionSetLog = {
+      id: uuidv4(),
+      sessionId: session.id,
+      performedExerciseId: item.performedExerciseId,
+      exerciseId: item.exerciseId,
+      sessionItemId: item.sessionItemId,
+      plannedSetId: slot.id,
+      order,
+      reps: null,
+      weightKg: null,
+      rpe: null,
+      durationSec: null,
+      distanceM: null,
+      notes: null,
+      setType: (slot.setType as LogSetType) ?? "normal",
+      status: "skipped",
+      loggedAt: Date.now(),
+      restAfterSec: null,
+      enteredWeight: null,
+      enteredWeightUnit: null,
+      enteredDistance: null,
+      enteredDistanceUnit: null,
+    };
+    await createSessionLog(record);
+  }, [activeCursor, session, liveStructure, logs]);
+
+  // ── Add extra set ──────────────────────────────────────────────────────────
+  const handleAddSet = useCallback(
+    async (blockIdx: number, itemIdx: number) => {
+      if (!session) return;
+      const block = liveStructure.blocks[blockIdx];
+      if (!block) return;
+      const item = block.items[itemIdx];
+      if (!item) return;
+
+      // Order = last log for this exercise + 1
+      const exerciseLogs = logs.filter(
+        (l) => l.performedExerciseId === item.performedExerciseId,
+      );
+      const order = exerciseLogs.length > 0
+        ? Math.max(...exerciseLogs.map((l) => l.order)) + 1
+        : logs.length;
+
+      const record: SessionSetLog = {
+        id: uuidv4(),
+        sessionId: session.id,
+        performedExerciseId: item.performedExerciseId,
+        exerciseId: item.exerciseId,
+        sessionItemId: item.sessionItemId,
+        plannedSetId: null,
+        order,
+        reps: null,
+        weightKg: null,
+        rpe: null,
+        durationSec: null,
+        distanceM: null,
+        notes: null,
+        setType: "normal",
+        status: "extra",
+        loggedAt: Date.now(),
+        restAfterSec: null,
+        enteredWeight: null,
+        enteredWeightUnit: null,
+        enteredDistance: null,
+        enteredDistanceUnit: null,
+      };
+      await createSessionLog(record);
+
+      // Place cursor on this new extra set
+      const extraSlotIdx = item.setTargets.length; // beyond last planned slot
+      setSelectedPos({ blockIdx, itemIdx, slotIdx: extraSlotIdx, isExtra: true });
+    },
+    [session, liveStructure, logs],
+  );
+
+  // ── Loading / no session ───────────────────────────────────────────────────
+  if (sessionLoading || !session) {
+    return <PageSkeleton />;
+  }
+
+  const total = totalSlotCount(liveStructure);
+  const done = countDoneSlots(liveStructure, logs);
+  const headerLabel =
+    cursor === null ? "All sets done" : `Set ${Math.min(done + 1, total)} of ${total}`;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-[var(--bg)] px-4 pt-4 pb-3">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+          className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          <BackIcon />
+        </button>
+        <h1 className="text-sm font-semibold text-[var(--text)]">{headerLabel}</h1>
+        <OverflowMenu
+          onFinish={() => setFinishConfirmOpen(true)}
+          onDiscard={handleDiscard}
+          onEditStructure={() => setStructureOpen(true)}
+          onPauseAndLeave={handlePauseAndLeave}
+        />
+      </header>
+
+      {/* Scrollable body */}
+      <main className="flex-1 overflow-y-auto space-y-4 px-4 pb-4 pt-2">
+        {liveStructure.blocks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+            <p className="text-sm text-[var(--text-muted)]">No exercises planned.</p>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="rounded-2xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-[var(--accent-fg)] hover:opacity-90"
+            >
+              Add exercise
+            </button>
+          </div>
+        ) : (
+          <>
+            {liveStructure.blocks.map((block, blockIdx) => (
+              <ExerciseCard
+                key={block.id}
+                block={block}
+                blockIdx={blockIdx}
+                session={session}
+                logs={logs}
+                cursor={activeCursor}
+                exerciseNames={exerciseNamesRef.current}
+                onSlotTap={(bi, ii, si) =>
+                  setSelectedPos({ blockIdx: bi, itemIdx: ii, slotIdx: si })
+                }
+                onAddSet={handleAddSet}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              <PlusSmIcon />
+              Add exercise
+            </button>
+          </>
+        )}
+      </main>
+
+      <ExercisePicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={handleAddExercise}
+        title="Add exercise"
+      />
+
+      <EditStructureSheet
+        open={structureOpen}
+        onClose={() => setStructureOpen(false)}
+        session={session}
+        logs={logs}
+        exerciseNames={exerciseNamesRef.current}
+      />
+
+      {/* Bottom panel */}
+      <BottomPanel
+        cursor={activeCursor}
+        liveStructure={liveStructure}
+        logs={logs}
+        session={session}
+        timer={timer}
+        timerDisplaySecs={timerDisplaySecs}
+        onTimerToggle={handleTimerToggle}
+        onFinishWorkout={() => setFinishConfirmOpen(true)}
+        onSkipSet={handleSkipSet}
+        exerciseTypes={exerciseTypesRef.current}
+      />
+
+      {/* Finish Workout confirm dialog */}
+      <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>
+        <DialogPortal>
+          <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
+          <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+            <DialogTitle className="text-base font-semibold text-[var(--text)]">
+              Finish workout?
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-sm text-[var(--text-muted)]">
+              This will end your session. This can't be undone.
+            </DialogDescription>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFinishConfirmOpen(false)}
+                disabled={finishing}
+                className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFinish}
+                disabled={finishing}
+                className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+              >
+                {finishing ? "Finishing…" : "Finish"}
+              </button>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function BackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function PlusSmIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function NoteIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function KebabIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="5" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="12" cy="19" r="1.5" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
+}
+
+// Named export alias to match what app.tsx imports
+export { ActiveWorkoutPage as WorkoutActivePage };

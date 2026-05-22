@@ -1,6 +1,6 @@
 # Spec Buildout Handoff
 
-_Last updated: 2026-05-05_
+_Last updated: 2026-05-22_
 
 Working through the missing PRD slices, building out specs in dependency order. Each spec follows the same pattern as `specs/exercise-library/`: `planning/raw-idea.md` → `planning/requirements.md` → `planning/spec.md` → `planning/tasks.md`, with empty `implementation/`.
 
@@ -9,29 +9,43 @@ Working through the missing PRD slices, building out specs in dependency order. 
 | # | Spec | Folder | Status |
 |---|---|---|---|
 | 1 | Routines (template layer) | `specs/routines/` | ✅ Complete |
-| 2 | Workout sessions / logger | `specs/workout-sessions/` | ✅ Complete |
-| 3 | Programs | `specs/programs/` | ✅ Complete |
-| 4 | Workout history | `specs/workout-history/` | ✅ Complete (raw-idea + requirements + spec + tasks) |
-| 5 | Goals | `specs/goals/` | ✅ Complete (raw-idea + requirements + spec + tasks) |
-| 6 | Export & API surface | `specs/export/` | ✅ Complete (raw-idea + requirements + spec + tasks) |
-| 7 | Today / homepage surface | `specs/home/` | ✅ Complete (raw-idea + requirements + spec + tasks) |
+| 2 | Workout sessions / logger | `specs/workout-sessions/` | ✅ Spec + implementation substantially complete (see gaps below) |
+| 3 | Programs | `specs/programs/` | ✅ Spec complete; implementation not started |
+| 4 | Workout history | `specs/workout-history/` | ✅ Spec complete; list page + filters implemented |
+| 5 | Goals | `specs/goals/` | ✅ Spec complete; implementation not started |
+| 6 | Export & API surface | `specs/export/` | ✅ Spec complete; implementation not started |
+| 7 | Today / homepage surface | `specs/home/` | ✅ Spec complete; implementation not started |
 
 ## Resume here
 
-Implementation in progress. Status:
-- exercise-library: Phases 1–10 complete; Phase 11 (manual verification) deferred.
-- routines: Phases 1–5 complete — foundational schemas, Drizzle migrations, Hono routes, Dexie store, and list page UI are all verified. Phase 6 (builder shell + exercise picker reuse) is the current task.
+**workout-sessions is substantially complete.** All core flows work: start (routine + freeform), live logger with cursor, rest timer, structural edits, finish, post-finish detail, exercise history wiring. 52 tests passing.
 
-Suggested implementation order, mirroring dependency direction:
+### Known gaps in workout-sessions (in priority order)
 
-1. exercise-library (Phases 1–10 done; Phase 11 deferred)
-2. routines (Phases 1–5 done; Phases 6–10 pending)
-3. workout-sessions
-4. workout-history
-5. programs
-6. goals
-7. export
-8. home/today
+1. **Skip set (9.2)** — no Skip button in UI; `status='skipped'` mutation exists but not wired
+2. **ADD SET wiring (9.4)** — "ADD SET" button in ExerciseCard not wired; extra set (plannedSetId=null, status='extra') flow not surfaced
+3. **RPE input (9.7)** — RPE field on log schema and DB, but no stepper in the inline editor
+4. **Radix confirm dialog (10.1)** — Finish workout uses `window.confirm` instead of a proper dialog
+5. **Post-finish superset/cardio blocks (10.5)** — superset accent bars, cardio row format, previous-attempt section not rendered
+6. **Partial-unique DB index (1.3)** — missing from migration SQL; server enforces at runtime as fallback
+7. **Pause and leave (7.2)** — overflow item not implemented; navigating back just leaves the session in-progress
+8. **Full conflict dialog (6.6)** — resume banner exists; full Radix intercept for a second start attempt missing
+9. **Phase 12 polish** — validation surfaces, error toasts, a11y sweep, outbox ordering
+
+### What workout-history has
+
+- `/history` route with filter chips (All / Week / Month / Year)
+- Date-grouped session list with PR pill
+- `listFinishedSessions` query with range/exercise/routine/text filters
+- 3 tests in `src/client/pages/history/__tests__/history.test.ts`
+
+### Suggested next steps (dependency order)
+
+1. Finish remaining workout-sessions gaps (list above), then Phase 12 polish
+2. Programs spec implementation
+3. Goals spec implementation
+4. Export spec implementation
+5. Home/today spec implementation
 
 ## Key locked conventions (apply across all remaining specs)
 
@@ -54,7 +68,7 @@ Suggested implementation order, mirroring dependency direction:
 ## Notable design decisions (already locked, don't relitigate)
 
 - **Session storage**: Option B (snapshot+live as JSON on session row; `session_set_logs` normalized & indexed).
-- **Set log slot binding**: tight (`plannedSetId` FK), but flexible — orphaned logs from removed planned slots become extras (never auto-deleted).
+- **Set log slot binding**: tight (`plannedSetId` FK), but flexible — orphaned logs from removed planned slots become extras (never auto-deleted). Slot canonical identifier field is `id` (not `plannedSetId`) in liveStructure JSON; `log.plannedSetId` references `slot.id`.
 - **Mid-session edits**: full scope including superset structure mutation. "Add set inside superset = add a round."
 - **Lifecycle**: one in-progress session at a time; strict immutability after finish.
 - **Rest timer**: persisted on session row, cleared on finish.
@@ -76,4 +90,4 @@ Suggested implementation order, mirroring dependency direction:
 
 ## Resume prompt to paste in new context
 
-> All seven PRD specs in `/home/mike/Development/Forge/specs/` are complete (raw-idea + requirements + spec + tasks each). Read `specs/HANDOFF.md` for the full status. Begin implementation per each spec's `tasks.md`, in dependency order: exercise-library → routines → workout-sessions → workout-history → programs → goals → export → home. The exercise-library implementation is already partway through its Phase 10 polish — pick up there first.
+> The Forge app has exercise-library, routines, and workout-sessions substantially implemented. Workout-history has a list page. Read `specs/HANDOFF.md` for full status. The workout-sessions tasks.md lists remaining gaps in priority order — start there, then proceed to Programs → Goals → Export → Home in dependency order. 52 tests passing (bun run test from src/client). Typecheck clean (bun run typecheck from root).

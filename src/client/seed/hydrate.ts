@@ -10,6 +10,8 @@ import equipmentSeed from "./equipment.json";
 import exerciseSeed from "./exercises.json";
 import { reconcileNow } from "../sync/reconcile";
 
+import { uuidv4 } from "../lib/uuid";
+
 const META_KEY = "seedHydratedAt";
 
 const parseSeed = <T>(raw: unknown[], schema: { parse: (v: unknown) => T }): T[] =>
@@ -21,7 +23,7 @@ const buildPending = (
 ): PendingWrite[] => {
   const now = Date.now();
   return payloads.map((p, i) => ({
-    id: crypto.randomUUID(),
+    id: uuidv4(),
     entity,
     op: "create",
     payload: p,

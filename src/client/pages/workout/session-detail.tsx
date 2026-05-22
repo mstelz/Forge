@@ -31,6 +31,17 @@ function formatVolume(kg: number): string {
   return kg % 1 === 0 ? String(kg) : kg.toFixed(1);
 }
 
+function formatSecs(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDistance(m: number): string {
+  if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
+  return `${m} m`;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -43,31 +54,41 @@ export function SessionDetailPage() {
   const { data: allSessionLogs } = useAllSessionLogs();
 
   const exerciseNamesRef = useRef<Map<string, string>>(new Map());
+  const exerciseTypesRef = useRef<Map<string, string>>(new Map());
   const [, setNamesVersion] = useState(0);
 
   useEffect(() => {
     if (!session) return;
     let ls: { blocks: Array<{ items: Array<{ exerciseId: string }> }> } | null = null;
     try { ls = JSON.parse(session.liveStructure); } catch { /* ignore */ }
-    if (!ls) return;
     const ids: string[] = [];
-    for (const block of ls.blocks) {
-      for (const item of block.items) {
-        if (item.exerciseId && !exerciseNamesRef.current.has(item.exerciseId)) {
-          ids.push(item.exerciseId);
+    if (ls) {
+      for (const block of ls.blocks) {
+        for (const item of block.items) {
+          if (item.exerciseId && !exerciseNamesRef.current.has(item.exerciseId)) {
+            ids.push(item.exerciseId);
+          }
         }
       }
     }
-    if (ids.length === 0) return;
-    Promise.all(ids.map((eid) => forgeDB.exercises.get(eid).then((ex) => [eid, ex?.name ?? null] as const)))
+    // Also collect exercise IDs from all logs (for orphan detection)
+    for (const log of logs ?? []) {
+      if (log.exerciseId && !exerciseNamesRef.current.has(log.exerciseId)) {
+        ids.push(log.exerciseId);
+      }
+    }
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) return;
+    Promise.all(uniqueIds.map((eid) => forgeDB.exercises.get(eid).then((ex) => [eid, ex?.name ?? null, ex?.type ?? null] as const)))
       .then((pairs) => {
         let changed = false;
-        for (const [eid, name] of pairs) {
+        for (const [eid, name, type] of pairs) {
           if (name) { exerciseNamesRef.current.set(eid, name); changed = true; }
+          if (type) { exerciseTypesRef.current.set(eid, type); changed = true; }
         }
         if (changed) setNamesVersion((v) => v + 1);
       });
-  }, [session]);
+  }, [session, logs]);
 
   if (sessionLoading) {
     return <DetailSkeleton />;
@@ -125,6 +146,8 @@ export function SessionDetailPage() {
   const sessionItemToExerciseId = new Map<string, string>();
   const sessionItemToBlockType = new Map<string, string>();
   const sessionItemToBlockIndex = new Map<string, number>();
+  // Set of sessionItemIds that are in the current liveStructure
+  const liveSessionItemIds = new Set<string>();
 
   if (liveStructure) {
     for (const block of liveStructure.blocks) {
@@ -132,14 +155,28 @@ export function SessionDetailPage() {
         sessionItemToExerciseId.set(item.sessionItemId, item.exerciseId);
         sessionItemToBlockType.set(item.sessionItemId, block.type);
         sessionItemToBlockIndex.set(item.sessionItemId, liveStructure.blocks.indexOf(block));
+        liveSessionItemIds.add(item.sessionItemId);
       }
     }
   } else {
-    // Fall back to logs
+    // Fall back to logs — treat all as live
     for (const log of allLogs) {
       sessionItemToExerciseId.set(log.sessionItemId, log.exerciseId);
+      liveSessionItemIds.add(log.sessionItemId);
     }
   }
+
+  // Orphan logs: logs whose sessionItemId is not in liveStructure
+  const orphanLogs = allLogs.filter((log) => !liveSessionItemIds.has(log.sessionItemId));
+
+  // Group orphan logs by performedExerciseId
+  const orphanGroupMap = new Map<string, SessionSetLog[]>();
+  for (const log of orphanLogs) {
+    const key = log.performedExerciseId;
+    if (!orphanGroupMap.has(key)) orphanGroupMap.set(key, []);
+    orphanGroupMap.get(key)!.push(log);
+  }
+  const orphanGroups = Array.from(orphanGroupMap.entries());
 
   return (
     <>
@@ -200,6 +237,7 @@ export function SessionDetailPage() {
           }
 
           const displayName = exerciseNamesRef.current.get(exerciseId) ?? "Unknown exercise";
+          const exerciseType = exerciseTypesRef.current.get(exerciseId) ?? "strength";
 
           return (
             <ExerciseBlock
@@ -207,11 +245,40 @@ export function SessionDetailPage() {
               logs={itemLogs}
               exerciseId={exerciseId}
               exerciseName={displayName}
+              exerciseType={exerciseType}
               isSuperset={isSuperset}
               supersetNum={supersetNum}
             />
           );
         })}
+
+        {/* Previous attempts (orphaned logs from structural edits) */}
+        {orphanGroups.length > 0 ? (
+          <details className="rounded-[var(--radius-card)] bg-[var(--surface)] overflow-hidden group">
+            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold text-[var(--text-muted)] select-none list-none [&::-webkit-details-marker]:hidden">
+              <span>Previous attempt</span>
+              <span className="text-xs text-[var(--text-subtle)] transition-transform group-open:rotate-180">▾</span>
+            </summary>
+            <div className="px-4 pb-4 space-y-3">
+              {orphanGroups.map(([performedExerciseId, oLogs]) => {
+                const eid = oLogs[0]?.exerciseId ?? "";
+                const name = exerciseNamesRef.current.get(eid) ?? "Unknown exercise";
+                const exType = exerciseTypesRef.current.get(eid) ?? "strength";
+                return (
+                  <ExerciseBlock
+                    key={performedExerciseId}
+                    logs={oLogs}
+                    exerciseId={eid}
+                    exerciseName={name}
+                    exerciseType={exType}
+                    isSuperset={false}
+                    supersetNum={null}
+                  />
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
 
         {/* Notes */}
         {session.notes ? (
@@ -258,12 +325,14 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 function ExerciseBlock({
   logs,
   exerciseName,
+  exerciseType,
   isSuperset,
   supersetNum,
 }: {
   logs: SessionSetLog[];
   exerciseId: string;
   exerciseName: string;
+  exerciseType: string;
   isSuperset: boolean;
   supersetNum: number | null;
 }) {
@@ -273,7 +342,7 @@ function ExerciseBlock({
     <div
       className={[
         "rounded-[var(--radius-card)] bg-[var(--surface)] overflow-hidden",
-        isSuperset ? "border-l-2 border-[var(--accent)]" : "",
+        isSuperset ? "border-l-4 border-[var(--accent)]" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -289,7 +358,7 @@ function ExerciseBlock({
         <p className="text-sm font-bold text-[var(--text)]">{exerciseName}</p>
         <ul className="mt-2 space-y-1">
           {sorted.map((log) => (
-            <LogRow key={log.id} log={log} />
+            <LogRow key={log.id} log={log} exerciseType={exerciseType} />
           ))}
         </ul>
       </div>
@@ -297,7 +366,38 @@ function ExerciseBlock({
   );
 }
 
-function LogRow({ log }: { log: SessionSetLog }) {
+function buildLogLabel(log: SessionSetLog, exerciseType: string): string {
+  const hasWeight = log.weightKg != null && log.reps != null;
+  const hasDuration = log.durationSec != null && log.durationSec > 0;
+  const hasDistance = log.distanceM != null && log.distanceM > 0;
+
+  // Infer effective type: if the log has cardio metrics but exercise is "strength", treat as mixed
+  const isCardioLog = hasDuration || hasDistance;
+  const effectiveType = isCardioLog && exerciseType === "strength" ? "mixed" : exerciseType;
+
+  if (effectiveType === "cardio") {
+    const parts: string[] = [];
+    if (hasDuration) parts.push(formatSecs(log.durationSec!));
+    if (hasDistance) parts.push(formatDistance(log.distanceM!));
+    return parts.length > 0 ? parts.join(" · ") : "—";
+  }
+
+  if (effectiveType === "mixed") {
+    const parts: string[] = [];
+    if (hasWeight) parts.push(`${log.weightKg} kg × ${log.reps}`);
+    else if (log.reps != null) parts.push(`${log.reps} reps`);
+    if (hasDuration) parts.push(formatSecs(log.durationSec!));
+    if (hasDistance) parts.push(formatDistance(log.distanceM!));
+    return parts.length > 0 ? parts.join(" · ") : "—";
+  }
+
+  // strength (default)
+  if (hasWeight) return `${log.weightKg} kg × ${log.reps}`;
+  if (log.reps != null) return `${log.reps} reps`;
+  return "—";
+}
+
+function LogRow({ log, exerciseType }: { log: SessionSetLog; exerciseType: string }) {
   const isSkipped = log.status === "skipped";
   const isExtra = log.status === "extra";
 
@@ -314,11 +414,7 @@ function LogRow({ log }: { log: SessionSetLog }) {
           isSkipped ? "text-[var(--text-subtle)] line-through" : "text-[var(--text)]",
         ].join(" ")}
       >
-        {log.weightKg != null && log.reps != null
-          ? `${log.weightKg} kg × ${log.reps}`
-          : log.reps != null
-          ? `${log.reps} reps`
-          : "—"}
+        {buildLogLabel(log, exerciseType)}
       </span>
       {isExtra ? (
         <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)]">

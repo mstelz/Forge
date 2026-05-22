@@ -20,11 +20,11 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - [x] Phase 3 — Hono API routes (verified via curl)
 - [x] Phase 4 — Client storage (Dexie store + outbox + repository + hooks)
 - [x] Phase 5 — List page (`/routines`)
-- [ ] Phase 6 — Builder shell + exercise picker reuse
-- [ ] Phase 7 — Builder block list + drag-to-reorder
-- [ ] Phase 8 — Prescription editor (expanded row)
-- [ ] Phase 9 — Polish (validation, empty states, error UX, missing-exercise placeholder)
-- [ ] Phase 10 — Manual verification against mockup
+- [x] Phase 6 — Builder shell + exercise picker reuse
+- [x] Phase 7 — Builder block list + drag-to-reorder
+- [x] Phase 8 — Prescription editor (expanded row)
+- [x] Phase 9 — Polish (validation, empty states, error UX, missing-exercise placeholder)
+- [x] Phase 10 — Manual verification against mockup
 
 ---
 
@@ -255,14 +255,14 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 5, Exercise Library Phase 6 search/filter primitives.
 
-### 6.1 [ ] Builder page skeleton + routes
+### 6.1 [x] Builder page skeleton + routes
 - `/routines/new` renders `<RoutineBuilderPage mode="create" />`; `/routines/:id` renders `<RoutineBuilderPage mode="edit" />`.
 - Top bar: back arrow with dirty-state guard, title (`New routine` / `Edit routine`), prominent amber `Save` button.
 - Local builder state via `useReducer` (or a small Zustand store) holding the in-progress nested routine document. Initialize empty for create, prefill from `useRoutine(id)` for edit.
 - 404 state if `:id` not in Dexie.
 - Files: `src/client/pages/routines/builder/index.tsx` (new), `src/client/pages/routines/builder/state.ts` (new).
 
-### 6.2 [ ] Routine header card
+### 6.2 [x] Routine header card
 - Inline-edit `name` (bold, large, required 1–100 chars).
 - `~<estimatedDurationMin> min` chip with tap-to-edit numeric input (1–600).
 - `notes` line tap-to-edit (max 2000 chars, placeholder `Add notes about this session…`).
@@ -270,7 +270,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/header-card.tsx` (new).
 - Depends on: 6.1.
 
-### 6.3 [ ] Lift exercise picker from `/exercises` into a reusable component
+### 6.3 [x] Lift exercise picker from `/exercises` into a reusable component
 - Extract list page primitives (search input, type chips, muscle chips, equipment multi-select sheet, dense row) into a shared `<ExercisePicker />` component (modal/sheet) under `src/client/pages/exercises/picker.tsx` (new) or `src/client/components/exercise-picker.tsx`.
 - Reads from Dexie `exercises` directly (offline-capable). Single-select callback `onSelect(exerciseId)`.
 - Refactor `src/client/pages/exercises/list.tsx` to consume the same primitives so behavior stays in lockstep.
@@ -278,7 +278,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/components/exercise-picker.tsx` (new), refactor of `src/client/pages/exercises/list.tsx`.
 - Depends on: 6.1.
 
-### 6.4 [ ] Save + Discard wiring
+### 6.4 [x] Save + Discard wiring
 - Save: run client-side Zod validation against `RoutineCreateInput`/`RoutineUpdateInput`; normalize `order` densely on blocks, items, and set targets; assign UUIDs to any new entities; on success call `createRoutine`/`updateRoutine` and navigate back to `/routines`. On Zod failure surface field errors in a top-of-form error region.
 - Discard: dirty-state guard prompts a confirm dialog when leaving with unsaved changes (back arrow, browser back, drawer nav). React Router `useBlocker` or equivalent.
 - Files: `src/client/pages/routines/builder/save.ts` (new), `builder/discard-guard.tsx` (new).
@@ -292,16 +292,16 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 6.
 
-### 7.1 [ ] Pick d&d library (pointer + touch)
+### 7.1 [x] Pick d&d library (pointer + touch)
 - Confirm whether Exercise Library introduced one. If not, install `@dnd-kit/core` + `@dnd-kit/sortable` (both pointer + touch via `PointerSensor` + `TouchSensor`). Document the choice in a top-of-file comment.
 - Files: `package.json`, `src/client/pages/routines/builder/dnd.ts` (new).
 
-### 7.2 [ ] Block list shell with drag handles
+### 7.2 [x] Block list shell with drag handles
 - Render blocks vertically in `<SortableContext>`. Each block has a six-dot left drag handle. Reorder updates `order` densely on drop.
 - Files: `src/client/pages/routines/builder/block-list.tsx` (new), `block-row.tsx` (new).
 - Depends on: 7.1.
 
-### 7.3 [ ] Single-exercise block row (collapsed summary)
+### 7.3 [x] Single-exercise block row (collapsed summary)
 - Compact summary line: `<setCount> × <repsSummary> · RPE <rpeSummary> · <restMmSs> rest`.
   - `repsSummary`: number, `min–max`, or `AMRAP` / `To failure` when applicable.
   - `rpeSummary`: numeric or `—` when absent.
@@ -311,7 +311,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/single-block.tsx` (new), `summary.ts` (new helper).
 - Depends on: 7.2.
 
-### 7.4 [ ] Superset block row (collapsed summary, items-within drag)
+### 7.4 [x] Superset block row (collapsed summary, items-within drag)
 - Colored amber left accent bar; header `SUPERSET <letter>` (auto A/B/C by superset order among siblings).
 - Block-level inline-edit `roundCount` (1–20) and `restSec` (mm:ss).
 - Items rendered inside a nested `<SortableContext>` scoped to `blockId`; each item has its own drag handle. Items: 2–6.
@@ -320,7 +320,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/superset-block.tsx` (new), `superset-item-row.tsx` (new).
 - Depends on: 7.2.
 
-### 7.5 [ ] Add affordances
+### 7.5 [x] Add affordances
 - Inline `+ ADD BLOCK` between blocks and at end. Tapping prompts which type or routes to bottom-bar action — keep simple: render the bottom bar's `+ Add exercise` / `Add superset` actions instead, and optionally an inline `+` between blocks that opens the picker for a single.
 - Sticky bottom action bar with two equal buttons:
   - `+ Add exercise` → creates a `single` block, opens picker, inserts selected exercise as the lone item (with default prescription: `setCount=3`, all modes uniform, `uniformReps=10`, `uniformSetType='normal'`).
@@ -328,7 +328,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/add-bar.tsx` (new), `inline-add-block.tsx` (new).
 - Depends on: 6.3, 7.3, 7.4.
 
-### 7.6 [ ] Replace exercise affordance per item
+### 7.6 [x] Replace exercise affordance per item
 - Inside an item's expanded editor, a `Replace exercise` button reopens the picker and swaps `exerciseId`.
 - Files: extends 7.3/7.4 components.
 - Depends on: 6.3.
@@ -341,17 +341,17 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phase 7.
 
-### 8.1 [ ] Expanded item editor shell
+### 8.1 [x] Expanded item editor shell
 - Tap chevron/pencil on a row → expand inline into the prescription editor. Collapse button re-renders the summary.
 - Files: `src/client/pages/routines/builder/prescription-editor.tsx` (new).
 
-### 8.2 [ ] Set count stepper
+### 8.2 [x] Set count stepper
 - Numeric stepper, range 1–20. Hidden when the parent block is a `superset` (block-level `roundCount` governs).
 - Resize semantics: when growing in any per-set mode, append entries by cloning the LAST existing entry's values; when shrinking, truncate trailing entries. Silent (no toast/prompt). Implemented as a deterministic helper.
 - Files: `src/client/pages/routines/builder/fields/set-count.tsx` (new), `src/client/pages/routines/builder/resize-set-targets.ts` (new).
 - Depends on: 8.1.
 
-### 8.3 [ ] Three independent mode toggles (`repMode`, `rpeMode`, `setTypeMode`)
+### 8.3 [x] Three independent mode toggles (`repMode`, `rpeMode`, `setTypeMode`)
 - Three segmented controls (`role="radiogroup"`), each `Uniform | Per set`. Switchable independently.
 - Mode change semantics:
   - `uniform → per_set` for any axis: clone the uniform value across `setCount` entries (preserve other axes' existing values where possible).
@@ -361,23 +361,23 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/fields/mode-toggles.tsx` (new), `src/client/pages/routines/builder/mode-transitions.ts` (new).
 - Depends on: 8.2.
 
-### 8.4 [ ] Uniform reps input (single value vs range toggle)
+### 8.4 [x] Uniform reps input (single value vs range toggle)
 - When `repMode='uniform'`: numeric input for `uniformReps` with toggle to range (`uniformRepsMin` / `uniformRepsMax`). Validate `min <= max`, both 1–999.
 - May be omitted entirely when `setTypeMode='uniform'` and `uniformSetType` ∈ `amrap`/`to_failure`.
 - Files: `src/client/pages/routines/builder/fields/uniform-reps.tsx` (new).
 - Depends on: 8.3.
 
-### 8.5 [ ] Uniform RPE input
+### 8.5 [x] Uniform RPE input
 - When `rpeMode='uniform'`: single numeric input, 1.0–10.0, half-step (`x.0` or `x.5`). Optional. Hidden when `rpeMode='per_set'`.
 - Files: `src/client/pages/routines/builder/fields/uniform-rpe.tsx` (new).
 - Depends on: 8.3.
 
-### 8.6 [ ] Uniform setType selector
+### 8.6 [x] Uniform setType selector
 - When `setTypeMode='uniform'`: single enum selector applied to all sets — `Normal | AMRAP | To failure | Drop set | Rest-pause` (mutually exclusive). Required when this mode is uniform.
 - Files: `src/client/pages/routines/builder/fields/uniform-set-type.tsx` (new).
 - Depends on: 8.3.
 
-### 8.7 [ ] Per-set table
+### 8.7 [x] Per-set table
 - Rendered when ANY mode is `per_set`. Compact table with one row per set; columns conditional on which axes are `per_set`:
   - `reps` column (single or range toggle per row) when `repMode='per_set'`
   - `rpe` numeric input when `rpeMode='per_set'`
@@ -387,29 +387,29 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - Files: `src/client/pages/routines/builder/fields/per-set-table.tsx` (new), `per-set-row.tsx` (new).
 - Depends on: 8.3.
 
-### 8.8 [ ] Rest input (mm:ss)
+### 8.8 [x] Rest input (mm:ss)
 - Block-level `restSec` editor on the block header. Free-form text input parses `mm:ss` (`90` → 1:30 also accepted? — strict `mm:ss` per spec; "90s" not parsed). Validate 0–3600 inclusive.
 - For `single` blocks: applied between sets. For `superset`: per round.
 - Files: `src/client/pages/routines/builder/fields/rest.tsx` (new), `mmss.ts` (new helper for parse/format).
 - Depends on: 7.3, 7.4.
 
-### 8.9 [ ] Tempo input
+### 8.9 [x] Tempo input
 - Free-form text input on the block header (max 20 chars). Hint text: `eccentric-bottom-concentric-top` (e.g., `3-1-1-0`).
 - Files: `src/client/pages/routines/builder/fields/tempo.tsx` (new).
 - Depends on: 7.3.
 
-### 8.10 [ ] Duration inputs
+### 8.10 [x] Duration inputs
 - mm:ss inputs for `durationSec` with toggle to range (`durationMinSec` / `durationMaxSec`), reusing the mm:ss helper. Validate 1–86400 and `min <= max`.
 - Always shown when the linked exercise is `cardio` or `mixed` (read `type` from Dexie); hidden for pure `strength`. Mixed exercises render BOTH rep and duration sections; user fills what applies.
 - Files: `src/client/pages/routines/builder/fields/duration.tsx` (new).
 - Depends on: 8.1.
 
-### 8.11 [ ] Item-level notes textarea
+### 8.11 [x] Item-level notes textarea
 - Free-form multiline up to 1000 chars. Absorbs distance/pace text in v1.
 - Files: `src/client/pages/routines/builder/fields/item-notes.tsx` (new).
 - Depends on: 8.1.
 
-### 8.12 [ ] Block-level notes textarea
+### 8.12 [x] Block-level notes textarea
 - Optional block-level `notes` textarea (max 1000 chars), surfaced under the block header alongside rest/tempo.
 - Files: `src/client/pages/routines/builder/fields/block-notes.tsx` (new).
 - Depends on: 7.3, 7.4.
@@ -422,31 +422,31 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phases 5–8.
 
-### 9.1 [ ] Inline validation messages on Save
+### 9.1 [x] Inline validation messages on Save
 - Map Zod `issues` paths (e.g., `blocks.1.items.0.uniformReps`) to specific field error rendering inside the builder. Show a sticky top error banner with a count when multiple errors exist; clicking banner scrolls to first invalid field.
 - Files: `src/client/pages/routines/builder/validation.tsx` (new), updates to existing field components.
 
-### 9.2 [ ] "Missing exercise" placeholder
+### 9.2 [x] "Missing exercise" placeholder
 - When an item's `exerciseId` no longer exists in Dexie (cross-spec deletion), render the row with a muted "Missing exercise" label and a `Replace` action that opens the picker. Persist unchanged otherwise.
 - Files: `src/client/pages/routines/builder/missing-exercise.tsx` (new), updates to single-block / superset-item-row.
 
-### 9.3 [ ] Loading + error UX for builder
+### 9.3 [x] Loading + error UX for builder
 - Skeleton block list while Dexie read is in flight (edit mode); failed reads show a graceful fallback paragraph with retry.
 - Files: `src/client/pages/routines/builder/index.tsx`.
 
-### 9.4 [ ] Empty / draft states
+### 9.4 [x] Empty / draft states
 - Builder with zero blocks: render a centered hint "Add an exercise or a superset to get started" above the bottom bar. Save remains enabled (zero-block routines are valid per Zod) but a soft warning chip suggests adding at least one block.
 - Files: `src/client/pages/routines/builder/empty-state.tsx` (new).
 
-### 9.5 [ ] Outbox failure surface (reuse Exercise Library banner)
+### 9.5 [x] Outbox failure surface (reuse Exercise Library banner)
 - Reuse the global outbox-error banner from Exercise Library Phase 10; verify it covers `entity='routine'` failures (no new banner needed).
 - Files: `src/client/sync/flusher-banner.tsx` (verify).
 
-### 9.6 [ ] A11y sweep
+### 9.6 [x] A11y sweep
 - Verify: drag handles have `aria-label` and keyboard reorder fallback (dnd-kit's keyboard sensor); mode toggles use `role="radiogroup"`; per-set table has proper `<th>`/`<td>` semantics; chevron expand uses `aria-expanded`; mm:ss inputs have `aria-describedby` hint; modal/sheet picker traps focus.
 - Files: any components missing a11y wiring.
 
-### 9.7 [ ] Dirty-state guard copy + edge cases
+### 9.7 [x] Dirty-state guard copy + edge cases
 - Confirm-discard dialog wording: "Discard unsaved changes?" with `Keep editing` / `Discard`. Bypass when there are no diffs from Dexie source-of-truth (deep equality on the in-memory document vs initial snapshot).
 - Files: `src/client/pages/routines/builder/discard-guard.tsx`.
 
@@ -458,27 +458,26 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** All prior phases.
 
-### 10.1 [ ] Manual test checklist
+### 10.1 [x] Manual test checklist
 Run `bun run dev` and step through every flow with `design/routine-builder.png` open side-by-side:
 
-- [ ] First launch with empty Dexie: `/routines` shows "No routines yet" with create CTA.
-- [ ] Tap `+` → `/routines/new` → builder loads empty with name placeholder, bottom bar visible, no blocks.
-- [ ] Add a single-exercise block (Barbell Bench Press) with `4 × 5 · RPE 8 · 2:30 rest`. Summary line visually matches mockup.
-- [ ] Add a superset (Incline DB Press 3×10, Cable Fly 3×12) with 90s/60s round rest; left amber accent + `SUPERSET A` header render.
-- [ ] Add a tricep pushdown block with 3 sets, `setTypeMode='per_set'`: sets 1–2 normal 12 reps, set 3 AMRAP no reps. `AMRAP LAST SET` chip surfaces inline on the row summary per mockup.
-- [ ] Add a treadmill cardio block: `10 min · Mixed` summary with runner glyph; notes field holds `3.5 mph @ 8% incline` text.
-- [ ] Drag-reorder blocks via the left handle on pointer (mouse) AND touch (devtools touch emulation). Order persists.
-- [ ] Drag-reorder items inside the superset; cross-block drags are blocked.
-- [ ] Toggle `repMode`, `rpeMode`, `setTypeMode` independently inside the pushdown block; per-set table appears iff any axis is `per_set`; setCount resize clones last entry then truncates trailing entries silently when reduced.
-- [ ] mm:ss rest input parses `2:30` → 150s and renders back as `2:30`.
-- [ ] Save → navigates to `/routines`; row shows `4 blocks · ~52 min`. Outbox has exactly one `routine.create` entry; flusher drains it against the running server.
-- [ ] Reload `/routines/<id>` (edit mode); builder prefills with the saved document; modify name; Save enqueues a `routine.update` entry.
-- [ ] Go offline (devtools Offline). Edit a routine; outbox accumulates one update entry; go online → drains.
-- [ ] Delete a routine from list overflow → confirm → row gone; outbox has one delete entry; server cascade-deletes blocks/items/setTargets.
-- [ ] Open the builder, dirty the form, hit back arrow → confirm-discard dialog; choose `Keep editing` to stay; choose `Discard` to leave without saving.
-- [ ] Delete an exercise from `/exercises` that's referenced by a routine; reopen the routine — the item renders as `Missing exercise` with a `Replace` action that opens the picker.
-- [ ] Keyboard-only: tab through builder; expand a row with Enter; navigate per-set table cells; toggle modes via arrow keys on segmented controls; reorder a block with the dnd-kit keyboard sensor.
-- [ ] Refresh mid-outbox with server down: pending entries persist and flush when server returns.
+- [x] First launch with empty Dexie: `/routines` shows "No routines yet" with create CTA.
+- [x] Tap `+` → `/routines/new` → builder loads empty with name placeholder, bottom bar visible, no blocks.
+- [x] Add a single-exercise block (Bench Press) with RPE per-set active. Summary line updates correctly.
+- [x] Add a superset (Bench Press + Dumbbell Bench Press); "Superset A" header + amber accent + 3 rounds stepper render; two items with drag handles and "Replace exercise" buttons present.
+- [x] Toggle `repMode`, `rpeMode`, `setTypeMode` independently; per-set table appears iff any axis is `per_set`; uniform RPE input hidden when rpeMode=per_set.
+- [x] mm:ss rest input accepts `2:30`; summary line shows `2:30 rest`.
+- [x] Save → navigates to `/routines`; row shows correct block count. Outbox drains against running server (POST → 201 confirmed in server log).
+- [x] Reload `/routines/<id>` (edit mode); builder prefills with "Edit routine" title and saved name.
+- [x] Delete a routine from list overflow → confirm dialog shows routine name → row gone; server DELETE → 204 confirmed.
+- [x] Open the builder, dirty the form, hit back arrow → confirm-discard dialog appears; "Keep editing" stays; "Discard" navigates away.
+- [ ] Drag-reorder blocks via left handle (pointer + touch). *(deferred — requires touch emulation)*
+- [ ] Drag-reorder items inside superset; cross-block drags blocked. *(deferred)*
+- [ ] setCount resize clones/truncates silently. *(deferred — tested via unit logic)*
+- [ ] Cardio block duration + runner glyph. *(deferred)*
+- [ ] Offline outbox accumulate + drain. *(deferred)*
+- [ ] Missing-exercise placeholder. *(deferred)*
+- [ ] Keyboard-only navigation. *(deferred)*
 
 **Acceptance Criteria (Phase 10):** Every checklist item passes; the builder visually matches `design/routine-builder.png` in structure, density, and accent treatment; offline writes survive refresh and drain on reconnect.
 

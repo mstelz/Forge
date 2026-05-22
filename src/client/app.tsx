@@ -6,12 +6,11 @@ import { ExerciseNewPage } from "./pages/exercises/new";
 import { ExerciseEditPage } from "./pages/exercises/edit";
 import { EquipmentListPage } from "./pages/equipment/list";
 import { RoutineListPage } from "./pages/routines/list";
-
-const RoutineBuilderPlaceholder = () => (
-  <div className="flex flex-1 items-center justify-center p-8 text-[var(--text-muted)]">
-    Builder coming soon (Phase 6)
-  </div>
-);
+import { RoutineBuilderPage } from "./pages/routines/builder";
+import { WorkoutStartPage } from "./pages/workout/start";
+import { WorkoutActivePage } from "./pages/workout/active";
+import { SessionDetailPage } from "./pages/workout/session-detail";
+import { HistoryListPage } from "./pages/history/list";
 
 const router = createBrowserRouter([
   {
@@ -24,8 +23,12 @@ const router = createBrowserRouter([
       { path: "/exercises/:id/edit", element: <ExerciseEditPage /> },
       { path: "/equipment", element: <EquipmentListPage /> },
       { path: "/routines", element: <RoutineListPage /> },
-      { path: "/routines/new", element: <RoutineBuilderPlaceholder /> },
-      { path: "/routines/:id", element: <RoutineBuilderPlaceholder /> },
+      { path: "/routines/new", element: <RoutineBuilderPage mode="create" /> },
+      { path: "/routines/:id", element: <RoutineBuilderPage mode="edit" /> },
+      { path: "/workout/start", element: <WorkoutStartPage /> },
+      { path: "/workout/active", element: <WorkoutActivePage /> },
+      { path: "/workout/sessions/:id", element: <SessionDetailPage /> },
+      { path: "/history", element: <HistoryListPage /> },
       { path: "*", element: <Navigate to="/exercises" replace /> },
     ],
   },

@@ -10,6 +10,8 @@ import { forgeDB } from "../../../db/forge-db";
 import { createEquipment } from "../../../db/mutations";
 import type { Equipment } from "../../../../shared";
 
+import { uuidv4 } from "../../../lib/uuid";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,7 +50,7 @@ export function AddEquipmentDialog({ open, onOpenChange, onCreated }: Props) {
       }
       const now = Date.now();
       const record: Equipment = {
-        id: crypto.randomUUID(),
+        id: uuidv4(),
         name: trimmed,
         createdAt: now,
         updatedAt: now,
