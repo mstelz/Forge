@@ -16,12 +16,10 @@ import { GoalListPage } from "./pages/goals/list";
 import { GoalNewPage } from "./pages/goals/new";
 import { GoalDetailPage } from "./pages/goals/detail";
 import { GoalEditPage } from "./pages/goals/edit";
-
-const ProgramsPlaceholder = () => (
-  <div className="flex flex-1 items-center justify-center p-8 text-[var(--text-muted)]">
-    Programs coming soon
-  </div>
-);
+import { ProgramListPage } from "./pages/programs/list";
+import { ProgramNewPage } from "./pages/programs/new";
+import { ProgramDetailPage } from "./pages/programs/detail";
+import { ProgramEditPage } from "./pages/programs/edit";
 
 const router = createBrowserRouter([
   {
@@ -37,9 +35,10 @@ const router = createBrowserRouter([
       { path: "/routines", element: <RoutineListPage /> },
       { path: "/routines/new", element: <RoutineBuilderPage mode="create" /> },
       { path: "/routines/:id", element: <RoutineBuilderPage mode="edit" /> },
-      { path: "/programs", element: <ProgramsPlaceholder /> },
-      { path: "/programs/new", element: <ProgramsPlaceholder /> },
-      { path: "/programs/:id", element: <ProgramsPlaceholder /> },
+      { path: "/programs", element: <ProgramListPage /> },
+      { path: "/programs/new", element: <ProgramNewPage /> },
+      { path: "/programs/:id", element: <ProgramDetailPage /> },
+      { path: "/programs/:id/edit", element: <ProgramEditPage /> },
       { path: "/goals", element: <GoalListPage /> },
       { path: "/goals/new", element: <GoalNewPage /> },
       { path: "/goals/:id", element: <GoalDetailPage /> },
