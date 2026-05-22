@@ -5,6 +5,22 @@ import { forgeDB } from "../db/forge-db";
 import { queryKeys } from "../db/query-keys";
 import type { HistoryFilter } from "../../shared/history";
 import type { SessionSummary, HistorySummary } from "../../shared/history";
+import type { SessionSetLog } from "../../shared";
+
+// ---------------------------------------------------------------------------
+// Volume predicate
+// ---------------------------------------------------------------------------
+
+const VOLUME_SET_TYPES = new Set(["normal", "amrap", "to_failure", "drop_set", "rest_pause", "drop", "failure"]);
+
+export function isVolumeLog(log: SessionSetLog): boolean {
+  return (
+    log.status === "logged" &&
+    VOLUME_SET_TYPES.has(log.setType) &&
+    (log.reps ?? 0) > 0 &&
+    (log.weightKg ?? 0) > 0
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Range helpers

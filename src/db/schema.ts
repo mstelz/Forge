@@ -219,3 +219,136 @@ export const sessionSetLogs = sqliteTable(
     plannedSetIdx: index("idx_logs_planned_set").on(t.plannedSetId),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Programs
+// ---------------------------------------------------------------------------
+
+export const programs = sqliteTable(
+  "programs",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    durationWeeks: integer("duration_weeks").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    nameIdx: index("idx_programs_name").on(t.name),
+    updatedAtIdx: index("idx_programs_updated_at").on(t.updatedAt),
+  }),
+);
+
+export const programDays = sqliteTable(
+  "program_days",
+  {
+    id: text("id").primaryKey(),
+    programId: text("program_id")
+      .notNull()
+      .references(() => programs.id, { onDelete: "cascade" }),
+    weekIndex: integer("week_index").notNull(),
+    dayIndex: integer("day_index").notNull(),
+    routineId: text("routine_id"),
+    isRestDay: integer("is_rest_day").notNull().default(0),
+    notes: text("notes"),
+  },
+  (t) => ({
+    programWeekDayIdx: uniqueIndex("idx_program_days_program_week_day").on(
+      t.programId,
+      t.weekIndex,
+      t.dayIndex,
+    ),
+    routineIdx: index("idx_program_days_routine").on(t.routineId),
+  }),
+);
+
+export const programRuns = sqliteTable(
+  "program_runs",
+  {
+    id: text("id").primaryKey(),
+    programId: text("program_id")
+      .notNull()
+      .references(() => programs.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    startedAt: integer("started_at").notNull(),
+    endedAt: integer("ended_at"),
+    currentWeekIndex: integer("current_week_index").notNull().default(0),
+    currentDayIndex: integer("current_day_index").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    programIdx: index("idx_program_runs_program").on(t.programId),
+    statusIdx: index("idx_program_runs_status").on(t.status),
+  }),
+);
+
+export const programRunDayStates = sqliteTable(
+  "program_run_day_states",
+  {
+    id: text("id").primaryKey(),
+    programRunId: text("program_run_id")
+      .notNull()
+      .references(() => programRuns.id, { onDelete: "cascade" }),
+    weekIndex: integer("week_index").notNull(),
+    dayIndex: integer("day_index").notNull(),
+    status: text("status").notNull(),
+    sessionId: text("session_id"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    runWeekDayIdx: uniqueIndex("idx_prds_run_week_day").on(
+      t.programRunId,
+      t.weekIndex,
+      t.dayIndex,
+    ),
+    sessionIdx: index("idx_prds_session").on(t.sessionId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Settings (singleton)
+// ---------------------------------------------------------------------------
+
+export const settings = sqliteTable("settings", {
+  id: text("id").primaryKey(),
+  weightUnit: text("weight_unit").notNull().default("kg"),
+  distanceUnit: text("distance_unit").notNull().default("km"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Goals
+// ---------------------------------------------------------------------------
+
+export const goals = sqliteTable(
+  "goals",
+  {
+    id: text("id").primaryKey(),
+    category: text("category").notNull(),
+    title: text("title").notNull(),
+    direction: text("direction").notNull(),
+    startValue: real("start_value"),
+    targetValue: real("target_value"),
+    currentValue: real("current_value"),
+    unit: text("unit"),
+    linkedExerciseId: text("linked_exercise_id"),
+    linkedProgramRunId: text("linked_program_run_id"),
+    deadline: integer("deadline"),
+    notes: text("notes"),
+    status: text("status").notNull().default("active"),
+    completedAt: integer("completed_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    statusIdx: index("idx_goals_status").on(t.status),
+    categoryIdx: index("idx_goals_category").on(t.category),
+    deadlineIdx: index("idx_goals_deadline").on(t.deadline),
+    updatedAtIdx: index("idx_goals_updated_at").on(t.updatedAt),
+    linkedExerciseIdx: index("idx_goals_linked_exercise").on(t.linkedExerciseId),
+    linkedProgramRunIdx: index("idx_goals_linked_program_run").on(t.linkedProgramRunId),
+  }),
+);

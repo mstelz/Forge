@@ -1,5 +1,5 @@
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal } from "../../shared";
 
 import { uuidv4 as uuid } from "../lib/uuid";
 
@@ -183,4 +183,115 @@ export async function deleteEquipmentWithFanout(id: string): Promise<{ affected:
     },
   );
   return { affected };
+}
+
+// ---------------------------------------------------------------------------
+// Program mutations
+// ---------------------------------------------------------------------------
+
+export class ProgramRunClosedError extends Error {
+  constructor() {
+    super("Program run is closed (completed or abandoned) and cannot be mutated");
+    this.name = "ProgramRunClosedError";
+  }
+}
+
+async function guardRunOpen(runId: string): Promise<void> {
+  const run = await forgeDB.programRuns.get(runId);
+  if (run && (run.status === "completed" || run.status === "abandoned")) {
+    throw new ProgramRunClosedError();
+  }
+}
+
+export async function createProgram(record: Program): Promise<Program> {
+  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
+    await forgeDB.programs.add(record);
+    await forgeDB.pendingWrites.add(enqueue("program", "create", record));
+  });
+  return record;
+}
+
+export async function updateProgram(record: Program): Promise<Program> {
+  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
+    await forgeDB.programs.put(record);
+    await forgeDB.pendingWrites.add(enqueue("program", "update", record));
+  });
+  return record;
+}
+
+export async function deleteProgram(id: string): Promise<void> {
+  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
+    await forgeDB.programs.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("program", "delete", { id }));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ProgramRun mutations
+// ---------------------------------------------------------------------------
+
+export async function createProgramRun(record: ProgramRun): Promise<ProgramRun> {
+  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
+    await forgeDB.programRuns.add(record);
+    await forgeDB.pendingWrites.add(enqueue("program_run", "create", record));
+  });
+  return record;
+}
+
+export async function updateProgramRun(record: ProgramRun): Promise<ProgramRun> {
+  await guardRunOpen(record.id);
+  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
+    await forgeDB.programRuns.put(record);
+    await forgeDB.pendingWrites.add(enqueue("program_run", "update", record));
+  });
+  return record;
+}
+
+export async function deleteProgramRun(id: string): Promise<void> {
+  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
+    await forgeDB.programRuns.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("program_run", "delete", { id }));
+  });
+}
+
+export async function endProgramRun(
+  id: string,
+  status: "completed" | "abandoned",
+  endedAt: number,
+): Promise<ProgramRun | null> {
+  const run = await forgeDB.programRuns.get(id);
+  if (!run) return null;
+  const updated: ProgramRun = { ...run, status, endedAt, updatedAt: Date.now() };
+  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
+    await forgeDB.programRuns.put(updated);
+    await forgeDB.pendingWrites.add(enqueue("program_run", "update", updated));
+  });
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Goal mutations
+// ---------------------------------------------------------------------------
+
+export async function createGoal(record: Goal): Promise<Goal> {
+  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
+    await forgeDB.goals.add(record);
+    await forgeDB.pendingWrites.add(enqueue("goal", "create", record));
+  });
+  return record;
+}
+
+export async function updateGoal(record: Goal): Promise<Goal> {
+  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
+    await forgeDB.goals.put(record);
+    await forgeDB.pendingWrites.add(enqueue("goal", "update", record));
+  });
+  return record;
+}
+
+export async function deleteGoal(id: string): Promise<void> {
+  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
+    await forgeDB.goals.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("goal", "delete", { id }));
+  });
 }

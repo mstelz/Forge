@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, Routine, Session, SessionSetLog } from "../../shared";
+import type { Exercise, Equipment, Routine, Session, SessionSetLog, Program, ProgramRun, Goal } from "../../shared";
 import type { HistoryFilter } from "../../shared/history";
 
 export const listExercises = (): Promise<Exercise[]> =>
@@ -127,3 +127,61 @@ export const countExercisesReferencingEquipment = async (
   });
   return n;
 };
+
+// ---------------------------------------------------------------------------
+// Programs
+// ---------------------------------------------------------------------------
+
+export const listPrograms = (): Promise<Program[]> =>
+  forgeDB.programs.orderBy("name").toArray();
+
+export const getProgramById = (id: string): Promise<Program | undefined> =>
+  forgeDB.programs.get(id);
+
+// ---------------------------------------------------------------------------
+// Program runs
+// ---------------------------------------------------------------------------
+
+export const listProgramRuns = (): Promise<ProgramRun[]> =>
+  forgeDB.programRuns.orderBy("startedAt").reverse().toArray();
+
+export const getProgramRunById = (id: string): Promise<ProgramRun | undefined> =>
+  forgeDB.programRuns.get(id);
+
+export const getActiveRunForProgram = async (
+  programId: string,
+): Promise<ProgramRun | null> => {
+  const run = await forgeDB.programRuns
+    .where("programId")
+    .equals(programId)
+    .filter((r) => r.status === "active")
+    .first();
+  return run ?? null;
+};
+
+export const getGloballyActiveRun = async (): Promise<ProgramRun | null> => {
+  const run = await forgeDB.programRuns
+    .filter((r) => r.status === "active")
+    .first();
+  return run ?? null;
+};
+
+export const listFinishedRunsForProgram = async (
+  programId: string,
+): Promise<ProgramRun[]> => {
+  const runs = await forgeDB.programRuns
+    .where("programId")
+    .equals(programId)
+    .filter((r) => r.status === "completed" || r.status === "abandoned")
+    .toArray();
+  runs.sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
+  return runs;
+};
+
+// ---------------------------------------------------------------------------
+// Goals
+// ---------------------------------------------------------------------------
+
+export const listGoals = (): Promise<Goal[]> => forgeDB.goals.toArray();
+
+export const getGoal = (id: string): Promise<Goal | undefined> => forgeDB.goals.get(id);

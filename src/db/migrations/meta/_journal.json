@@ -22,6 +22,20 @@
       "when": 1778118760023,
       "tag": "0002_jazzy_tenebrous",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1779465780358,
+      "tag": "0003_powerful_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1779465798112,
+      "tag": "0004_dark_exiles",
+      "breakpoints": true
     }
   ]
 }

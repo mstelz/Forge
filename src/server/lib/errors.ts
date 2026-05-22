@@ -25,3 +25,6 @@ export const idConflict = (c: Context, id: string) =>
 
 export const nameConflict = (c: Context, name: string) =>
   apiError(c, 409, { error: "name_conflict", name });
+
+export const staleUpdate = (c: Context, serverUpdatedAt: number) =>
+  apiError(c, 409, { error: "stale_update", id: String(serverUpdatedAt) });

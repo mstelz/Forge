@@ -1,0 +1,923 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useOutletContext } from "react-router";
+import type { AppShellOutletContext } from "../../layouts/app-shell";
+import {
+  useHomepageState,
+  getDayDetail,
+  type HomepageCalendarDot,
+  type HomepageWeekDot,
+  type DayDetail,
+  type Goal,
+} from "../../home/state";
+import type { Routine } from "../../../shared";
+
+// ---------------------------------------------------------------------------
+// Estimated duration helper
+// Formula: sum (setCount * ~60s rest) + set count * ~3s per set, per item in blocks
+// Only computable when routine has blocks with items.
+// ---------------------------------------------------------------------------
+
+function estimateDuration(routine: Routine): { hours: number; minutes: number } | null {
+  if (!routine.blocks || routine.blocks.length === 0) return null;
+  let totalSec = 0;
+  for (const block of routine.blocks) {
+    const rounds = block.type === "superset" ? (block.roundCount ?? 1) : 1;
+    for (const item of block.items) {
+      const sets = block.type === "superset" ? rounds : item.setCount;
+      // ~45s per set (work time) + 90s rest per set
+      totalSec += sets * (45 + 90);
+    }
+  }
+  if (totalSec === 0) return null;
+  const totalMin = Math.round(totalSec / 60);
+  return { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 };
+}
+
+function formatDuration(d: { hours: number; minutes: number }): string {
+  if (d.hours > 0) return `~${d.hours}h ${d.minutes}m`;
+  return `~${d.minutes}m`;
+}
+
+// ---------------------------------------------------------------------------
+// Rep label helper
+// ---------------------------------------------------------------------------
+
+function repLabel(item: Routine["blocks"][number]["items"][number]): string {
+  if (item.repMode === "uniform") {
+    if (item.uniformReps != null) return `${item.setCount}x ${item.uniformReps}`;
+    if (item.uniformRepsMin != null && item.uniformRepsMax != null)
+      return `${item.setCount}x ${item.uniformRepsMin}–${item.uniformRepsMax}`;
+    if (item.uniformSetType === "amrap") return `${item.setCount}x AMRAP`;
+    if (item.uniformSetType === "to_failure") return `${item.setCount}x FAIL`;
+    return `${item.setCount}x`;
+  }
+  return `${item.setCount}x`;
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton
+// ---------------------------------------------------------------------------
+
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-[var(--radius-card)] bg-[var(--surface)] ${className ?? ""}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Top Bar
+// ---------------------------------------------------------------------------
+
+function TopBar({ openDrawer }: { openDrawer: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-4 pt-4 pb-2">
+      <button
+        type="button"
+        onClick={openDrawer}
+        aria-label="Open navigation"
+        className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <HamburgerIcon />
+      </button>
+
+      <span className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--accent)]">
+        FORGE
+      </span>
+
+      {/* Avatar with initials */}
+      <div
+        aria-hidden="true"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface)] text-[10px] font-bold uppercase text-[var(--text-subtle)] ring-1 ring-[var(--border)]"
+      >
+        MS
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Daily Briefing Strip
+// ---------------------------------------------------------------------------
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const DOW_HEADERS = ["S", "M", "T", "W", "T", "F", "S"] as const;
+
+function DailyBriefingStrip({ calendarDots, onDayTap }: {
+  calendarDots: HomepageCalendarDot[];
+  onDayTap: (dot: HomepageCalendarDot) => void;
+}) {
+  const today = new Date();
+  const dayName = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
+  const dateStr = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(today);
+
+  return (
+    <div className="px-4 pb-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+        {dayName}, {dateStr}
+      </p>
+      <p className="text-lg font-bold text-[var(--text)]">Daily Briefing</p>
+
+      {/* Mini calendar row */}
+      <div className="mt-2">
+        <div className="grid grid-cols-7 gap-1">
+          {DOW_HEADERS.map((h, i) => (
+            <div key={i} className="text-center text-[9px] font-semibold uppercase text-[var(--text-subtle)]">
+              {h}
+            </div>
+          ))}
+          {calendarDots.map((dot, i) => (
+            <CalendarCell key={i} dot={dot} onTap={() => onDayTap(dot)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => void }) {
+  const label = new Date(dot.y, dot.m - 1, dot.d).toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+  return (
+    <div className="relative flex flex-col items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onTap}
+        aria-label={label}
+        className={[
+          "flex h-7 w-7 items-center justify-center rounded-md text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          dot.isToday
+            ? "ring-[1.5px] ring-[var(--accent)] text-[var(--accent)]"
+            : "text-[var(--text-muted)] hover:bg-[var(--surface)]",
+        ].join(" ")}
+      >
+        {dot.d}
+      </button>
+      {/* Under-cell dot for sessions */}
+      <div className={[
+        "h-[3px] w-[3px] rounded-full",
+        dot.hasFinishedSession ? "bg-[var(--accent)]" : "bg-transparent",
+      ].join(" ")} aria-hidden="true" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Primary Today Card
+// ---------------------------------------------------------------------------
+
+function TodayCard({
+  routine,
+  inProgressSession,
+  activeProgramRun,
+}: {
+  routine: Routine | null;
+  inProgressSession: ReturnType<typeof useHomepageState>["data"] extends undefined ? null : NonNullable<ReturnType<typeof useHomepageState>["data"]>["inProgressSession"];
+  activeProgramRun: null;
+}) {
+  void activeProgramRun;
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime();
+  const sessionIsToday = inProgressSession != null && inProgressSession.startedAt >= todayStart;
+
+  return (
+    <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
+      {/* 4px amber left accent */}
+      <div className="flex">
+        <div className="w-1 flex-shrink-0 bg-[var(--accent)]" aria-hidden="true" />
+        <div className="flex-1 p-4">
+          {routine != null ? (
+            <RoutineVariant routine={routine} sessionIsToday={sessionIsToday} inProgressSession={inProgressSession} />
+          ) : (
+            <NoProgramVariant />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoutineVariant({
+  routine,
+  sessionIsToday,
+  inProgressSession,
+}: {
+  routine: Routine;
+  sessionIsToday: boolean;
+  inProgressSession: { id: string } | null;
+}) {
+  const duration = estimateDuration(routine);
+
+  // Gather exercise preview rows (max 6)
+  const previewItems = routine.blocks
+    .flatMap((b) => b.items)
+    .slice(0, 6);
+
+  return (
+    <>
+      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+        Session Priority
+      </p>
+      <h2 className="text-base font-bold text-[var(--text)]">{routine.name}</h2>
+      {duration ? (
+        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatDuration(duration)}</p>
+      ) : null}
+
+      {previewItems.length > 0 ? (
+        <ul className="mt-3 space-y-1">
+          {previewItems.map((item) => (
+            <li key={item.id} className="flex items-center justify-between gap-2">
+              <span className="text-xs text-[var(--text)]">{item.exerciseId}</span>
+              <span className="text-[10px] tabular-nums text-[var(--text-subtle)]">
+                {repLabel(item)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <Link
+        to={sessionIsToday && inProgressSession ? `/workout/sessions/${inProgressSession.id}` : "/workout/start"}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-opacity"
+      >
+        <PlayIcon />
+        {sessionIsToday && inProgressSession ? "Resume Workout" : "Start Workout"}
+      </Link>
+    </>
+  );
+}
+
+function NoProgramVariant() {
+  return (
+    <>
+      <h2 className="text-base font-bold text-[var(--text)]">No program active</h2>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        Pick a routine to start a freeform workout.
+      </p>
+      <Link
+        to="/routines"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-opacity"
+      >
+        Browse Routines
+      </Link>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Program Strip (hidden when no active program)
+// ---------------------------------------------------------------------------
+
+function ProgramStrip({ weekDots }: { weekDots: HomepageWeekDot[] }) {
+  // All dots empty = no active program
+  const allEmpty = weekDots.every((d) => d.state === "empty");
+  if (allEmpty) return null;
+
+  return (
+    <Link
+      to="/programs"
+      className="mx-4 mb-3 flex items-center justify-between rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-3 ring-1 ring-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      aria-label="Active program"
+    >
+      <p className="text-xs font-semibold text-[var(--text-muted)]">Program</p>
+      <div className="flex items-center gap-1.5" aria-hidden="true">
+        {weekDots.map((dot) => (
+          <WeekDot key={dot.index} dot={dot} />
+        ))}
+      </div>
+    </Link>
+  );
+}
+
+function WeekDot({ dot }: { dot: HomepageWeekDot }) {
+  const base = "h-2.5 w-2.5 rounded-full transition-all";
+  if (dot.state === "done") {
+    return <span className={`${base} bg-[var(--accent)]`} />;
+  }
+  if (dot.state === "today_active") {
+    return <span className={`${base} animate-pulse-amber ring-2 ring-[var(--accent)]`} />;
+  }
+  if (dot.state === "today_idle") {
+    return <span className={`${base} ring-2 ring-[var(--accent)]`} />;
+  }
+  if (dot.state === "planned") {
+    return <span className={`${base} bg-[var(--text-subtle)]`} />;
+  }
+  if (dot.state === "rest") {
+    return <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-subtle)] opacity-40" />;
+  }
+  if (dot.state === "skipped") {
+    return (
+      <span className={`${base} relative bg-[var(--text-subtle)] opacity-60`}>
+        <span className="absolute inset-0 flex items-center justify-center text-[6px] font-bold text-white">
+          /
+        </span>
+      </span>
+    );
+  }
+  // empty
+  return <span className={`${base} bg-transparent ring-1 ring-[var(--border)]`} />;
+}
+
+// ---------------------------------------------------------------------------
+// Mini Calendar (standalone interactive version)
+// ---------------------------------------------------------------------------
+
+function MiniCalendar({
+  calendarDots,
+  onDayTap,
+}: {
+  calendarDots: HomepageCalendarDot[];
+  onDayTap: (dot: HomepageCalendarDot) => void;
+}) {
+  return (
+    <div className="mx-4 mb-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-4 pt-3 pb-4 ring-1 ring-[var(--border)]">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+        This Week
+      </p>
+      <div className="grid grid-cols-7 gap-1">
+        {DOW_HEADERS.map((h, i) => (
+          <div key={i} className="text-center text-[9px] font-semibold uppercase text-[var(--text-subtle)]">
+            {h}
+          </div>
+        ))}
+        {calendarDots.map((dot, i) => (
+          <CalendarCell key={i} dot={dot} onTap={() => onDayTap(dot)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Day Detail Surface (Popover desktop / Sheet mobile)
+// ---------------------------------------------------------------------------
+
+function DayDetailContent({
+  detail,
+  onClose,
+}: {
+  detail: DayDetail;
+  onClose: () => void;
+}) {
+  const dateLabel = new Date(detail.date.y, detail.date.m - 1, detail.date.d).toLocaleDateString(
+    "en-US",
+    { weekday: "long", month: "short", day: "numeric" },
+  );
+
+  const dateQuery = `${detail.date.y}-${String(detail.date.m).padStart(2, "0")}-${String(detail.date.d).padStart(2, "0")}`;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+          {dateLabel}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded-md p-1 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          <CloseIcon />
+        </button>
+      </div>
+
+      {detail.session?.status === "in_progress" ? (
+        <InProgressDayContent session={detail.session} stats={detail.sessionStats} />
+      ) : detail.session?.status === "finished" ? (
+        <FinishedDayContent session={detail.session} stats={detail.sessionStats} />
+      ) : detail.isRestDay ? (
+        <RestDayContent />
+      ) : detail.isFutureDay ? (
+        <FutureDayContent />
+      ) : (
+        <EmptyDayContent dateQuery={dateQuery} />
+      )}
+    </div>
+  );
+}
+
+function InProgressDayContent({
+  session,
+  stats,
+}: {
+  session: { id: string; title: string | null };
+  stats: DayDetail["sessionStats"];
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <p className="font-bold text-sm text-[var(--text)]">{session.title ?? "Freeform"}</p>
+        <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)]">
+          In progress
+        </span>
+      </div>
+      {stats ? (
+        <p className="text-xs text-[var(--text-muted)] mb-3">
+          {stats.exerciseCount} exercises · {stats.setCount} sets
+        </p>
+      ) : null}
+      <Link
+        to={`/workout/sessions/${session.id}`}
+        className="flex w-full items-center justify-center rounded-md bg-[var(--accent)] py-2 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        Resume Workout
+      </Link>
+    </div>
+  );
+}
+
+function FinishedDayContent({
+  session,
+  stats,
+}: {
+  session: { id: string; title: string | null };
+  stats: DayDetail["sessionStats"];
+}) {
+  const dur = stats ? Math.round(stats.durationMs / 60000) : null;
+  return (
+    <div>
+      <p className="font-bold text-sm text-[var(--text)] mb-1">{session.title ?? "Freeform"}</p>
+      {stats ? (
+        <p className="text-xs text-[var(--text-muted)] mb-3">
+          {stats.exerciseCount} exercises · {stats.setCount} sets{dur != null ? ` · ${dur} min` : ""}
+        </p>
+      ) : null}
+      <Link
+        to={`/workout/sessions/${session.id}`}
+        className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        Open session
+      </Link>
+    </div>
+  );
+}
+
+function RestDayContent() {
+  return (
+    <div>
+      <p className="font-bold text-sm text-[var(--text)] mb-1">Rest day</p>
+      <p className="text-xs text-[var(--text-muted)]">Recover and come back tomorrow.</p>
+    </div>
+  );
+}
+
+function FutureDayContent() {
+  return (
+    <div>
+      <p className="text-xs text-[var(--text-muted)]">Nothing scheduled.</p>
+    </div>
+  );
+}
+
+function EmptyDayContent({ dateQuery }: { dateQuery: string }) {
+  return (
+    <div>
+      <p className="text-xs text-[var(--text-muted)] mb-2">Nothing scheduled.</p>
+      <Link
+        to={`/workout/start?date=${dateQuery}`}
+        className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        Log a freeform workout
+      </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Responsive Day Detail wrapper (popover desktop / sheet mobile)
+// ---------------------------------------------------------------------------
+
+function DayDetailSurface({
+  dot,
+  anchorRef,
+  detail,
+  isLoading,
+  onClose,
+}: {
+  dot: HomepageCalendarDot;
+  anchorRef: React.RefObject<HTMLElement | null>;
+  detail: DayDetail | null;
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  void dot;
+  void anchorRef;
+
+  // Use matchMedia to decide popover vs sheet
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : false,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Focus trap ref
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Restore focus on close
+  const triggerRef = useRef<Element | null>(null);
+  useEffect(() => {
+    triggerRef.current = document.activeElement;
+    return () => {
+      if (triggerRef.current instanceof HTMLElement) {
+        triggerRef.current.focus();
+      }
+    };
+  }, []);
+
+  // Keyboard handler for focus trap + Esc
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const el = containerRef.current;
+      if (!el) return;
+      const focusable = el.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [onClose],
+  );
+
+  const content = (
+    <div
+      ref={containerRef}
+      onKeyDown={handleKeyDown}
+      className="p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Day detail"
+    >
+      {isLoading ? (
+        <div className="flex items-center justify-center py-6">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+        </div>
+      ) : detail ? (
+        <DayDetailContent detail={detail} onClose={onClose} />
+      ) : null}
+    </div>
+  );
+
+  if (isDesktop) {
+    return (
+      <div
+        className="fixed inset-0 z-50"
+        onClick={onClose}
+        role="presentation"
+      >
+        <div
+          className="absolute rounded-[var(--radius-card)] bg-[var(--surface)] shadow-2xl ring-1 ring-[var(--border)] w-72"
+          style={{
+            top: (anchorRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
+            left: Math.max(
+              8,
+              Math.min(
+                (anchorRef.current?.getBoundingClientRect().left ?? 0) - 120,
+                window.innerWidth - 288 - 8,
+              ),
+            ),
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  // Mobile sheet
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      role="presentation"
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      {/* Sheet */}
+      <div
+        className="relative rounded-t-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]"
+        style={{ maxHeight: "60dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle visual */}
+        <div className="flex justify-center pt-2 pb-0">
+          <div className="h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden="true" />
+        </div>
+        {content}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Goals Section
+// ---------------------------------------------------------------------------
+
+function GoalsSection({ goals }: { goals: Goal[] }) {
+  if (goals.length === 0) return null;
+
+  return (
+    <div className="mx-4 mb-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-subtle)]">
+        Priority Objectives
+      </p>
+      <div className="space-y-2">
+        {goals.map((g) => (
+          <GoalCard key={g.id} goal={g} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GoalCard({ goal }: { goal: Goal }) {
+  const progress =
+    goal.targetValue > 0
+      ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
+      : 0;
+
+  const countdown = (() => {
+    if (!goal.deadline) return null;
+    const now = Date.now();
+    const diff = goal.deadline - now;
+    if (diff < 0) return "OVERDUE";
+    if (goal.status === "completed") return "COMPLETED";
+    const weeks = Math.ceil(diff / (7 * 24 * 60 * 60 * 1000));
+    return `${weeks} week${weeks !== 1 ? "s" : ""} left`;
+  })();
+
+  return (
+    <Link
+      to={`/goals/${goal.id}`}
+      className="block rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-3 ring-1 ring-[var(--border)] hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-colors"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-subtle)] bg-[var(--surface-elevated)] rounded px-1.5 py-0.5">
+            {goal.category}
+          </span>
+          <p className="mt-1 text-sm font-bold text-[var(--text)]">{goal.title}</p>
+        </div>
+        <p className="text-xl font-bold tabular-nums text-[var(--text)] flex-shrink-0">
+          {goal.currentValue}
+          {goal.unit ? <span className="text-xs font-normal text-[var(--text-muted)] ml-0.5">{goal.unit}</span> : null}
+        </p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-1">
+        <div className="h-1.5 w-full rounded-full bg-[var(--border)] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-[var(--accent)]"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="flex justify-end mt-0.5">
+          <span className="text-[10px] tabular-nums text-[var(--text-subtle)]">{progress}%</span>
+        </div>
+      </div>
+
+      {countdown ? (
+        <p className={[
+          "text-[10px] font-semibold uppercase tracking-wide",
+          countdown === "OVERDUE" ? "text-red-400" : "text-[var(--text-subtle)]",
+        ].join(" ")}>
+          {countdown}
+        </p>
+      ) : null}
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick Stats Row
+// ---------------------------------------------------------------------------
+
+function QuickStatsRow({
+  workouts,
+  volumeKg,
+  streakWeeks,
+}: {
+  workouts: number;
+  volumeKg: number;
+  streakWeeks: number;
+}) {
+  return (
+    <div className="mx-4 mb-3 grid grid-cols-3 gap-2">
+      <StatTile label="This Week" value={String(workouts)} unit="workouts" />
+      <StatTile label="Volume" value={formatVolume(volumeKg)} unit="kg" />
+      <StatTile label="Streak" value={String(streakWeeks)} unit="wk" />
+    </div>
+  );
+}
+
+function formatVolume(kg: number): string {
+  if (kg >= 1000) return `${(kg / 1000).toFixed(1)}k`;
+  return kg % 1 === 0 ? String(kg) : kg.toFixed(1);
+}
+
+function StatTile({ label, value, unit }: { label: string; value: string; unit: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-[14px] bg-[#17181A] px-2 py-3 ring-1 ring-[#26272A] text-center">
+      <p className="text-[28px] font-bold leading-none tabular-nums text-[var(--text)]">
+        {value}
+      </p>
+      <p className="mt-1 text-[8px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+        {label} · {unit}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error Banner
+// ---------------------------------------------------------------------------
+
+function ErrorBanner() {
+  return (
+    <div className="mx-4 mb-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-3 ring-1 ring-red-500/30">
+      <p className="text-xs text-[var(--text-muted)]">
+        Couldn't load latest data — try refreshing.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading Skeleton
+// ---------------------------------------------------------------------------
+
+function HomeSkeleton() {
+  return (
+    <div className="space-y-3 px-4 pb-8" aria-hidden="true">
+      <Skeleton className="h-40" />
+      <Skeleton className="h-12" />
+      <Skeleton className="h-28" />
+      <Skeleton className="h-24" />
+      <Skeleton className="h-24" />
+      <div className="grid grid-cols-3 gap-2">
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Homepage Page
+// ---------------------------------------------------------------------------
+
+export function HomePage() {
+  const { openDrawer } = useOutletContext<AppShellOutletContext>();
+  const { data, isLoading } = useHomepageState();
+
+  const [selectedDot, setSelectedDot] = useState<HomepageCalendarDot | null>(null);
+  const [dayDetail, setDayDetail] = useState<DayDetail | null>(null);
+  const [dayDetailLoading, setDayDetailLoading] = useState(false);
+  const anchorRef = useRef<HTMLElement | null>(null);
+
+  const handleDayTap = useCallback(async (dot: HomepageCalendarDot) => {
+    setSelectedDot(dot);
+    setDayDetailLoading(true);
+    setDayDetail(null);
+    try {
+      const detail = await getDayDetail({ y: dot.y, m: dot.m, d: dot.d });
+      setDayDetail(detail);
+    } catch {
+      setDayDetail({
+        date: { y: dot.y, m: dot.m, d: dot.d },
+        plannedRoutine: null,
+        plannedDayState: null,
+        session: null,
+        sessionStats: null,
+        isRestDay: false,
+        isFutureDay: false,
+      });
+    } finally {
+      setDayDetailLoading(false);
+    }
+  }, []);
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedDot(null);
+    setDayDetail(null);
+  }, []);
+
+  // Keyboard dismiss for day detail
+  useEffect(() => {
+    if (!selectedDot) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleCloseDetail();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedDot, handleCloseDetail]);
+
+  const hasError = !isLoading && data === undefined;
+
+  return (
+    <>
+      <TopBar openDrawer={openDrawer} />
+
+      {hasError ? <ErrorBanner /> : null}
+
+      {isLoading ? (
+        <HomeSkeleton />
+      ) : data ? (
+        <main className="flex-1 pb-8">
+          {/* Daily Briefing Strip */}
+          <DailyBriefingStrip
+            calendarDots={data.calendarDots}
+            onDayTap={handleDayTap}
+          />
+
+          {/* Primary Today Card */}
+          <TodayCard
+            routine={data.todayRoutine}
+            inProgressSession={data.inProgressSession}
+            activeProgramRun={data.activeProgramRun}
+          />
+
+          {/* Program Strip */}
+          <ProgramStrip weekDots={data.weekDots} />
+
+          {/* Mini Calendar (interactive) */}
+          <MiniCalendar calendarDots={data.calendarDots} onDayTap={handleDayTap} />
+
+          {/* Goals */}
+          <GoalsSection goals={data.topGoals} />
+
+          {/* Quick Stats */}
+          <QuickStatsRow
+            workouts={data.weeklyStats.workouts}
+            volumeKg={data.weeklyStats.volumeKg}
+            streakWeeks={data.weeklyStats.streakWeeks}
+          />
+        </main>
+      ) : null}
+
+      {/* Day Detail Surface */}
+      {selectedDot != null ? (
+        <DayDetailSurface
+          dot={selectedDot}
+          anchorRef={anchorRef}
+          detail={dayDetail}
+          isLoading={dayDetailLoading}
+          onClose={handleCloseDetail}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+function HamburgerIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}

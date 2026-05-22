@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
+import { Download } from "lucide-react";
 import { OfflinePill } from "../components/offline-pill";
 import { FlusherTroubleBanner } from "../sync/flusher-banner";
+import { triggerExport } from "../export/trigger";
 
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -20,12 +22,53 @@ export function AppShell() {
 export type AppShellOutletContext = { openDrawer: () => void };
 
 const NAV_ITEMS: { to: string; label: string }[] = [
+  { to: "/", label: "Home" },
   { to: "/workout/start", label: "Workout" },
   { to: "/exercises", label: "Exercises" },
   { to: "/routines", label: "Routines" },
+  { to: "/programs", label: "Programs" },
+  { to: "/goals", label: "Goals" },
   { to: "/history", label: "History" },
   { to: "/equipment", label: "Equipment" },
 ];
+
+function ExportButton({ onClose }: { onClose?: () => void }) {
+  const [exporting, setExporting] = useState(false);
+
+  const handleClick = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const result = await triggerExport();
+      if (!result.ok) {
+        alert(`Export failed — try again\n\n${result.error}`);
+      }
+    } finally {
+      setExporting(false);
+      onClose?.();
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      aria-label="Export JSON"
+      disabled={exporting}
+      onClick={handleClick}
+      className={[
+        "flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-sm font-semibold transition-colors",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+        "text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text)]",
+        exporting ? "opacity-50 cursor-not-allowed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <Download size={16} aria-hidden="true" />
+      <span>{exporting ? "Exporting…" : "Export JSON"}</span>
+    </button>
+  );
+}
 
 function Drawer({ onClose }: { onClose: () => void }) {
   return (
@@ -35,18 +78,19 @@ function Drawer({ onClose }: { onClose: () => void }) {
       role="presentation"
     >
       <aside
-        className="absolute inset-y-0 left-0 w-64 bg-[var(--surface)] p-5"
+        className="absolute inset-y-0 left-0 flex w-64 flex-col bg-[var(--surface)] p-5"
         onClick={(e) => e.stopPropagation()}
         aria-label="Primary navigation"
       >
         <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
           Navigation
         </p>
-        <nav className="mt-4 space-y-1">
+        <nav className="mt-4 flex-1 space-y-1">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.to === "/"}
               onClick={onClose}
               className={({ isActive }) =>
                 [
@@ -61,6 +105,11 @@ function Drawer({ onClose }: { onClose: () => void }) {
             </NavLink>
           ))}
         </nav>
+
+        <div className="mt-auto">
+          <div className="mb-2 border-t border-[#26272A]" />
+          <ExportButton onClose={onClose} />
+        </div>
       </aside>
     </div>
   );
