@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Forge</Name>
-  <Repository>ghcr.io/mtstelzer/forge</Repository>
-  <Registry>https://github.com/mtstelzer/forge/pkgs/container/forge</Registry>
+  <Repository>ghcr.io/mstelz/forge</Repository>
+  <Registry>https://github.com/mstelz/Forge/pkgs/container/forge</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
@@ -13,7 +13,7 @@
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/mtstelzer/forge/main/src/client/assets/icon-192.png</Icon>
+  <Icon>https://raw.githubusercontent.com/mstelz/Forge/main/src/client/assets/icon-192.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>

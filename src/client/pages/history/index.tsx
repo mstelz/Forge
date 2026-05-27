@@ -95,6 +95,7 @@ export function HistoryListPage() {
   const totalSets = summary?.totalSets ?? 0;
   const totalExercises = summary?.totalExercises ?? 0;
   const totalDurationMs = summary?.totalDurationMs ?? 0;
+  const avgDurationMs = totalSessions > 0 ? totalDurationMs / totalSessions : 0;
 
   return (
     <>
@@ -134,12 +135,13 @@ export function HistoryListPage() {
         ) : null}
 
         {/* Summary tiles */}
-        <div className="flex gap-2 pb-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="grid grid-cols-3 gap-2 pb-3">
           <SummaryTile label="Sessions" value={String(totalSessions)} />
           <SummaryTile label="Volume" value={`${formatVolume(totalVolumeKg)} kg`} />
           <SummaryTile label="Sets" value={String(totalSets)} />
           <SummaryTile label="Exercises" value={String(totalExercises)} />
           <SummaryTile label="Time" value={formatDurationMs(totalDurationMs)} />
+          <SummaryTile label="Avg" value={formatDurationMs(avgDurationMs)} />
         </div>
 
         {/* Filter chips */}
@@ -198,7 +200,7 @@ export function HistoryListPage() {
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex-shrink-0 rounded-[var(--radius-card)] bg-[var(--surface)] px-3 py-2 text-center min-w-[64px]">
+    <div className="rounded-[var(--radius-card)] bg-[var(--surface)] py-2.5 text-center">
       <p className="text-lg font-bold text-[var(--text)] tabular-nums">{value}</p>
       <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
         {label}
