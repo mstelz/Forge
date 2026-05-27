@@ -64,6 +64,8 @@ export const ProgramRunSchema = z
     endedAt: z.number().int().nullable(),
     currentWeekIndex: z.number().int().min(0),
     currentDayIndex: z.number().int().min(0).max(6),
+    /** Unix ms of Monday 00:00 local time for week 0. Used to map program days to calendar dates. */
+    weekZeroStartDate: timestampMs.optional(),
     dayStates: z.array(ProgramRunDayStateSchema),
     createdAt: timestampMs,
     updatedAt: timestampMs,
@@ -75,6 +77,7 @@ export const ProgramRunCreateInput = z.object({
   id: uuid,
   programId: uuid,
   startedAt: timestampMs,
+  weekZeroStartDate: timestampMs.optional(),
 });
 export type ProgramRunCreateInput = z.infer<typeof ProgramRunCreateInput>;
 

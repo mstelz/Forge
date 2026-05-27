@@ -58,6 +58,7 @@ async function loadProgramRun(id: string): Promise<ProgramRun | null> {
     endedAt: run.endedAt ?? null,
     currentWeekIndex: run.currentWeekIndex,
     currentDayIndex: run.currentDayIndex,
+    weekZeroStartDate: run.weekZeroStartDate ?? undefined,
     dayStates: dayStates.map(rowToDayState),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
@@ -148,6 +149,7 @@ programRunsRoute.post("/", async (c) => {
         endedAt: null,
         currentWeekIndex: 0,
         currentDayIndex: 0,
+        weekZeroStartDate: input.weekZeroStartDate ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -226,6 +228,7 @@ programRunsRoute.patch("/:id", async (c) => {
         endedAt: input.endedAt ?? null,
         currentWeekIndex: input.currentWeekIndex,
         currentDayIndex: input.currentDayIndex,
+        weekZeroStartDate: input.weekZeroStartDate ?? null,
         updatedAt,
       })
       .where(eq(programRuns.id, id))

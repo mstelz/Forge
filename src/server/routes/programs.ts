@@ -5,8 +5,10 @@ import { programs, programDays } from "../../db/schema";
 import {
   ProgramCreateInput,
   ProgramUpdateInput,
+  RoutineItemOverrideSchema,
   type Program,
   type ProgramDay,
+  type RoutineItemOverride,
 } from "../../shared/program";
 import { idConflict, notFound, validationError } from "../lib/errors";
 
@@ -21,6 +23,17 @@ type ProgramDayRow = typeof programDays.$inferSelect;
 // ---------------------------------------------------------------------------
 // Row → domain mappers
 // ---------------------------------------------------------------------------
+function parseOverrides(json: string | null): RoutineItemOverride[] | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    const result = RoutineItemOverrideSchema.array().safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
 function rowToDay(row: ProgramDayRow): ProgramDay {
   return {
     id: row.id,
@@ -29,6 +42,7 @@ function rowToDay(row: ProgramDayRow): ProgramDay {
     routineId: row.routineId ?? null,
     isRestDay: row.isRestDay === 1,
     notes: row.notes ?? null,
+    overrides: parseOverrides(row.overridesJson ?? null),
   };
 }
 
@@ -76,6 +90,7 @@ function insertDays(programId: string, days: ProgramCreateInput["days"]): void {
         routineId: day.routineId ?? null,
         isRestDay: day.isRestDay ? 1 : 0,
         notes: day.notes ?? null,
+        overridesJson: day.overrides?.length ? JSON.stringify(day.overrides) : null,
       })
       .run();
   }

@@ -635,6 +635,42 @@ components:
         totalDurationMs:
           type: integer
 
+    RoutineItemOverride:
+      type: object
+      description: Overrides applied to a specific RoutineItem for a given ProgramDay, enabling periodization without duplicating routines.
+      required: [routineItemId]
+      properties:
+        routineItemId:
+          type: string
+          format: uuid
+          description: ID of the RoutineItem being overridden.
+        setCount:
+          type: integer
+          minimum: 1
+          maximum: 20
+        uniformReps:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRepsMin:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRepsMax:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRpe:
+          type: number
+          minimum: 1
+          maximum: 10
+          multipleOf: 0.5
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: Week-specific coaching cues, e.g. "add 5kg from last week".
+
     ProgramDay:
       type: object
       required: [id, weekIndex, dayIndex, routineId, isRestDay]
@@ -659,6 +695,12 @@ components:
           type: string
           maxLength: 1000
           nullable: true
+        overrides:
+          type: array
+          nullable: true
+          description: Per-item overrides for this day. Allows reusing a routine across weeks with different volume or intensity.
+          items:
+            $ref: '#/components/schemas/RoutineItemOverride'
 
     Program:
       type: object

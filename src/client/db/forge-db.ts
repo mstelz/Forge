@@ -89,6 +89,21 @@ export class ForgeDB extends Dexie {
       goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId",
       settings: "id",
     });
+    this.version(7).stores({
+      exercises: "id, name, type, updatedAt",
+      equipment: "id, name",
+      pendingWrites: "id, createdAt, entity",
+      meta: "key",
+      routines: "id, name, updatedAt",
+      sessions: "id, status, startedAt, sourceRoutineId, sourceType",
+      sessionSetLogs: "id, sessionId, [exerciseId+loggedAt], [sessionId+performedExerciseId+order], plannedSetId",
+      programs: "id, name, updatedAt",
+      programDays: "id, programId, weekIndex, dayIndex",
+      programRuns: "id, programId, status, startedAt",
+      programRunDayStates: "id, programRunId, weekIndex, dayIndex",
+      goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId",
+      settings: "id",
+    });
   }
 }
 

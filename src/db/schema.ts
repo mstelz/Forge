@@ -252,6 +252,7 @@ export const programDays = sqliteTable(
     routineId: text("routine_id"),
     isRestDay: integer("is_rest_day").notNull().default(0),
     notes: text("notes"),
+    overridesJson: text("overrides_json"),
   },
   (t) => ({
     programWeekDayIdx: uniqueIndex("idx_program_days_program_week_day").on(
@@ -275,6 +276,7 @@ export const programRuns = sqliteTable(
     endedAt: integer("ended_at"),
     currentWeekIndex: integer("current_week_index").notNull().default(0),
     currentDayIndex: integer("current_day_index").notNull().default(0),
+    weekZeroStartDate: integer("week_zero_start_date"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

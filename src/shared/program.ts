@@ -4,6 +4,21 @@ const uuid = z.string().uuid();
 const timestampMs = z.number().int().nonnegative();
 
 // ---------------------------------------------------------------------------
+// RoutineItemOverrideSchema
+// ---------------------------------------------------------------------------
+
+export const RoutineItemOverrideSchema = z.object({
+  routineItemId: uuid,
+  setCount: z.number().int().min(1).max(20).optional(),
+  uniformReps: z.number().int().min(1).max(999).optional(),
+  uniformRepsMin: z.number().int().min(1).max(999).optional(),
+  uniformRepsMax: z.number().int().min(1).max(999).optional(),
+  uniformRpe: z.number().min(1).max(10).multipleOf(0.5).optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+export type RoutineItemOverride = z.infer<typeof RoutineItemOverrideSchema>;
+
+// ---------------------------------------------------------------------------
 // ProgramDaySchema
 // ---------------------------------------------------------------------------
 
@@ -14,6 +29,7 @@ export const ProgramDaySchema = z.object({
   routineId: uuid.nullable(),
   isRestDay: z.boolean(),
   notes: z.string().max(1000).nullable().optional(),
+  overrides: z.array(RoutineItemOverrideSchema).nullable().optional(),
 });
 export type ProgramDay = z.infer<typeof ProgramDaySchema>;
 

@@ -3,9 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { useProgram } from "../../../hooks/use-programs";
 import { useActiveRunForProgram } from "../../../hooks/use-program-runs";
 import { useRoutines } from "../../../hooks/use-routines";
+import { useExercises } from "../../../hooks/use-exercises";
 import { createProgram, updateProgram } from "../../../db/mutations";
 import { ProgramCreateInput, ProgramUpdateInput } from "../../../../shared";
-import type { Program, Routine } from "../../../../shared";
+import type { Program, Routine, RoutineItemOverride } from "../../../../shared";
 import {
   builderReducer,
   emptyDraft,
@@ -14,6 +15,7 @@ import {
   type BuilderState,
   type BuilderAction,
 } from "./state";
+import { OverridesSheet } from "./overrides-sheet";
 import { useDiscardGuard, DiscardDialog } from "../../routines/builder/discard-guard";
 
 type Mode = "create" | "edit";
@@ -21,6 +23,7 @@ type Mode = "create" | "edit";
 // ─── Day-of-week labels ───────────────────────────────────────────────────────
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 // dayIndex in spec: 0=Mon … 6=Sun (based on design showing Mon-Sun order)
 
 // ─── Routine picker sheet ────────────────────────────────────────────────────
@@ -35,6 +38,7 @@ type DayPickerSheetProps = {
   notes: string | null;
   routines: Routine[];
   dispatch: React.Dispatch<BuilderAction>;
+  onSelectAndCustomize: (routineId: string) => void;
 };
 
 function DayPickerSheet({
@@ -47,6 +51,7 @@ function DayPickerSheet({
   notes,
   routines,
   dispatch,
+  onSelectAndCustomize,
 }: DayPickerSheetProps) {
   const [search, setSearch] = useState("");
   const [draftNotes, setDraftNotes] = useState(notes ?? "");
@@ -69,6 +74,19 @@ function DayPickerSheet({
     });
     setSearch("");
     onClose();
+  };
+
+  const handleSelectAndCustomize = (routineId: string) => {
+    dispatch({
+      type: "SET_DAY",
+      weekIndex,
+      dayIndex,
+      routineId,
+      isRestDay: false,
+      notes: showNotes ? draftNotes || null : null,
+    });
+    setSearch("");
+    onSelectAndCustomize(routineId);
   };
 
   const handleMarkRest = () => {
@@ -197,24 +215,35 @@ function DayPickerSheet({
         ) : (
           filtered.map((r) => (
             <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => handleSelectRoutine(r.id)}
-                className="flex w-full items-center gap-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-3 py-3 text-left transition-colors hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--accent)]/15 text-xs font-bold text-[var(--accent)]"
+              <div className="flex items-center gap-1 rounded-[var(--radius-card)] bg-[var(--surface)] pr-1 transition-colors hover:bg-[var(--surface-elevated)]">
+                <button
+                  type="button"
+                  onClick={() => handleSelectRoutine(r.id)}
+                  className="flex flex-1 items-center gap-3 px-3 py-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-l-[var(--radius-card)]"
                 >
-                  {r.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text)]">
-                  {r.name}
-                  {currentRoutineId === r.id ? (
-                    <span className="ml-2 text-xs text-[var(--accent)]">✓</span>
-                  ) : null}
-                </span>
-              </button>
+                  <span
+                    aria-hidden="true"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--accent)]/15 text-xs font-bold text-[var(--accent)]"
+                  >
+                    {r.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text)]">
+                    {r.name}
+                    {currentRoutineId === r.id ? (
+                      <span className="ml-2 text-xs text-[var(--accent)]">✓</span>
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectAndCustomize(r.id)}
+                  aria-label={`Add ${r.name} and customize`}
+                  title="Add and customize"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--text-subtle)] hover:text-[var(--accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  <SlidersIcon />
+                </button>
+              </div>
             </li>
           ))
         )}
@@ -477,6 +506,7 @@ type DayCellPickerTarget = {
   routineId: string | null;
   isRestDay: boolean;
   notes: string | null;
+  overrides: RoutineItemOverride[] | null;
 };
 
 type WeekGridProps = {
@@ -521,6 +551,8 @@ function WeekGrid({ state, routineMap, onCellTap }: WeekGridProps) {
                     ? routineMap.get(day.routineId)
                     : null;
 
+                  const hasOverrides = !!(day?.overrides?.length);
+
                   return (
                     <td key={di} className="p-0.5">
                       <button
@@ -532,6 +564,7 @@ function WeekGrid({ state, routineMap, onCellTap }: WeekGridProps) {
                             routineId: day?.routineId ?? null,
                             isRestDay: day?.isRestDay ?? false,
                             notes: day?.notes ?? null,
+                            overrides: day?.overrides ?? null,
                           })
                         }
                         aria-label={`Week ${wi + 1} ${DAY_LABELS[di]}: ${
@@ -540,8 +573,8 @@ function WeekGrid({ state, routineMap, onCellTap }: WeekGridProps) {
                             : routine
                               ? routine.name
                               : "empty"
-                        }`}
-                        className="flex h-10 w-full items-center justify-center rounded-[6px] border border-[var(--border)] text-center transition-colors hover:border-[var(--accent)]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        }${hasOverrides ? " (overridden)" : ""}`}
+                        className="relative flex h-10 w-full items-center justify-center rounded-[6px] border border-[var(--border)] text-center transition-colors hover:border-[var(--accent)]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{
                           background: day?.isRestDay
                             ? "var(--surface)"
@@ -568,6 +601,12 @@ function WeekGrid({ state, routineMap, onCellTap }: WeekGridProps) {
                             <PlusSmallIcon />
                           </span>
                         )}
+                        {hasOverrides ? (
+                          <span
+                            aria-hidden="true"
+                            className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                          />
+                        ) : null}
                       </button>
                     </td>
                   );
@@ -601,16 +640,16 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
     }),
   );
 
+  const { data: exercises } = useExercises();
+  const exerciseMap = new Map(
+    (exercises ?? []).map((e) => [e.id, e]),
+  );
+
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const savedRef = useRef(false);
-  const [pickerTarget, setPickerTarget] = useState<{
-    weekIndex: number;
-    dayIndex: number;
-    routineId: string | null;
-    isRestDay: boolean;
-    notes: string | null;
-  } | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<DayCellPickerTarget | null>(null);
+  const [overridesTarget, setOverridesTarget] = useState<DayCellPickerTarget | null>(null);
   const [dupWeekOpen, setDupWeekOpen] = useState(false);
   const [repeatPatternOpen, setRepeatPatternOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -830,12 +869,18 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
           <WeekGrid
             state={state}
             routineMap={routineMap}
-            onCellTap={(target) => setPickerTarget(target)}
+            onCellTap={(target) => {
+              if (target.routineId) {
+                setOverridesTarget(target);
+              } else {
+                setPickerTarget(target);
+              }
+            }}
           />
         </div>
       </div>
 
-      {/* Day picker sheet */}
+      {/* Routine picker — only for empty/rest days, or when changing routine from OverridesSheet */}
       {pickerTarget ? (
         <DayPickerSheet
           open={true}
@@ -847,6 +892,36 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
           notes={pickerTarget.notes}
           routines={routines}
           dispatch={dispatch}
+          onSelectAndCustomize={(routineId) => {
+            const target = pickerTarget;
+            setPickerTarget(null);
+            setOverridesTarget({
+              ...target,
+              routineId,
+              isRestDay: false,
+              overrides: null,
+            });
+          }}
+        />
+      ) : null}
+
+      {/* Overrides editor — opens directly when tapping an assigned day */}
+      {overridesTarget?.routineId ? (
+        <OverridesSheet
+          open={true}
+          onClose={() => setOverridesTarget(null)}
+          weekIndex={overridesTarget.weekIndex}
+          dayIndex={overridesTarget.dayIndex}
+          routineId={overridesTarget.routineId}
+          routineName={routineMap.get(overridesTarget.routineId)?.name ?? ""}
+          existingOverrides={overridesTarget.overrides}
+          existingNotes={overridesTarget.notes}
+          exerciseMap={exerciseMap}
+          dispatch={dispatch}
+          onChangeRoutine={() => {
+            setPickerTarget(overridesTarget);
+            setOverridesTarget(null);
+          }}
         />
       ) : null}
 
@@ -958,6 +1033,22 @@ function PlusSmallIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function SlidersIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
     </svg>
   );
 }

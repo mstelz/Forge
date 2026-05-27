@@ -141,11 +141,14 @@ function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => v
       >
         {dot.d}
       </button>
-      {/* Under-cell dot for sessions */}
-      <div className={[
-        "h-[3px] w-[3px] rounded-full",
-        dot.hasFinishedSession ? "bg-[var(--accent)]" : "bg-transparent",
-      ].join(" ")} aria-hidden="true" />
+      {/* Under-cell dot: filled = session done; ring = scheduled but not done */}
+      {dot.hasFinishedSession ? (
+        <div className="h-[3px] w-[3px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
+      ) : dot.hasScheduledWorkout ? (
+        <div className="h-[3px] w-[3px] rounded-full ring-[1.5px] ring-[var(--accent)] opacity-60" aria-hidden="true" />
+      ) : (
+        <div className="h-[3px] w-[3px] rounded-full bg-transparent" aria-hidden="true" />
+      )}
     </div>
   );
 }
@@ -157,17 +160,31 @@ function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => v
 function TodayCard({
   routine,
   inProgressSession,
-  activeProgramRun,
+  todayProgramDayStatus,
+  todayProgramDaySessionId,
 }: {
   routine: Routine | null;
   inProgressSession: ReturnType<typeof useHomepageState>["data"] extends undefined ? null : NonNullable<ReturnType<typeof useHomepageState>["data"]>["inProgressSession"];
-  activeProgramRun: null;
+  todayProgramDayStatus: "not_started" | "active" | "completed" | "skipped" | null;
+  todayProgramDaySessionId: string | null;
 }) {
-  void activeProgramRun;
-
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime();
   const sessionIsToday = inProgressSession != null && inProgressSession.startedAt >= todayStart;
+
+  // Program day already completed today
+  if (routine != null && todayProgramDayStatus === "completed") {
+    return (
+      <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
+        <div className="flex">
+          <div className="w-1 flex-shrink-0 bg-green-500" aria-hidden="true" />
+          <div className="flex-1 p-4">
+            <CompletedDayVariant routine={routine} sessionId={todayProgramDaySessionId} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
@@ -255,6 +272,34 @@ function NoProgramVariant() {
       >
         Start Freeform Workout
       </Link>
+    </>
+  );
+}
+
+function CompletedDayVariant({
+  routine,
+  sessionId,
+}: {
+  routine: Routine;
+  sessionId: string | null;
+}) {
+  return (
+    <>
+      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-green-500">
+        Completed Today
+      </p>
+      <h2 className="text-base font-bold text-[var(--text)]">{routine.name}</h2>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        Great work — today's session is done.
+      </p>
+      {sessionId ? (
+        <Link
+          to={`/workout/sessions/${sessionId}`}
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-green-500 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+        >
+          View session
+        </Link>
+      ) : null}
     </>
   );
 }
@@ -384,6 +429,8 @@ function DayDetailContent({
         <FinishedDayContent session={detail.session} stats={detail.sessionStats} />
       ) : detail.isRestDay ? (
         <RestDayContent />
+      ) : detail.plannedRoutine ? (
+        <PlannedDayContent routine={detail.plannedRoutine} isFuture={detail.isFutureDay} dateQuery={dateQuery} />
       ) : detail.isFutureDay ? (
         <FutureDayContent />
       ) : (
@@ -445,6 +492,33 @@ function FinishedDayContent({
       >
         Open session
       </Link>
+    </div>
+  );
+}
+
+function PlannedDayContent({
+  routine,
+  isFuture,
+  dateQuery,
+}: {
+  routine: import("../../../shared").Routine;
+  isFuture: boolean;
+  dateQuery: string;
+}) {
+  return (
+    <div>
+      <p className="font-bold text-sm text-[var(--text)] mb-1">{routine.name}</p>
+      <p className="text-xs text-[var(--text-muted)] mb-3">
+        {isFuture ? "Scheduled workout" : "Workout not yet logged"}
+      </p>
+      {!isFuture ? (
+        <Link
+          to={`/workout/start?date=${dateQuery}`}
+          className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          Log this workout
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -846,7 +920,8 @@ export function HomePage() {
           <TodayCard
             routine={data.todayRoutine}
             inProgressSession={data.inProgressSession}
-            activeProgramRun={data.activeProgramRun}
+            todayProgramDayStatus={data.todayProgramDayStatus}
+            todayProgramDaySessionId={data.todayProgramDaySessionId}
           />
 
           {/* Program Strip */}

@@ -14,6 +14,7 @@ import {
 } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { computeRunProgress } from "../../lib/programs/run-progress";
+import { getMondayWeekStart } from "../../home/state";
 import { uuidv4 } from "../../lib/uuid";
 import {
   Dialog,
@@ -120,6 +121,94 @@ function EndProgramDialog({
               className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:opacity-60"
             >
               {pending ? "Ending…" : "End program"}
+            </button>
+          </div>
+        </DialogContent>
+      </DialogPortal>
+    </Dialog>
+  );
+}
+
+// ─── Start program dialog ─────────────────────────────────────────────────────
+
+function toDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatWeekRange(mondayMs: number): string {
+  const monday = new Date(mondayMs);
+  const sunday = new Date(mondayMs + 6 * 86400000);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  return `${monday.toLocaleDateString(undefined, opts)} – ${sunday.toLocaleDateString(undefined, opts)}`;
+}
+
+function StartProgramDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  pending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (weekZeroStartDate: number) => void;
+  pending?: boolean;
+}) {
+  const today = new Date();
+  const defaultMonday = getMondayWeekStart(today);
+  const [dateValue, setDateValue] = useState(() => toDateInputValue(today));
+
+  const weekZeroStartDate = getMondayWeekStart(new Date(dateValue)).getTime();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPortal>
+        <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
+        <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+          <DialogTitle className="text-base font-semibold text-[var(--text)]">
+            Start program
+          </DialogTitle>
+          <DialogDescription className="mt-1.5 text-sm text-[var(--text-muted)]">
+            Pick the date your first workout falls on. Week 1 of the program will align to that calendar week.
+          </DialogDescription>
+
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-subtle)] mb-1.5">
+                First workout date
+              </label>
+              <input
+                type="date"
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                min={toDateInputValue(new Date(defaultMonday.getTime() - 7 * 86400000))}
+                className="w-full rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              />
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)]">
+              Week 1 starts: <span className="font-semibold text-[var(--text)]">{formatWeekRange(weekZeroStartDate)}</span>
+            </p>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+              className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(weekZeroStartDate)}
+              disabled={pending || !dateValue}
+              className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+            >
+              {pending ? "Starting…" : "Start program"}
             </button>
           </div>
         </DialogContent>
@@ -445,6 +534,7 @@ export function ProgramDetailPage() {
 
   const [kebabOpen, setKebabOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
+  const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [dayCellMenuTarget, setDayCellMenuTarget] = useState<{
     weekIndex: number;
     dayIndex: number;
@@ -457,7 +547,7 @@ export function ProgramDetailPage() {
   }
 
   const startRunMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (weekZeroStartDate: number) => {
       if (!program) throw new Error("No program");
       const now = Date.now();
       const run = {
@@ -468,6 +558,7 @@ export function ProgramDetailPage() {
         endedAt: null,
         currentWeekIndex: 0,
         currentDayIndex: 0,
+        weekZeroStartDate,
         dayStates: [],
         createdAt: now,
         updatedAt: now,
@@ -476,6 +567,7 @@ export function ProgramDetailPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.programRuns.all });
+      setStartDialogOpen(false);
     },
   });
 
@@ -663,11 +755,10 @@ export function ProgramDetailPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => startRunMutation.mutate()}
-                  disabled={startRunMutation.isPending}
-                  className="w-full rounded-full bg-[var(--accent)] py-2.5 text-sm font-semibold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  onClick={() => setStartDialogOpen(true)}
+                  className="w-full rounded-full bg-[var(--accent)] py-2.5 text-sm font-semibold text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 >
-                  {startRunMutation.isPending ? "Starting…" : "Start program"}
+                  Start program
                 </button>
               )}
             </div>
@@ -737,6 +828,14 @@ export function ProgramDetailPage() {
           }
         />
       ) : null}
+
+      {/* Start program dialog */}
+      <StartProgramDialog
+        open={startDialogOpen}
+        onOpenChange={setStartDialogOpen}
+        onConfirm={(weekZeroStartDate) => startRunMutation.mutate(weekZeroStartDate)}
+        pending={startRunMutation.isPending}
+      />
 
       {/* End program dialog */}
       <EndProgramDialog
