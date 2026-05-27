@@ -20,6 +20,7 @@ if (process.env.NODE_ENV === "production") {
 
 export default {
   port: PORT,
+  hostname: "0.0.0.0",
   fetch: app.fetch,
 };
 
