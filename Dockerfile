@@ -16,6 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV FORGE_DB_PATH=/data/forge.db
 ENV FORGE_CLIENT_DIR=/app/dist/client
+ENV FORGE_MIGRATIONS_DIR=/app/src/db/migrations
 ENV PORT=8080
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/src/db/migrations ./src/db/migrations
