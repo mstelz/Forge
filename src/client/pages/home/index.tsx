@@ -107,10 +107,7 @@ function TopBar({ openDrawer }: { openDrawer: () => void }) {
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const DOW_HEADERS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
-function DailyBriefingStrip({ calendarDots, onDayTap }: {
-  calendarDots: HomepageCalendarDot[];
-  onDayTap: (dot: HomepageCalendarDot) => void;
-}) {
+function DailyBriefingStrip() {
   const today = new Date();
   const dayName = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
   const dateStr = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(today);
@@ -121,20 +118,6 @@ function DailyBriefingStrip({ calendarDots, onDayTap }: {
         {dayName}, {dateStr}
       </p>
       <p className="text-lg font-bold text-[var(--text)]">Daily Briefing</p>
-
-      {/* Mini calendar row */}
-      <div className="mt-2">
-        <div className="grid grid-cols-7 gap-1">
-          {DOW_HEADERS.map((h, i) => (
-            <div key={i} className="text-center text-[9px] font-semibold uppercase text-[var(--text-subtle)]">
-              {h}
-            </div>
-          ))}
-          {calendarDots.map((dot, i) => (
-            <CalendarCell key={i} dot={dot} onTap={() => onDayTap(dot)} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -857,10 +840,7 @@ export function HomePage() {
       ) : data ? (
         <main className="flex-1 pb-8">
           {/* Daily Briefing Strip */}
-          <DailyBriefingStrip
-            calendarDots={data.calendarDots}
-            onDayTap={handleDayTap}
-          />
+          <DailyBriefingStrip />
 
           {/* Primary Today Card */}
           <TodayCard
