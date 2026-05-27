@@ -1,0 +1,2169 @@
+openapi: 3.0.3
+
+info:
+  title: Forge API
+  version: "1"
+  description: |
+    REST API for the Forge workout tracker. All routes are under `/api/v1`.
+
+    **Authentication** — controlled by the `FORGE_TOKEN` environment variable.
+    When set, every request must include `Authorization: Bearer <token>`.
+    When unset (dev / trusted LAN), the auth middleware is skipped entirely.
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local / self-hosted (default port)
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  # ── Reusable error shapes ────────────────────────────────────────────────────
+  schemas:
+    ErrorNotFound:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [not_found]
+
+    ErrorValidation:
+      type: object
+      required: [error, issues]
+      properties:
+        error:
+          type: string
+          enum: [validation]
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              path:
+                type: array
+                items: {}
+              message:
+                type: string
+
+    ErrorIdConflict:
+      type: object
+      required: [error, id]
+      properties:
+        error:
+          type: string
+          enum: [id_conflict]
+        id:
+          type: string
+
+    ErrorNameConflict:
+      type: object
+      required: [error, name]
+      properties:
+        error:
+          type: string
+          enum: [name_conflict]
+        name:
+          type: string
+
+    ErrorStaleUpdate:
+      type: object
+      required: [error, id]
+      properties:
+        error:
+          type: string
+          enum: [stale_update]
+        id:
+          type: string
+          description: Server's current `updatedAt` as a string.
+
+    ErrorFinished:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [finished]
+
+    ErrorInProgressExists:
+      type: object
+      required: [error, id]
+      properties:
+        error:
+          type: string
+          enum: [in_progress_exists]
+        id:
+          type: string
+          description: ID of the existing in-progress session.
+
+    ErrorActiveRunExists:
+      type: object
+      required: [error, id]
+      properties:
+        error:
+          type: string
+          enum: [active_run_exists]
+        id:
+          type: string
+          description: ID of the existing active program run.
+
+    # ── Domain types ───────────────────────────────────────────────────────────
+
+    Equipment:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    EquipmentCreateInput:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms). Defaults to server time when omitted.
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms). Defaults to server time when omitted.
+
+    EquipmentUpdateInput:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+
+    Exercise:
+      type: object
+      required: [id, name, type, primaryMuscles, secondaryMuscles, equipmentIds, aliases, videoUrls, createdAt, updatedAt, lastUsedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          type: string
+          enum: [strength, cardio, mixed]
+        primaryMuscles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Muscle'
+        secondaryMuscles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Muscle'
+        equipmentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        aliases:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+          maxLength: 5000
+          nullable: true
+        instructions:
+          type: string
+          maxLength: 10000
+          nullable: true
+        videoUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+        notes:
+          type: string
+          maxLength: 2000
+          nullable: true
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        lastUsedAt:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms).
+
+    Muscle:
+      type: string
+      enum:
+        - chest
+        - back
+        - quadriceps
+        - hamstrings
+        - glutes
+        - shoulders
+        - biceps
+        - triceps
+        - forearms
+        - core
+        - calves
+        - full_body
+        - conditioning
+        - other
+
+    SetTarget:
+      type: object
+      required: [id, order, setType]
+      properties:
+        id:
+          type: string
+          format: uuid
+        order:
+          type: integer
+          minimum: 0
+        reps:
+          type: integer
+          minimum: 1
+          maximum: 999
+        repsMin:
+          type: integer
+          minimum: 1
+          maximum: 999
+        repsMax:
+          type: integer
+          minimum: 1
+          maximum: 999
+        rpe:
+          type: number
+          minimum: 1
+          maximum: 10
+          description: Must be in 0.5 increments.
+        setType:
+          type: string
+          enum: [normal, amrap, to_failure, drop_set, rest_pause]
+        techniqueNotes:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    RoutineItem:
+      type: object
+      required: [id, exerciseId, order, setCount, repMode, rpeMode, setTypeMode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        exerciseId:
+          type: string
+          format: uuid
+        order:
+          type: integer
+          minimum: 0
+        setCount:
+          type: integer
+          minimum: 1
+          maximum: 20
+        repMode:
+          type: string
+          enum: [uniform, per_set]
+        rpeMode:
+          type: string
+          enum: [uniform, per_set]
+        setTypeMode:
+          type: string
+          enum: [uniform, per_set]
+        uniformReps:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRepsMin:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRepsMax:
+          type: integer
+          minimum: 1
+          maximum: 999
+        uniformRpe:
+          type: number
+          minimum: 1
+          maximum: 10
+        uniformSetType:
+          type: string
+          enum: [normal, amrap, to_failure, drop_set, rest_pause]
+        setTargets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetTarget'
+          description: Required when any mode is `per_set`. Length must equal `setCount`.
+        durationSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        durationMinSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        durationMaxSec:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    RoutineBlock:
+      type: object
+      required: [id, type, order, items]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [single, superset]
+        order:
+          type: integer
+          minimum: 0
+        roundCount:
+          type: integer
+          minimum: 1
+          maximum: 20
+          nullable: true
+          description: Required for `superset` blocks; must be absent for `single`.
+        restSec:
+          type: integer
+          minimum: 0
+          maximum: 3600
+          nullable: true
+        tempo:
+          type: string
+          maxLength: 20
+          nullable: true
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutineItem'
+          description: Exactly 1 item for `single`; 2–6 items for `superset`.
+
+    Routine:
+      type: object
+      required: [id, name, blocks, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        notes:
+          type: string
+          maxLength: 2000
+          nullable: true
+        estimatedDurationMin:
+          type: integer
+          minimum: 1
+          maximum: 600
+          nullable: true
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutineBlock'
+          description: Block `order` values must be dense 0..N-1.
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    RestTimer:
+      type: object
+      required: [status, startedAt, durationSec, pausedAt, remainingSec]
+      properties:
+        status:
+          type: string
+          enum: [idle, running, paused]
+        startedAt:
+          type: integer
+          nullable: true
+        durationSec:
+          type: integer
+          minimum: 1
+        pausedAt:
+          type: integer
+          nullable: true
+        remainingSec:
+          type: number
+          nullable: true
+
+    Session:
+      type: object
+      required: [id, status, sourceType, sourceRoutineId, sourceProgramId, sourceProgramWeekIndex, sourceProgramDayIndex, templateSnapshot, liveStructure, restTimer, title, notes, startedAt, endedAt, pausedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress, finished, discarded]
+        sourceType:
+          type: string
+          enum: [routine, program_day, freeform]
+        sourceRoutineId:
+          type: string
+          nullable: true
+        sourceProgramId:
+          type: string
+          nullable: true
+        sourceProgramWeekIndex:
+          type: integer
+          nullable: true
+        sourceProgramDayIndex:
+          type: integer
+          nullable: true
+        templateSnapshot:
+          type: string
+          nullable: true
+          description: JSON string of the routine snapshot at session start.
+        liveStructure:
+          type: string
+          description: JSON string of the live workout structure.
+        restTimer:
+          type: string
+          nullable: true
+          description: JSON string of the RestTimer state.
+        title:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        startedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        endedAt:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms).
+        pausedAt:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms).
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    SessionSetLog:
+      type: object
+      required: [id, sessionId, performedExerciseId, exerciseId, sessionItemId, plannedSetId, order, reps, weightKg, rpe, durationSec, distanceM, notes, setType, status, loggedAt, restAfterSec, enteredWeight, enteredWeightUnit, enteredDistance, enteredDistanceUnit]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        performedExerciseId:
+          type: string
+          format: uuid
+        exerciseId:
+          type: string
+        sessionItemId:
+          type: string
+          format: uuid
+        plannedSetId:
+          type: string
+          format: uuid
+          nullable: true
+        order:
+          type: integer
+        reps:
+          type: integer
+          nullable: true
+        weightKg:
+          type: number
+          nullable: true
+        rpe:
+          type: number
+          minimum: 1
+          maximum: 10
+          nullable: true
+          description: Must be in 0.5 increments.
+        durationSec:
+          type: integer
+          nullable: true
+        distanceM:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+        setType:
+          type: string
+          enum: [normal, warmup, drop, failure, amrap, rest_pause]
+        status:
+          type: string
+          enum: [logged, skipped, extra]
+        loggedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        restAfterSec:
+          type: integer
+          nullable: true
+        enteredWeight:
+          type: number
+          nullable: true
+        enteredWeightUnit:
+          type: string
+          enum: [kg, lb]
+          nullable: true
+        enteredDistance:
+          type: number
+          nullable: true
+        enteredDistanceUnit:
+          type: string
+          enum: [m, km, mi]
+          nullable: true
+
+    SessionSummary:
+      type: object
+      required: [id, title, sourceType, sourceRoutineId, sourceRoutineName, sourceProgramId, sourceProgramName, sourceProgramWeekIndex, sourceProgramDayIndex, startedAt, endedAt, exerciseCount, setCount, volumeKg, durationMs, hasPr]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        sourceType:
+          type: string
+          enum: [routine, program_day, freeform]
+        sourceRoutineId:
+          type: string
+          format: uuid
+          nullable: true
+        sourceRoutineName:
+          type: string
+          nullable: true
+        sourceProgramId:
+          type: string
+          format: uuid
+          nullable: true
+        sourceProgramName:
+          type: string
+          nullable: true
+        sourceProgramWeekIndex:
+          type: integer
+          nullable: true
+        sourceProgramDayIndex:
+          type: integer
+          nullable: true
+        startedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        endedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        exerciseCount:
+          type: integer
+        setCount:
+          type: integer
+        volumeKg:
+          type: number
+        durationMs:
+          type: integer
+        hasPr:
+          type: boolean
+
+    HistorySummary:
+      type: object
+      required: [totalSessions, totalVolumeKg, totalSets, totalExercises, totalDurationMs]
+      properties:
+        totalSessions:
+          type: integer
+        totalVolumeKg:
+          type: number
+        totalSets:
+          type: integer
+        totalExercises:
+          type: integer
+        totalDurationMs:
+          type: integer
+
+    ProgramDay:
+      type: object
+      required: [id, weekIndex, dayIndex, routineId, isRestDay]
+      properties:
+        id:
+          type: string
+          format: uuid
+        weekIndex:
+          type: integer
+          minimum: 0
+        dayIndex:
+          type: integer
+          minimum: 0
+          maximum: 6
+        routineId:
+          type: string
+          format: uuid
+          nullable: true
+        isRestDay:
+          type: boolean
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    Program:
+      type: object
+      required: [id, name, durationWeeks, days, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        durationWeeks:
+          type: integer
+          minimum: 1
+          maximum: 52
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramDay'
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    ProgramRunDayState:
+      type: object
+      required: [id, weekIndex, dayIndex, status, sessionId, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        weekIndex:
+          type: integer
+          minimum: 0
+        dayIndex:
+          type: integer
+          minimum: 0
+          maximum: 6
+        status:
+          type: string
+          enum: [not_started, active, completed, skipped]
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    ProgramRun:
+      type: object
+      required: [id, programId, status, startedAt, endedAt, currentWeekIndex, currentDayIndex, dayStates, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        programId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, completed, abandoned]
+        startedAt:
+          type: integer
+          description: Unix timestamp (ms).
+        endedAt:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms).
+        currentWeekIndex:
+          type: integer
+          minimum: 0
+        currentDayIndex:
+          type: integer
+          minimum: 0
+          maximum: 6
+        dayStates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramRunDayState'
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    Goal:
+      type: object
+      required: [id, category, title, direction, startValue, targetValue, currentValue, unit, linkedExerciseId, linkedProgramRunId, deadline, notes, status, completedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          type: string
+          enum: [strength, cardio, weight, measurement, program, other]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        direction:
+          type: string
+          enum: [up, down]
+        startValue:
+          type: number
+          nullable: true
+        targetValue:
+          type: number
+          nullable: true
+        currentValue:
+          type: number
+          nullable: true
+        unit:
+          type: string
+          maxLength: 16
+          nullable: true
+        linkedExerciseId:
+          type: string
+          format: uuid
+          nullable: true
+        linkedProgramRunId:
+          type: string
+          format: uuid
+          nullable: true
+        deadline:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms).
+        notes:
+          type: string
+          maxLength: 4000
+          nullable: true
+        status:
+          type: string
+          enum: [active, completed, abandoned]
+        completedAt:
+          type: integer
+          nullable: true
+          description: Unix timestamp (ms). Required when status is `completed`.
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+    Settings:
+      type: object
+      required: [id, weightUnit, distanceUnit, heightUnit, timezone, weekStartsOn, showRpe, showCardio, theme, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Fixed singleton ID `00000000-0000-0000-0000-000000000001`.
+        weightUnit:
+          type: string
+          enum: [kg, lb]
+        distanceUnit:
+          type: string
+          enum: [m, km, mi]
+        heightUnit:
+          type: string
+          enum: [cm, ft]
+        timezone:
+          type: string
+          description: IANA timezone string (e.g. `America/Chicago`).
+        weekStartsOn:
+          type: string
+          enum: [mon, sun]
+        showRpe:
+          type: boolean
+        showCardio:
+          type: boolean
+        theme:
+          type: string
+          enum: [system, light, dark]
+        createdAt:
+          type: integer
+          description: Unix timestamp (ms).
+        updatedAt:
+          type: integer
+          description: Unix timestamp (ms).
+
+  # ── Reusable responses ────────────────────────────────────────────────────────
+  responses:
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorNotFound'
+    ValidationError:
+      description: Request body failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorValidation'
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [unauthorized]
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+paths:
+
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Server is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  # ── Equipment ────────────────────────────────────────────────────────────────
+
+  /equipment:
+    get:
+      summary: List all equipment
+      operationId: listEquipment
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [equipment]
+                properties:
+                  equipment:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Equipment'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create equipment
+      operationId: createEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipmentCreateInput'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID or name already exists.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorIdConflict'
+                  - $ref: '#/components/schemas/ErrorNameConflict'
+
+  /equipment/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get equipment by ID
+      operationId: getEquipment
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update equipment
+      operationId: updateEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipmentUpdateInput'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Name already used by another item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorNameConflict'
+    delete:
+      summary: Delete equipment
+      operationId: deleteEquipment
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Exercises ────────────────────────────────────────────────────────────────
+
+  /exercises:
+    get:
+      summary: List all exercises
+      operationId: listExercises
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exercises]
+                properties:
+                  exercises:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Exercise'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create exercise
+      operationId: createExercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Exercise'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIdConflict'
+
+  /exercises/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get exercise by ID
+      operationId: getExercise
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Replace exercise (full-document update)
+      operationId: updateExercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Exercise'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete exercise
+      operationId: deleteExercise
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Routines ─────────────────────────────────────────────────────────────────
+
+  /routines:
+    get:
+      summary: List all routines (with nested blocks/items/set-targets)
+      operationId: listRoutines
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [routines]
+                properties:
+                  routines:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Routine'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create routine
+      operationId: createRoutine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Routine'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Routine'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIdConflict'
+
+  /routines/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get routine by ID
+      operationId: getRoutine
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Routine'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Replace routine (full-document update — re-inserts all blocks)
+      operationId: updateRoutine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Routine'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Routine'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete routine
+      operationId: deleteRoutine
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Sessions ──────────────────────────────────────────────────────────────────
+
+  /sessions:
+    get:
+      summary: List all sessions (newest first)
+      operationId: listSessions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Start a new session
+      operationId: createSession
+      description: |
+        Creates a session with `status: in_progress`. Only one session may be
+        in progress at a time — returns `409 in_progress_exists` if another
+        already exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, sourceType, templateSnapshot, liveStructure, startedAt, createdAt, updatedAt]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                sourceType:
+                  type: string
+                  enum: [routine, program_day, freeform]
+                sourceRoutineId:
+                  type: string
+                  nullable: true
+                sourceProgramId:
+                  type: string
+                  nullable: true
+                sourceProgramWeekIndex:
+                  type: integer
+                  nullable: true
+                sourceProgramDayIndex:
+                  type: integer
+                  nullable: true
+                templateSnapshot:
+                  type: string
+                  nullable: true
+                liveStructure:
+                  type: string
+                title:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+                startedAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+                createdAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+                updatedAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists or another session is in progress.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorIdConflict'
+                  - $ref: '#/components/schemas/ErrorInProgressExists'
+
+  /sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get session by ID
+      operationId: getSession
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update session (full-document replace)
+      operationId: updateSession
+      description: Returns `409 finished` if the session is already finished.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Session'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Session is already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorFinished'
+    delete:
+      summary: Delete session (cascades to logs)
+      operationId: deleteSession
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /sessions/{id}/finish:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Finish a session
+      operationId: finishSession
+      description: Sets `status: finished` and records `endedAt`. Returns `409 finished` if already finished.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endedAt]
+              properties:
+                endedAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Session is already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorFinished'
+
+  /sessions/{id}/logs:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: List set logs for a session (ordered by loggedAt asc)
+      operationId: listSessionLogs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logs]
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionSetLog'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Add a set log to a session
+      operationId: createSessionLog
+      description: Returns `409 finished` if the parent session is finished.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSetLog'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionSetLog'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: ID conflict or session already finished.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorIdConflict'
+                  - $ref: '#/components/schemas/ErrorFinished'
+
+  /sessions/{id}/logs/{logId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: logId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      summary: Update a set log (full-document replace)
+      operationId: updateSessionLog
+      description: Returns `409 finished` if the parent session is finished.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSetLog'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionSetLog'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Session is already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorFinished'
+    delete:
+      summary: Delete a set log
+      operationId: deleteSessionLog
+      description: Returns `409 finished` if the parent session is finished.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Session is already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorFinished'
+
+  # ── History ───────────────────────────────────────────────────────────────────
+
+  /history/sessions:
+    get:
+      summary: Paginated list of finished session summaries
+      operationId: getHistorySessions
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [all, week, month, year, custom]
+            default: all
+        - name: from
+          in: query
+          description: Start of custom range (Unix ms). Used when `range=custom`.
+          schema:
+            type: integer
+        - name: to
+          in: query
+          description: End of custom range (Unix ms). Used when `range=custom`.
+          schema:
+            type: integer
+        - name: routine
+          in: query
+          description: Filter to sessions sourced from this routine ID.
+          schema:
+            type: string
+            format: uuid
+        - name: program
+          in: query
+          description: Filter to sessions sourced from this program ID.
+          schema:
+            type: string
+            format: uuid
+        - name: exercise
+          in: query
+          description: Filter to sessions that include at least one logged set for this exercise ID.
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          description: Free-text search against session title and notes.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Opaque cursor from a previous response's `nextCursor`.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions, nextCursor]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionSummary'
+                  nextCursor:
+                    type: string
+                    nullable: true
+                    description: Pass as `cursor` in the next request to fetch the next page. `null` when there are no more results.
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /history/summary:
+    get:
+      summary: Aggregate stats for finished sessions matching a filter
+      operationId: getHistorySummary
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [all, week, month, year, custom]
+            default: all
+        - name: from
+          in: query
+          schema:
+            type: integer
+        - name: to
+          in: query
+          schema:
+            type: integer
+        - name: routine
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: program
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: exercise
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorySummary'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Programs ──────────────────────────────────────────────────────────────────
+
+  /programs:
+    get:
+      summary: List all programs (with nested days)
+      operationId: listPrograms
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [programs]
+                properties:
+                  programs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Program'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create program
+      operationId: createProgram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Program'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIdConflict'
+
+  /programs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get program by ID
+      operationId: getProgram
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Replace program (full-document update — re-inserts all days)
+      operationId: updateProgram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Program'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete program
+      operationId: deleteProgram
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Program Runs ──────────────────────────────────────────────────────────────
+
+  /program-runs:
+    get:
+      summary: List all program runs (with nested day states)
+      operationId: listProgramRuns
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProgramRun'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Start a program run
+      operationId: createProgramRun
+      description: |
+        Creates a run with `status: active`. Only one run may be active globally —
+        returns `409 active_run_exists` if another already exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, programId, startedAt]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                programId:
+                  type: string
+                  format: uuid
+                startedAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramRun'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists or another run is active.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorIdConflict'
+                  - $ref: '#/components/schemas/ErrorActiveRunExists'
+
+  /program-runs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get program run by ID
+      operationId: getProgramRun
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramRun'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Replace program run (full-document update — re-inserts all day states)
+      operationId: updateProgramRun
+      description: |
+        Validates that no `dayState.weekIndex` exceeds the program's `durationWeeks`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramRun'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramRun'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete program run
+      operationId: deleteProgramRun
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Goals ─────────────────────────────────────────────────────────────────────
+
+  /goals:
+    get:
+      summary: List all goals
+      operationId: listGoals
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [goals]
+                properties:
+                  goals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create goal
+      operationId: createGoal
+      description: |
+        The full goal record (including `id` and timestamps) is supplied by the
+        client. Category-specific field requirements are enforced — see the Goal
+        schema description for details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Goal'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: ID already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIdConflict'
+
+  /goals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get goal by ID
+      operationId: getGoal
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Partially update goal
+      operationId: updateGoal
+      description: |
+        Merges the incoming fields over the stored record then re-validates the
+        merged result against the full Goal schema. Returns `409 stale_update`
+        if `updatedAt` is older than the server's current value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Goal'
+              description: All fields optional except `id`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Stale update rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorStaleUpdate'
+    delete:
+      summary: Delete goal
+      operationId: deleteGoal
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── Settings ──────────────────────────────────────────────────────────────────
+
+  /settings:
+    get:
+      summary: Get settings (auto-seeds defaults on first call)
+      operationId: getSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      summary: Partially update settings
+      operationId: updateSettings
+      description: |
+        Merges incoming fields over existing settings. Returns `409 stale_update`
+        if `updatedAt` is older than the server's current value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                weightUnit:
+                  type: string
+                  enum: [kg, lb]
+                distanceUnit:
+                  type: string
+                  enum: [m, km, mi]
+                heightUnit:
+                  type: string
+                  enum: [cm, ft]
+                timezone:
+                  type: string
+                weekStartsOn:
+                  type: string
+                  enum: [mon, sun]
+                showRpe:
+                  type: boolean
+                showCardio:
+                  type: boolean
+                theme:
+                  type: string
+                  enum: [system, light, dark]
+                updatedAt:
+                  type: integer
+                  description: Unix timestamp (ms). Used for stale-update detection.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Settings not yet initialized (call GET /settings first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorNotFound'
+        "409":
+          description: Stale update rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorStaleUpdate'
+
+  # ── Export ────────────────────────────────────────────────────────────────────
+
+  /export:
+    get:
+      summary: Full data export
+      operationId: exportData
+      description: |
+        Returns a complete snapshot of all data in a versioned JSON envelope,
+        read inside a single SQLite transaction for consistency. The response
+        sets `Content-Disposition: attachment` with a dated filename.
+
+        Invalid rows are omitted with a warning in `_warnings` rather than
+        aborting the export.
+      responses:
+        "200":
+          description: Export envelope as a downloadable JSON file.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="forge-export-2026-05-27.json"'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schemaVersion, exportedAt, source, appVersion, entities]
+                properties:
+                  schemaVersion:
+                    type: integer
+                    enum: [1]
+                  exportedAt:
+                    type: integer
+                    description: Unix timestamp (ms).
+                  source:
+                    type: string
+                    enum: [server]
+                  appVersion:
+                    type: string
+                  entities:
+                    type: object
+                    properties:
+                      exercises:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Exercise'
+                      equipment:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Equipment'
+                      routines:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Routine'
+                      programs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Program'
+                      programRuns:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ProgramRun'
+                      sessions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Session'
+                      sessionSetLogs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SessionSetLog'
+                      goals:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Goal'
+                      settings:
+                        $ref: '#/components/schemas/Settings'
+                  _warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Present only when some rows were skipped due to validation errors.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Export assembly failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [export_failed]
+                  detail:
+                    type: string
