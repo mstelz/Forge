@@ -31,7 +31,7 @@
     "clsx": "^2.1.1",
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
-    "drizzle-orm": "^0.40.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.7.5",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
