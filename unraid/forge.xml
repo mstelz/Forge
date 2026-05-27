@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Forge</Name>
+  <Repository>ghcr.io/mtstelzer/forge</Repository>
+  <Registry>https://github.com/mtstelzer/forge/pkgs/container/forge</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>Forge is a personal workout routine builder. Plan your training with exercises, supersets, and set targets. Data is stored locally in SQLite.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/mtstelzer/forge/main/src/client/assets/icon-192.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web UI Port" Target="8080" Default="8080" Mode="tcp" Description="Port for the Forge web interface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/forge" Mode="rw" Description="Persistent storage for the SQLite database." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/forge</Config>
+
+  <Config Name="Database Path" Target="FORGE_DB_PATH" Default="/data/forge.db" Mode="" Description="Path inside the container where the SQLite database file is stored. Only change this if you know what you're doing." Type="Variable" Display="advanced" Required="false" Mask="false">/data/forge.db</Config>
+
+  <Config Name="Port (internal)" Target="PORT" Default="8080" Mode="" Description="Internal port the server listens on. Must match the exposed Web UI Port unless you are doing custom port mapping." Type="Variable" Display="advanced" Required="false" Mask="false">8080</Config>
+
+</Container>
