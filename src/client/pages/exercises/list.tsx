@@ -55,37 +55,39 @@ export function ExerciseListPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-[var(--bg)] px-4 pt-4 pb-3">
-        <button
-          type="button"
-          onClick={openDrawer}
-          aria-label="Open navigation"
-          className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <HamburgerIcon />
-        </button>
-        <h1 className="flex-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text)]">
-          Exercise Library
-        </h1>
-        <Link
-          to="/exercises/new"
-          aria-label="Create exercise"
-          className="rounded-md p-2 text-[var(--accent)] hover:text-[var(--accent-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <PlusIcon />
-        </Link>
-      </header>
+      <div className="sticky top-0 z-10 bg-[var(--bg)] border-b border-[var(--border)]">
+        <header className="flex items-center justify-between gap-2 px-4 pt-4 pb-3">
+          <button
+            type="button"
+            onClick={openDrawer}
+            aria-label="Open navigation"
+            className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <HamburgerIcon />
+          </button>
+          <h1 className="flex-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text)]">
+            Exercise Library
+          </h1>
+          <Link
+            to="/exercises/new"
+            aria-label="Create exercise"
+            className="rounded-md p-2 text-[var(--accent)] hover:text-[var(--accent-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <PlusIcon />
+          </Link>
+        </header>
 
-      <div className="space-y-3 px-4">
-        <SearchInput value={search} onChange={setSearch} />
-        <FilterChips
-          type={type}
-          onTypeChange={setType}
-          muscle={muscle}
-          onMuscleChange={setMuscle}
-          equipmentCount={equipmentIds.size}
-          onOpenEquipment={() => setEquipmentSheetOpen(true)}
-        />
+        <div className="space-y-3 px-4 pb-3">
+          <SearchInput value={search} onChange={setSearch} />
+          <FilterChips
+            type={type}
+            onTypeChange={setType}
+            muscle={muscle}
+            onMuscleChange={setMuscle}
+            equipmentCount={equipmentIds.size}
+            onOpenEquipment={() => setEquipmentSheetOpen(true)}
+          />
+        </div>
       </div>
 
       <main className="flex-1 px-4 pt-4 pb-8">

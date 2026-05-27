@@ -315,6 +315,12 @@ export const settings = sqliteTable("settings", {
   id: text("id").primaryKey(),
   weightUnit: text("weight_unit").notNull().default("kg"),
   distanceUnit: text("distance_unit").notNull().default("km"),
+  heightUnit: text("height_unit").notNull().default("cm"),
+  timezone: text("timezone").notNull().default("America/Chicago"),
+  weekStartsOn: text("week_starts_on").notNull().default("mon"),
+  showRpe: integer("show_rpe", { mode: "boolean" }).notNull().default(true),
+  showCardio: integer("show_cardio", { mode: "boolean" }).notNull().default(true),
+  theme: text("theme").notNull().default("system"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

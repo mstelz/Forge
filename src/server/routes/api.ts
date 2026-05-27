@@ -8,6 +8,7 @@ import { programsRoute } from "./programs";
 import { programRunsRoute } from "./program-runs";
 import { goalsRoute } from "./goals";
 import { exportRoute } from "./export";
+import { settingsRoute } from "./settings";
 
 export const api = new Hono();
 
@@ -22,3 +23,4 @@ api.route("/programs", programsRoute);
 api.route("/program-runs", programRunsRoute);
 api.route("/goals", goalsRoute);
 api.route("/export", exportRoute);
+api.route("/settings", settingsRoute);

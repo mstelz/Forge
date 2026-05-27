@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PendingEntityEnum = z.enum(["exercise", "equipment", "routine", "session", "session_log", "program", "program_run", "goal"]);
+export const PendingEntityEnum = z.enum(["exercise", "equipment", "routine", "session", "session_log", "program", "program_run", "goal", "settings"]);
 export type PendingEntity = z.infer<typeof PendingEntityEnum>;
 
 export const PendingOpEnum = z.enum(["create", "update", "delete"]);

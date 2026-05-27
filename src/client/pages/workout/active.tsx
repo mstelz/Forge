@@ -20,9 +20,12 @@ import {
   finishSession,
   deleteSession,
 } from "../../db/mutations";
+import { useContext } from "react";
 import { uuidv4 } from "../../lib/uuid";
 import { ExercisePicker } from "../../components/exercise-picker";
 import { EditStructureSheet } from "./edit-structure/index";
+import { SettingsContext } from "../../contexts/settings-context";
+import { formatWeight, formatDistance } from "../../lib/units";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
 // ─── Internal types ──────────────────────────────────────────────────────────
@@ -205,6 +208,25 @@ function formatDuration(secs: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ message, type }: { message: string; type: "error" | "info" }) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className={[
+        "fixed left-1/2 top-4 z-[100] -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg",
+        type === "error"
+          ? "bg-[var(--danger)] text-white"
+          : "bg-[var(--surface)] text-[var(--text)] ring-1 ring-[var(--border)]",
+      ].join(" ")}
+    >
+      {message}
+    </div>
+  );
+}
+
 // ─── Set Row ──────────────────────────────────────────────────────────────────
 
 type SetRowState = "logged" | "cursor" | "future" | "skipped";
@@ -219,6 +241,7 @@ interface SetRowProps {
 }
 
 function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
+  const { weightUnit } = useContext(SettingsContext);
   const repsTarget = formatRepsTarget(slot);
   const rpeTarget = formatRpeTarget(slot);
 
@@ -228,12 +251,13 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
         <button
           type="button"
           onClick={onClick}
+          aria-label={`Set ${setNumber} — editing`}
           className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/8 px-3 py-2.5 text-left"
         >
           <span className="w-5 text-xs font-bold text-[var(--accent)] tabular-nums">{setNumber}</span>
           <div className="flex flex-1 items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text)]">
-              {log.weightKg != null ? `${log.weightKg} kg` : "—"} × {log.reps ?? "—"}
+              {log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—"} × {log.reps ?? "—"}
             </span>
           </div>
           <span className="text-xs text-[var(--accent)]">editing</span>
@@ -244,12 +268,13 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
       <button
         type="button"
         onClick={onClick}
+        aria-label={`Set ${setNumber} — logged. Tap to edit.`}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
       >
         <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
         <div className="flex flex-1 items-center gap-2">
           <span className="text-sm font-semibold text-[var(--text)]">
-            {log.weightKg != null ? `${log.weightKg} kg` : "—"} × {log.reps ?? "—"}
+            {log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—"} × {log.reps ?? "—"}
           </span>
           {log.rpe != null && (
             <span className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
@@ -267,6 +292,7 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
       <button
         type="button"
         onClick={onClick}
+        aria-label={`Set ${setNumber} — skipped. Tap to edit.`}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
       >
         <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
@@ -280,6 +306,7 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
       <button
         type="button"
         onClick={onClick}
+        aria-label={`Set ${setNumber} — active. Tap to log.`}
         className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2.5 text-left"
       >
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--accent-fg)]">
@@ -308,6 +335,7 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
     <button
       type="button"
       onClick={onClick}
+      aria-label={`Set ${setNumber} — upcoming`}
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
     >
       <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
@@ -356,6 +384,7 @@ function LastTimeLine({
 }) {
   const { data: allLogs } = useLastTimeForExercise(exerciseId);
 
+  const settings = useContext(SettingsContext);
   const summary = useMemo(() => {
     if (!allLogs || allLogs.length === 0) return null;
     const prev = allLogs.filter(
@@ -374,7 +403,7 @@ function LastTimeLine({
     const firstLog = sessionLogs[0]!;
     const weightKg = firstLog.weightKg;
     const repsArr = sessionLogs.map((l) => l.reps).filter((r): r is number => r != null);
-    const weightStr = weightKg != null ? `${weightKg} kg` : null;
+    const weightStr = weightKg != null ? formatWeight(weightKg, settings.weightUnit) : null;
     const repsStr = repsArr.length > 0 ? repsArr.join(", ") : null;
     const when = formatDaysAgo(mostRecentAt);
 
@@ -637,6 +666,13 @@ function BottomPanel({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [logging, setLogging] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+
+  const showToast = useCallback((message: string, type: "error" | "info" = "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const currentSlot = useMemo<PlannedSlot | null>(() => {
     if (!cursor) return null;
@@ -657,8 +693,9 @@ function BottomPanel({
   const currentExerciseType = currentItem
     ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
     : "strength";
+  const { weightUnit, distanceUnit, showRpe, showCardio } = useContext(SettingsContext);
   const showWeightReps = currentExerciseType !== "cardio";
-  const showDurationDistance = currentExerciseType === "cardio" || currentExerciseType === "mixed";
+  const showDurationDistance = (currentExerciseType === "cardio" || currentExerciseType === "mixed") && showCardio;
 
   const isEditingExisting = useMemo(
     () =>
@@ -729,6 +766,23 @@ function BottomPanel({
     const block = liveStructure.blocks[cursor.blockIdx];
     if (!block) return;
 
+    // Validate: require at least one meaningful metric before logging
+    const hasStrengthMetric = (reps != null && reps > 0) || (weightKg != null && weightKg > 0);
+    const hasCardioMetric = (durationSec != null && durationSec > 0) || (distanceM != null && distanceM > 0);
+    if (showWeightReps && !showDurationDistance && !hasStrengthMetric) {
+      setValidationError("Enter reps or weight before logging.");
+      return;
+    }
+    if (!showWeightReps && showDurationDistance && !hasCardioMetric) {
+      setValidationError("Enter duration or distance before logging.");
+      return;
+    }
+    if (showWeightReps && showDurationDistance && !hasStrengthMetric && !hasCardioMetric) {
+      setValidationError("Enter at least one metric before logging.");
+      return;
+    }
+    setValidationError(null);
+
     setLogging(true);
     try {
       const now = Date.now();
@@ -751,7 +805,7 @@ function BottomPanel({
         setType,
         loggedAt: now,
         enteredWeight: weightKg,
-        enteredWeightUnit: (weightKg != null ? "kg" : null) as "kg" | "lb" | null,
+        enteredWeightUnit: (weightKg != null ? weightUnit : null) as "kg" | "lb" | null,
       };
 
       if (existingLog) {
@@ -810,6 +864,9 @@ function BottomPanel({
       setRpe(null);
       // Reset slot tracking so the next cursor position pre-fills fresh
       prevSlotKey.current = null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save. Please try again.";
+      showToast(msg);
     } finally {
       setLogging(false);
     }
@@ -860,22 +917,24 @@ function BottomPanel({
             <>
               <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                  Weight kg
+                  Weight {weightUnit}
                 </p>
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
-                    onClick={() => setWeightKg((w) => Math.max(0, Number(((w ?? 0) - 2.5).toFixed(2))))}
+                    aria-label={`Decrease weight in ${weightUnit}`}
+                    onClick={() => { setValidationError(null); setWeightKg((w) => Math.max(0, Number(((w ?? 0) - 2.5).toFixed(2)))); }}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                  <span aria-label={`Weight: ${weightKg != null ? `${weightKg} kg` : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
                     {weightKg != null ? weightKg : "—"}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setWeightKg((w) => Number(((w ?? 0) + 2.5).toFixed(2)))}
+                    aria-label={`Increase weight in ${weightUnit}`}
+                    onClick={() => { setValidationError(null); setWeightKg((w) => Number(((w ?? 0) + 2.5).toFixed(2))); }}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
@@ -890,17 +949,19 @@ function BottomPanel({
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
-                    onClick={() => setReps((r) => Math.max(1, (r ?? 1) - 1))}
+                    aria-label="Decrease reps by 1"
+                    onClick={() => { setValidationError(null); setReps((r) => Math.max(1, (r ?? 1) - 1)); }}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                  <span aria-label={`Reps: ${reps ?? "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
                     {reps ?? "—"}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setReps((r) => (r ?? 0) + 1)}
+                    aria-label="Increase reps by 1"
+                    onClick={() => { setValidationError(null); setReps((r) => (r ?? 0) + 1); }}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
@@ -918,16 +979,18 @@ function BottomPanel({
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
+                    aria-label="Decrease duration by 10 seconds"
                     onClick={() => setDurationSec((d) => Math.max(0, (d ?? 0) - 10))}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                  <span aria-label={`Duration: ${durationSec != null ? formatDuration(durationSec) : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
                     {durationSec != null ? formatDuration(durationSec) : "—"}
                   </span>
                   <button
                     type="button"
+                    aria-label="Increase duration by 10 seconds"
                     onClick={() => setDurationSec((d) => (d ?? 0) + 10)}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -943,16 +1006,18 @@ function BottomPanel({
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
+                    aria-label="Decrease distance by 100 metres"
                     onClick={() => setDistanceM((d) => Math.max(0, (d ?? 0) - 100))}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+                  <span aria-label={`Distance: ${distanceM != null ? formatDistance(distanceM, distanceUnit) : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
                     {distanceM != null ? distanceM : "—"}
                   </span>
                   <button
                     type="button"
+                    aria-label="Increase distance by 100 metres"
                     onClick={() => setDistanceM((d) => (d ?? 0) + 100)}
                     className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -965,6 +1030,7 @@ function BottomPanel({
         </div>
 
         {/* RPE stepper */}
+        {showRpe && (
         <div className="flex flex-col gap-1.5" style={{ maxWidth: "160px" }}>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
             RPE
@@ -972,16 +1038,18 @@ function BottomPanel({
           <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
             <button
               type="button"
+              aria-label="Decrease RPE by 0.5"
               onClick={() => setRpe((r) => r != null ? Math.max(0, Math.round((r - 0.5) * 2) / 2) : null)}
               className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
             >
               −
             </button>
-            <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+            <span aria-label={`RPE: ${rpe != null ? rpe : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
               {rpe != null ? rpe : "—"}
             </span>
             <button
               type="button"
+              aria-label="Increase RPE by 0.5"
               onClick={() => setRpe((r) => Math.min(10, Math.round(((r ?? 5) + 0.5) * 2) / 2))}
               className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
             >
@@ -989,6 +1057,7 @@ function BottomPanel({
             </button>
           </div>
         </div>
+        )}
 
         {/* Set type chips + note */}
         <div className="flex flex-wrap items-center gap-2">
@@ -1033,6 +1102,13 @@ function BottomPanel({
           />
         )}
 
+        {/* Validation error */}
+        {validationError && (
+          <p role="alert" className="text-xs font-semibold text-[var(--danger)]">
+            {validationError}
+          </p>
+        )}
+
         {/* LOG SET (+ optional SKIP button) */}
         {!isEditingExisting && !cursor?.isExtra ? (
           <div className="flex gap-2">
@@ -1066,6 +1142,9 @@ function BottomPanel({
           </button>
         )}
       </div>
+
+      {/* Toast */}
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
   );
 }
@@ -1088,6 +1167,8 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="More options"
+        aria-expanded={open}
+        aria-haspopup="menu"
         className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <KebabIcon />
@@ -1099,9 +1180,14 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
             onClick={() => setOpen(false)}
             role="presentation"
           />
-          <div className="absolute right-0 z-50 mt-1 w-48 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+          <div
+            role="menu"
+            aria-label="Workout options"
+            className="absolute right-0 z-50 mt-1 w-48 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg"
+          >
             <button
               type="button"
+              role="menuitem"
               onClick={() => { setOpen(false); onEditStructure(); }}
               className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
             >
@@ -1109,6 +1195,7 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={() => { setOpen(false); onPauseAndLeave(); }}
               className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
             >
@@ -1116,6 +1203,7 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={() => { setOpen(false); onFinish(); }}
               className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
             >
@@ -1123,6 +1211,7 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={() => { setOpen(false); onDiscard(); }}
               className="flex w-full items-center px-4 py-2.5 text-sm text-red-500 hover:bg-[var(--surface-elevated)]"
             >
@@ -1371,6 +1460,13 @@ export function ActiveWorkoutPage() {
   // ── Finish / Discard ───────────────────────────────────────────────────────
   const [finishing, setFinishing] = useState(false);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [pageToast, setPageToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+
+  const showPageToast = useCallback((message: string, type: "error" | "info" = "error") => {
+    setPageToast({ message, type });
+    setTimeout(() => setPageToast(null), 3000);
+  }, []);
 
   const handleFinish = useCallback(async () => {
     if (!session || finishing) return;
@@ -1384,18 +1480,30 @@ export function ActiveWorkoutPage() {
       };
       await finishSession(finished);
       navigate(`/workout/sessions/${session.id}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to finish workout. Please try again.";
+      showPageToast(msg);
     } finally {
       setFinishing(false);
       setFinishConfirmOpen(false);
     }
-  }, [session, finishing, navigate]);
+  }, [session, finishing, navigate, showPageToast]);
 
-  const handleDiscard = useCallback(async () => {
+  const handleDiscard = useCallback(() => {
+    setDiscardConfirmOpen(true);
+  }, []);
+
+  const handleDiscardConfirmed = useCallback(async () => {
     if (!session) return;
-    if (!window.confirm("Discard this workout? This cannot be undone.")) return;
-    await deleteSession(session.id);
-    navigate("/workout/start", { replace: true });
-  }, [session, navigate]);
+    try {
+      await deleteSession(session.id);
+      navigate("/workout/start", { replace: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to discard workout.";
+      showPageToast(msg);
+      setDiscardConfirmOpen(false);
+    }
+  }, [session, navigate, showPageToast]);
 
   // ── Pause and leave ────────────────────────────────────────────────────────
   const handlePauseAndLeave = useCallback(async () => {
@@ -1634,6 +1742,40 @@ export function ActiveWorkoutPage() {
           </DialogContent>
         </DialogPortal>
       </Dialog>
+
+      {/* Discard Workout confirm dialog */}
+      <Dialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+        <DialogPortal>
+          <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
+          <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+            <DialogTitle className="text-base font-semibold text-[var(--text)]">
+              Discard workout?
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-sm text-[var(--text-muted)]">
+              All logged sets will be lost. This can't be undone.
+            </DialogDescription>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDiscardConfirmOpen(false)}
+                className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardConfirmed}
+                className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                Discard
+              </button>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+
+      {/* Page-level toast (for finish/discard errors) */}
+      {pageToast && <Toast message={pageToast.message} type={pageToast.type} />}
     </div>
   );
 }

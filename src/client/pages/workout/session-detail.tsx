@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import { useSession, useSessionLogs, useAllSessionLogs } from "../../hooks/use-sessions";
 import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
+import { SettingsContext } from "../../contexts/settings-context";
+import { formatWeight, formatDistance } from "../../lib/units";
 import type { SessionSetLog } from "../../../shared";
 
 // ---------------------------------------------------------------------------
@@ -37,11 +39,6 @@ function formatSecs(totalSec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function formatDistance(m: number): string {
-  if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
-  return `${m} m`;
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -49,6 +46,7 @@ function formatDistance(m: number): string {
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const { data: session, isLoading: sessionLoading } = useSession(id);
   const { data: logs } = useSessionLogs(id);
   const { data: allSessionLogs } = useAllSessionLogs();
@@ -214,7 +212,7 @@ export function SessionDetailPage() {
 
         {/* Metric tiles */}
         <div className="grid grid-cols-3 gap-2">
-          <MetricTile label="Volume" value={`${formatVolume(volumeKg)} kg`} />
+          <MetricTile label="Volume" value={formatWeight(volumeKg, weightUnit)} />
           <MetricTile label="Sets" value={String(setCount)} />
           <MetricTile label="PRs" value={String(prCount)} />
         </div>
@@ -366,7 +364,7 @@ function ExerciseBlock({
   );
 }
 
-function buildLogLabel(log: SessionSetLog, exerciseType: string): string {
+function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg" | "lb", distanceUnit: "m" | "km" | "mi"): string {
   const hasWeight = log.weightKg != null && log.reps != null;
   const hasDuration = log.durationSec != null && log.durationSec > 0;
   const hasDistance = log.distanceM != null && log.distanceM > 0;
@@ -378,26 +376,27 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string): string {
   if (effectiveType === "cardio") {
     const parts: string[] = [];
     if (hasDuration) parts.push(formatSecs(log.durationSec!));
-    if (hasDistance) parts.push(formatDistance(log.distanceM!));
+    if (hasDistance) parts.push(formatDistance(log.distanceM!, distanceUnit));
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
 
   if (effectiveType === "mixed") {
     const parts: string[] = [];
-    if (hasWeight) parts.push(`${log.weightKg} kg × ${log.reps}`);
+    if (hasWeight) parts.push(`${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`);
     else if (log.reps != null) parts.push(`${log.reps} reps`);
     if (hasDuration) parts.push(formatSecs(log.durationSec!));
-    if (hasDistance) parts.push(formatDistance(log.distanceM!));
+    if (hasDistance) parts.push(formatDistance(log.distanceM!, distanceUnit));
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
 
   // strength (default)
-  if (hasWeight) return `${log.weightKg} kg × ${log.reps}`;
+  if (hasWeight) return `${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`;
   if (log.reps != null) return `${log.reps} reps`;
   return "—";
 }
 
 function LogRow({ log, exerciseType }: { log: SessionSetLog; exerciseType: string }) {
+  const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const isSkipped = log.status === "skipped";
   const isExtra = log.status === "extra";
 
@@ -414,7 +413,7 @@ function LogRow({ log, exerciseType }: { log: SessionSetLog; exerciseType: strin
           isSkipped ? "text-[var(--text-subtle)] line-through" : "text-[var(--text)]",
         ].join(" ")}
       >
-        {buildLogLabel(log, exerciseType)}
+        {buildLogLabel(log, exerciseType, weightUnit, distanceUnit)}
       </span>
       {isExtra ? (
         <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)]">

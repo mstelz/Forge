@@ -34,7 +34,7 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 - [x] Phase 9 — Set logging interactions (9.2 skip, 9.4 ADD SET, 9.7 RPE all done; 9.8 numpad deferred)
 - [x] Phase 10 — Finish flow + post-finish detail
 - [x] Phase 11 — Per-exercise history wiring
-- [ ] Phase 12 — Polish
+- [~] Phase 12 — Polish (12.6 mockup contrast audit deferred)
 - [ ] Phase 13 — Manual verification
 
 ---
@@ -270,16 +270,36 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 **Dependencies:** Phases 6–11.
 
-### 12.1 [ ] Validation surfaces in logger + structural-edit sheet
-### 12.2 [ ] Error states (offline writes blocked, 409 finished, in_progress conflict)
-### 12.3 [ ] Empty states across logger, workout-start, post-finish
-- Freeform empty state + "Add exercise" CTA implemented. Other empty states TBD.
-### 12.4 [ ] Optimistic sync correctness review
-### 12.5 [ ] Accessibility sweep
+### 12.1 [x] Validation surfaces in logger + structural-edit sheet
+- Strength: requires reps > 0 or weight > 0 before logging. Cardio: requires duration or distance. Mixed: either group.
+- Inline error message shown below inputs, clears on any stepper interaction.
+- Structural-edit sheet has no text inputs requiring validation.
+### 12.2 [x] Error states (offline writes blocked, 409 finished, in_progress conflict)
+- `handleLogSet` catches thrown errors and shows a toast.
+- `handleFinish` and `handleDiscardConfirmed` catch errors and show page-level toast.
+- `window.confirm` on Discard replaced with Radix Dialog (same pattern as Finish).
+- Offline writes: IndexedDB always succeeds locally; `FlusherTroubleBanner` surfaces sync failures.
+- In-progress conflict: resume banner already implemented on workout-start.
+### 12.3 [x] Empty states across logger, workout-start, post-finish
+- Logger empty state (no exercises): already implemented — "No exercises planned" + Add exercise CTA.
+- Workout-start: "No routines yet" empty state with Create routine CTA (shown when 0 routines and no active session).
+- Post-finish: always has content (title + metrics); no empty state needed.
+### 12.4 [x] Optimistic sync correctness review
+- Flusher processes by `createdAt` ascending (FIFO) and stops on first retry to preserve ordering.
+- Session `create` always enqueued before `session_log` creates (sequential awaits guarantee ordering).
+- `finish` routes to `/finish` endpoint; `isSuccess` treats 409 as success (idempotent).
+- Same-millisecond ties are benign: cross-entity ties don't occur in practice due to transaction boundaries.
+### 12.5 [x] Accessibility sweep
+- `OverflowMenu`: added `aria-expanded`, `aria-haspopup="menu"`, `role="menu"` on dropdown, `role="menuitem"` on items.
+- All stepper buttons (weight, reps, duration, distance, RPE): descriptive `aria-label` attributes added.
+- `SetRow` buttons: `aria-label` on all states (logged, editing, active, skipped, upcoming).
+- Rest timer toggle already had `aria-label`.
 ### 12.6 [ ] Mockup contrast + token audit
-### 12.7 [ ] Outbox ordering correctness
+- Deferred — requires visual browser comparison against design/*.png files.
+### 12.7 [x] Outbox ordering correctness
+- Reviewed: FIFO by `createdAt` is correct. No code change required.
 
-**Acceptance Criteria (Phase 12):** Not started.
+**Acceptance Criteria (Phase 12):** Substantially complete; 12.6 (contrast/token audit) deferred to visual browser pass.
 
 ---
 
@@ -295,8 +315,8 @@ Status legend: `[x]` done, `[~]` partial, `[ ]` not started.
 
 ## Remaining gaps (priority order for next session)
 
-1. **Phase 12** — validation surfaces, error states (offline, 409, conflict), empty states, optimistic sync review, a11y sweep, mockup contrast audit, outbox ordering
-2. **Phase 13** — manual verification against mockups
+1. **Phase 13** — manual verification against mockups
+2. **12.6 Mockup contrast audit** — visual browser pass comparing active.tsx / start.tsx against design/*.png
 3. **9.8 numpad** — `inputmode="decimal"` not set; shared NumpadInput not created (deferred)
 4. **6.6 Full conflict dialog** — resume banner exists; full Radix intercept for second start attempt not implemented
 5. **4.5 log reconcile** — `session_set_logs` not pulled during reconcile (v1 limitation)

@@ -20,6 +20,7 @@ import { ProgramListPage } from "./pages/programs/list";
 import { ProgramNewPage } from "./pages/programs/new";
 import { ProgramDetailPage } from "./pages/programs/detail";
 import { ProgramEditPage } from "./pages/programs/edit";
+import { SettingsPage } from "./pages/settings/index";
 
 const router = createBrowserRouter([
   {
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
       { path: "/workout/active", element: <WorkoutActivePage /> },
       { path: "/workout/sessions/:id", element: <SessionDetailPage /> },
       { path: "/history", element: <HistoryListPage /> },
+      { path: "/settings", element: <SettingsPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

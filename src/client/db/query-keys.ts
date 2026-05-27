@@ -50,4 +50,8 @@ export const queryKeys = {
     list: () => ["goals", "list"] as const,
     byId: (id: string) => ["goals", "byId", id] as const,
   },
+  settings: {
+    all: ["settings"] as const,
+    singleton: () => ["settings", "singleton"] as const,
+  },
 } as const;

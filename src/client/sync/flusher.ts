@@ -16,6 +16,7 @@ export const subscribe = (fn: FlushListener) => {
 };
 
 const endpointFor = (entity: PendingWrite["entity"]) => {
+  if (entity === "settings") return `${API_BASE}/settings`;
   if (entity === "exercise") return `${API_BASE}/exercises`;
   if (entity === "routine") return `${API_BASE}/routines`;
   if (entity === "session") return `${API_BASE}/sessions`;
@@ -24,6 +25,15 @@ const endpointFor = (entity: PendingWrite["entity"]) => {
 };
 
 const send = async (entry: PendingWrite): Promise<Response> => {
+  // Settings always uses PATCH /api/v1/settings with no id in URL
+  if (entry.entity === "settings") {
+    return fetch(`${API_BASE}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry.payload),
+    });
+  }
+
   // Session logs use nested URL: /sessions/:sessionId/logs[/:logId]
   if (entry.entity === "session_log") {
     const p = entry.payload as { id: string; sessionId: string };
@@ -132,10 +142,32 @@ const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
   return "retry";
 };
 
+/**
+ * Coalesce multiple settings pending writes — keep only the one with the
+ * highest createdAt so we don't send stale updates after rapid changes.
+ */
+async function coalesceSettings(): Promise<void> {
+  const settingsWrites = await forgeDB.pendingWrites
+    .where("entity")
+    .equals("settings")
+    .sortBy("createdAt");
+
+  if (settingsWrites.length <= 1) return;
+
+  // Delete all but the last (highest createdAt)
+  const toDelete = settingsWrites.slice(0, settingsWrites.length - 1);
+  for (const entry of toDelete) {
+    await forgeDB.pendingWrites.delete(entry.id);
+  }
+}
+
 export async function flushNow(): Promise<void> {
   if (running) return;
   running = true;
   try {
+    // Coalesce settings writes before draining
+    await coalesceSettings();
+
     const queue = await forgeDB.pendingWrites.orderBy("createdAt").toArray();
     const now = Date.now();
     for (const entry of queue) {

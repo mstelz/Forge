@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useContext } from "react";
 import { Link, useOutletContext } from "react-router";
 import { useHistorySessions, useHistorySummary } from "../../hooks/use-history";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { HistoryFilter } from "../../../shared/history";
 import type { SessionSummary } from "../../../shared/history";
+import { SettingsContext } from "../../contexts/settings-context";
+import { formatWeight } from "../../lib/units";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,6 +82,7 @@ const FILTERS: { label: string; value: RangeFilter }[] = [
 
 export function HistoryListPage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
+  const { weightUnit } = useContext(SettingsContext);
   const [range, setRange] = useState<RangeFilter>("all");
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -141,7 +144,7 @@ export function HistoryListPage() {
         {/* Summary tiles */}
         <div className="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
           <SummaryTile label="Sessions" value={String(totalSessions)} />
-          <SummaryTile label="Volume" value={`${formatVolume(totalVolumeKg)} kg`} />
+          <SummaryTile label="Volume" value={formatWeight(totalVolumeKg, weightUnit)} />
           <SummaryTile label="Sets" value={String(totalSets)} />
           <SummaryTile label="Exercises" value={String(totalExercises)} />
           <SummaryTile label="Time" value={formatDurationMs(totalDurationMs)} />

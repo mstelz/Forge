@@ -37,10 +37,7 @@ export type GoalProgressContext = {
 
 // ─── Weight conversion helpers ────────────────────────────────────────────────
 
-export function convertWeight(kg: number, unit: string): number {
-  if (unit === "lb") return kg * 2.20462;
-  return kg; // kg
-}
+export { convertWeight } from "../lib/units";
 
 // ─── Cardio metric helpers ─────────────────────────────────────────────────────
 
@@ -187,7 +184,8 @@ export function computeGoalProgress(
 
     // Convert to goal unit
     const currentKg = maxEpley;
-    const current = goal.unit === "lb" ? convertWeight(currentKg, "lb") : currentKg;
+    // Use inline conversion to avoid circular import issues with the unit string type
+    const current = goal.unit === "lb" ? currentKg * 2.20462 : currentKg;
 
     const percent = computePercent(current, goal.startValue, goal.targetValue, "up");
     return {

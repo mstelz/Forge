@@ -68,7 +68,7 @@ export function FilterChips({
       role="toolbar"
       aria-label="Filter exercises"
       onKeyDown={onKeyDown}
-      className="space-y-2"
+      className="space-y-3"
     >
       <div className="flex flex-wrap gap-2">
         {TYPE_CHIPS.map((c) => (
@@ -82,7 +82,7 @@ export function FilterChips({
           </Chip>
         ))}
       </div>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {MUSCLE_CHIPS.map((c) => (
           <Chip
             key={`muscle-${c.value}`}

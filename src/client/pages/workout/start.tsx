@@ -253,6 +253,19 @@ export function WorkoutStartPage() {
               })}
             </ul>
           </section>
+        ) : !activeSession ? (
+          <section className="rounded-[var(--radius-card)] border border-dashed border-[var(--border)] p-6 text-center">
+            <p className="text-sm font-semibold text-[var(--text)]">No routines yet</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Build a routine to plan your workouts, or start a freeform session below.
+            </p>
+            <Link
+              to="/routines/new"
+              className="mt-3 inline-block rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-bold text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              Create routine
+            </Link>
+          </section>
         ) : null}
 
         {/* Freeform session */}

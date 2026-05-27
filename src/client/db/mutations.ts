@@ -1,5 +1,6 @@
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings } from "../../shared";
+import { SETTINGS_ID } from "../../shared/settings";
 
 import { uuidv4 as uuid } from "../lib/uuid";
 
@@ -295,3 +296,18 @@ export async function deleteGoal(id: string): Promise<void> {
     await forgeDB.pendingWrites.add(enqueue("goal", "delete", { id }));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Settings mutations
+// ---------------------------------------------------------------------------
+
+export async function updateSettings(record: Settings): Promise<Settings> {
+  await forgeDB.transaction("rw", forgeDB.settings, forgeDB.pendingWrites, async () => {
+    await forgeDB.settings.put(record);
+    await forgeDB.pendingWrites.add(enqueue("settings", "update", record));
+  });
+  return record;
+}
+
+// Re-export SETTINGS_ID for convenience
+export { SETTINGS_ID };

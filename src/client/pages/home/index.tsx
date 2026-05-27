@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useContext } from "react";
 import { Link, useOutletContext } from "react-router";
+import { SettingsContext } from "../../contexts/settings-context";
+import { formatWeight } from "../../lib/units";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import {
   useHomepageState,
@@ -254,15 +256,21 @@ function RoutineVariant({
 function NoProgramVariant() {
   return (
     <>
-      <h2 className="text-base font-bold text-[var(--text)]">No program active</h2>
+      <h2 className="text-base font-bold text-[var(--text)]">No workout scheduled</h2>
       <p className="mt-1 text-xs text-[var(--text-muted)]">
-        Pick a routine to start a freeform workout.
+        Follow a program for structured training, or jump straight into a freeform session.
       </p>
       <Link
-        to="/routines"
+        to="/programs"
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-opacity"
       >
-        Browse Routines
+        Browse Programs
+      </Link>
+      <Link
+        to="/workout/start"
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-colors"
+      >
+        Start Freeform Workout
       </Link>
     </>
   );
@@ -725,23 +733,22 @@ function QuickStatsRow({
   volumeKg: number;
   streakWeeks: number;
 }) {
+  const { weightUnit } = useContext(SettingsContext);
+  const formatted = formatWeight(volumeKg, weightUnit).split(" ");
+  const volValue = formatted[0] ?? "0";
+  const volUnit = formatted[1] ?? weightUnit;
   return (
     <div className="mx-4 mb-3 grid grid-cols-3 gap-2">
       <StatTile label="This Week" value={String(workouts)} unit="workouts" />
-      <StatTile label="Volume" value={formatVolume(volumeKg)} unit="kg" />
+      <StatTile label="Volume" value={volValue} unit={volUnit} />
       <StatTile label="Streak" value={String(streakWeeks)} unit="wk" />
     </div>
   );
 }
 
-function formatVolume(kg: number): string {
-  if (kg >= 1000) return `${(kg / 1000).toFixed(1)}k`;
-  return kg % 1 === 0 ? String(kg) : kg.toFixed(1);
-}
-
 function StatTile({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[14px] bg-[#17181A] px-2 py-3 ring-1 ring-[#26272A] text-center">
+    <div className="flex flex-col items-center justify-center rounded-[14px] bg-[var(--surface)] px-2 py-3 ring-1 ring-[var(--border)] text-center">
       <p className="text-[28px] font-bold leading-none tabular-nums text-[var(--text)]">
         {value}
       </p>

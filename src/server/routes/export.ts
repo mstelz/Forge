@@ -303,6 +303,12 @@ function rowToSettings(row: SettingsRow): Settings {
     id: row.id,
     weightUnit: row.weightUnit as Settings["weightUnit"],
     distanceUnit: row.distanceUnit as Settings["distanceUnit"],
+    heightUnit: row.heightUnit as Settings["heightUnit"],
+    timezone: row.timezone,
+    weekStartsOn: row.weekStartsOn as Settings["weekStartsOn"],
+    showRpe: row.showRpe,
+    showCardio: row.showCardio,
+    theme: row.theme as Settings["theme"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
