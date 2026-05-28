@@ -2,13 +2,36 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { serveStatic } from "hono/bun";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { db } from "../db/client";
+import { createHash } from "crypto";
+import { readFileSync } from "fs";
+import { db, sqlite } from "../db/client";
 import { api } from "./routes/api";
 import { auth } from "./auth";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIR = process.env.FORGE_CLIENT_DIR ?? "./dist/client";
 const MIGRATIONS_DIR = process.env.FORGE_MIGRATIONS_DIR ?? "./src/db/migrations";
+
+// Ensure the drizzle migrations table exists (idempotent — migrate() also does this).
+sqlite.exec(`CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)`);
+
+// If a column was added outside of drizzle (manually or by a partial run that was
+// later rolled back at the record level), record the migration so drizzle doesn't
+// try to re-run it and crash with "duplicate column name".
+function recordIfOrphaned(table: string, column: string, tag: string, when: number) {
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) return;
+  const content = readFileSync(`${MIGRATIONS_DIR}/${tag}.sql`).toString();
+  const hash = createHash("sha256").update(content).digest("hex");
+  const exists = sqlite.prepare("SELECT 1 FROM __drizzle_migrations WHERE hash = ?").get(hash);
+  if (!exists) {
+    console.log(`[migrations] recording orphaned migration ${tag}`);
+    sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)").run(hash, when);
+  }
+}
+
+recordIfOrphaned("program_days", "overrides_json", "0006_program_day_overrides", 1779900000000);
+recordIfOrphaned("program_runs", "week_zero_start_date", "0007_program_run_week_zero", 1779910000000);
 
 migrate(db, { migrationsFolder: MIGRATIONS_DIR });
 console.log("migrations applied");
