@@ -64,7 +64,7 @@ export const ProgramRunSchema = z
     endedAt: z.number().int().nullable(),
     currentWeekIndex: z.number().int().min(0),
     currentDayIndex: z.number().int().min(0).max(6),
-    /** Unix ms of Monday 00:00 local time for week 0. Used to map program days to calendar dates. */
+    /** Unix ms of 00:00 local on the chosen start date (day 0 of week 0). Used to map program days to calendar dates. */
     weekZeroStartDate: timestampMs.optional(),
     dayStates: z.array(ProgramRunDayStateSchema),
     createdAt: timestampMs,

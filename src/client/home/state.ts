@@ -152,17 +152,24 @@ export function computeWeeklyVolumeKg(logs: SessionSetLog[]): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Get the week-zero Monday ms for a run.
+ * Get the week-zero start ms for a run (00:00 local of the chosen start date).
  * Falls back to startedAt-aligned Monday for old runs without weekZeroStartDate.
  */
 function getWeekZeroMs(run: ProgramRun): number {
   return run.weekZeroStartDate ?? getMondayWeekStart(new Date(run.startedAt)).getTime();
 }
 
+/** 00:00:00.000 local time for the given date. */
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /**
  * Given a calendar date, compute (weekIndex, dayIndex) in the program.
  * Returns null if outside the program's range.
- * dayIndex: 0=Mon, 1=Tue, ..., 6=Sun
+ * dayIndex: 0 = program start day, 1 = next day, ..., 6 = last day of week.
  */
 function calendarDateToProgramDay(
   date: Date,
@@ -170,11 +177,11 @@ function calendarDateToProgramDay(
   run: ProgramRun,
 ): { weekIndex: number; dayIndex: number } | null {
   const weekZeroMs = getWeekZeroMs(run);
-  const dateMonday = getMondayWeekStart(date);
-  const weekIndex = Math.round((dateMonday.getTime() - weekZeroMs) / (7 * 86400000));
-  if (weekIndex < 0 || weekIndex >= program.durationWeeks) return null;
-  const dow = date.getDay(); // 0=Sun
-  const dayIndex = (dow + 6) % 7; // 0=Mon
+  const daysSinceStart = Math.round((startOfDay(date).getTime() - weekZeroMs) / 86400000);
+  if (daysSinceStart < 0) return null;
+  const weekIndex = Math.floor(daysSinceStart / 7);
+  const dayIndex = daysSinceStart % 7;
+  if (weekIndex >= program.durationWeeks) return null;
   return { weekIndex, dayIndex };
 }
 
@@ -191,16 +198,19 @@ function buildProgramWeekDots(
   run: ProgramRun,
   today: Date,
 ): HomepageWeekDot[] {
-  const thisWeekMonday = getMondayWeekStart(today);
   const weekZeroMs = getWeekZeroMs(run);
-  const weekIndex = Math.round((thisWeekMonday.getTime() - weekZeroMs) / (7 * 86400000));
+  const daysSinceStart = Math.round((startOfDay(today).getTime() - weekZeroMs) / 86400000);
 
-  if (weekIndex < 0 || weekIndex >= program.durationWeeks) {
+  if (daysSinceStart < 0) {
     return buildEmptyWeekDots();
   }
 
-  const todayDow = today.getDay();
-  const todayDayIndex = (todayDow + 6) % 7; // 0=Mon
+  const weekIndex = Math.floor(daysSinceStart / 7);
+  const todayDayIndex = daysSinceStart % 7;
+
+  if (weekIndex >= program.durationWeeks) {
+    return buildEmptyWeekDots();
+  }
 
   return Array.from({ length: 7 }, (_, dayIndex): HomepageWeekDot => {
     const programDay = program.days.find(

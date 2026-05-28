@@ -14,7 +14,6 @@ import {
 } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { computeRunProgress } from "../../lib/programs/run-progress";
-import { getMondayWeekStart } from "../../home/state";
 import { uuidv4 } from "../../lib/uuid";
 import {
   Dialog,
@@ -138,11 +137,11 @@ function toDateInputValue(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatWeekRange(mondayMs: number): string {
-  const monday = new Date(mondayMs);
-  const sunday = new Date(mondayMs + 6 * 86400000);
+function formatWeekRange(startMs: number): string {
+  const start = new Date(startMs);
+  const end = new Date(startMs + 6 * 86400000);
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  return `${monday.toLocaleDateString(undefined, opts)} – ${sunday.toLocaleDateString(undefined, opts)}`;
+  return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
 function StartProgramDialog({
@@ -157,10 +156,13 @@ function StartProgramDialog({
   pending?: boolean;
 }) {
   const today = new Date();
-  const defaultMonday = getMondayWeekStart(today);
   const [dateValue, setDateValue] = useState(() => toDateInputValue(today));
 
-  const weekZeroStartDate = getMondayWeekStart(new Date(dateValue)).getTime();
+  const weekZeroStartDate = (() => {
+    const d = new Date(dateValue);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -183,7 +185,7 @@ function StartProgramDialog({
                 type="date"
                 value={dateValue}
                 onChange={(e) => setDateValue(e.target.value)}
-                min={toDateInputValue(new Date(defaultMonday.getTime() - 7 * 86400000))}
+                min={toDateInputValue(new Date(today.getTime() - 7 * 86400000))}
                 className="w-full rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               />
             </div>
