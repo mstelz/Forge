@@ -3,10 +3,7 @@ import { useNavigate, useParams, Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useProgram } from "../../hooks/use-programs";
 import { useRoutines } from "../../hooks/use-routines";
-import {
-  useActiveRunForProgram,
-  useGloballyActiveRun,
-} from "../../hooks/use-program-runs";
+import { useActiveRunForProgram } from "../../hooks/use-program-runs";
 import {
   createProgramRun,
   updateProgramRun,
@@ -27,7 +24,7 @@ import type { Program, ProgramRun, ProgramRunDayState } from "../../../shared";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -56,10 +53,12 @@ function computeCurrentWeekIndex(
   if (!run || run.status !== "active") return -1;
   for (let w = 0; w < program.durationWeeks; w++) {
     for (let d = 0; d < 7; d++) {
-      const programDay = program.days.find(
+      const dayEntries = program.days.filter(
         (pd) => pd.weekIndex === w && pd.dayIndex === d,
       );
-      if (programDay?.isRestDay) continue;
+      const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
+      if (primary?.isRestDay) continue;
+      if (!dayEntries.some((pd) => pd.routineId)) continue;
       const ds = getDayState(run, w, d);
       if (!ds || ds.status === "not_started") return w;
     }
@@ -137,13 +136,6 @@ function toDateInputValue(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatWeekRange(startMs: number): string {
-  const start = new Date(startMs);
-  const end = new Date(startMs + 6 * 86400000);
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
-}
-
 function StartProgramDialog({
   open,
   onOpenChange,
@@ -159,9 +151,8 @@ function StartProgramDialog({
   const [dateValue, setDateValue] = useState(() => toDateInputValue(today));
 
   const weekZeroStartDate = (() => {
-    const d = new Date(dateValue);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    const [y, mo, day] = dateValue.split("-").map(Number);
+    return new Date(y!, mo! - 1, day!, 0, 0, 0, 0).getTime();
   })();
 
   return (
@@ -173,13 +164,13 @@ function StartProgramDialog({
             Start program
           </DialogTitle>
           <DialogDescription className="mt-1.5 text-sm text-[var(--text-muted)]">
-            Pick the date your first workout falls on. Week 1 of the program will align to that calendar week.
+            Pick the date to start. Day 1 of the program will be available from this date.
           </DialogDescription>
 
           <div className="mt-4 space-y-3">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-subtle)] mb-1.5">
-                First workout date
+                Start date
               </label>
               <input
                 type="date"
@@ -189,10 +180,6 @@ function StartProgramDialog({
                 className="w-full rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               />
             </div>
-
-            <p className="text-xs text-[var(--text-muted)]">
-              Week 1 starts: <span className="font-semibold text-[var(--text)]">{formatWeekRange(weekZeroStartDate)}</span>
-            </p>
           </div>
 
           <div className="mt-5 flex justify-end gap-2">
@@ -244,9 +231,8 @@ function DayCellMenu({
 
   const ds = getDayState(run, weekIndex, dayIndex);
   const status = ds?.status ?? "not_started";
-  const canSkip =
-    !isRestDay && (status === "not_started" || status === "active");
-  const canUnskip = !isRestDay && status === "skipped";
+  const canSkip = status !== "completed" && status !== "skipped";
+  const canUnskip = status === "skipped";
   const dayLabel = DAY_LABELS[dayIndex] ?? "";
 
   return (
@@ -380,14 +366,14 @@ function ScheduleGrid({
         return (
           <div
             key={wi}
-            className={`rounded-[var(--radius-card)] p-3 ${
+            className={`rounded-[var(--radius-card)] overflow-hidden ${
               isCurrentPeriod
                 ? "border border-[var(--accent)]/30 bg-[var(--surface)]"
                 : "bg-[var(--surface)]"
             }`}
           >
             {/* Week header */}
-            <div className="mb-2 flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-subtle)]">
                 Week {String(wi + 1).padStart(2, "0")}
               </span>
@@ -398,39 +384,29 @@ function ScheduleGrid({
               ) : null}
             </div>
 
-            {/* Day label row */}
-            <div className="grid grid-cols-7 gap-0.5 mb-1">
-              {DAY_LABELS.map((d) => (
-                <div
-                  key={d}
-                  className="text-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]"
-                >
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Day cells */}
-            <div className="grid grid-cols-7 gap-0.5">
+            {/* Day rows */}
+            <div className="divide-y divide-[var(--border)]">
               {Array.from({ length: 7 }, (_, di) => {
-                const programDay = program.days.find(
-                  (pd) => pd.weekIndex === wi && pd.dayIndex === di,
-                );
+                const dayEntries = program.days
+                  .filter((pd) => pd.weekIndex === wi && pd.dayIndex === di)
+                  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
                 const ds = getDayState(run, wi, di);
                 const status = ds?.status ?? "not_started";
 
-                // Is this the "current" day (first not_started in the current period week)?
+                // Is this the "current" day?
                 const isCurrentDay =
                   isCurrentPeriod &&
-                  !programDay?.isRestDay &&
+                  !primary?.isRestDay &&
+                  dayEntries.some((pd) => pd.routineId) &&
                   (status === "not_started" || status === "active") &&
-                  // Only the first such day in this week
                   (() => {
                     for (let d2 = 0; d2 < di; d2++) {
-                      const pd2 = program.days.find(
+                      const entries2 = program.days.filter(
                         (pd) => pd.weekIndex === wi && pd.dayIndex === d2,
                       );
-                      if (pd2?.isRestDay) continue;
+                      const p2 = entries2.find((pd) => (pd.order ?? 0) === 0) ?? entries2[0];
+                      if (p2?.isRestDay || !entries2.some((pd) => pd.routineId)) continue;
                       const ds2 = getDayState(run, wi, d2);
                       const s2 = ds2?.status ?? "not_started";
                       if (s2 === "not_started" || s2 === "active") return false;
@@ -438,80 +414,94 @@ function ScheduleGrid({
                     return true;
                   })();
 
-                let bgClass: string;
-                let cellContent: React.ReactNode;
+                const hasActiveRun = !!run && run.status === "active";
+                const canInteract = hasActiveRun && status !== "completed";
 
-                if (programDay?.isRestDay) {
-                  bgClass =
-                    "border border-[var(--border)] bg-[var(--surface-elevated)]";
-                  cellContent = (
-                    <span className="text-[9px] text-[var(--text-subtle)]">—</span>
-                  );
-                } else if (status === "completed") {
-                  bgClass =
-                    "border border-green-600/50 bg-green-600/10";
-                  cellContent = (
-                    <span className="text-green-500" aria-label="completed">
+                // Status indicator
+                let statusNode: React.ReactNode = null;
+                if (status === "completed") {
+                  statusNode = (
+                    <span className="text-green-500 flex-shrink-0" aria-label="completed">
                       <CheckIcon />
                     </span>
                   );
                 } else if (status === "skipped") {
-                  bgClass =
-                    "border border-[var(--border)] bg-[var(--surface-elevated)] opacity-50";
-                  cellContent = (
-                    <span className="line-through text-[var(--text-subtle)] text-[9px] select-none">
-                      –
+                  statusNode = (
+                    <span className="text-[10px] text-[var(--text-subtle)] flex-shrink-0 opacity-60">
+                      skip
                     </span>
                   );
                 } else if (isCurrentDay) {
-                  bgClass = "border-2 border-[var(--accent)]";
-                  cellContent = programDay?.routineId ? (
-                    <span className="text-[9px] font-bold text-[var(--accent)]">
-                      {getRoutineAbbr(programDay.routineId, routineNames)}
-                    </span>
-                  ) : null;
-                } else if (programDay?.routineId) {
-                  bgClass =
-                    "border border-[var(--border)] bg-[var(--surface)]";
-                  cellContent = (
-                    <span className="text-[9px] font-semibold text-[var(--text-muted)]">
-                      {getRoutineAbbr(programDay.routineId, routineNames)}
-                    </span>
+                  statusNode = (
+                    <span className="h-2 w-2 rounded-full bg-[var(--accent)] flex-shrink-0" aria-label="current day" />
                   );
-                } else {
-                  bgClass = "border border-dashed border-[var(--border)]";
-                  cellContent = null;
                 }
 
-                const hasActiveRun = !!run && run.status === "active";
-                const canInteract =
-                  hasActiveRun &&
-                  !programDay?.isRestDay &&
-                  status !== "completed";
+                // Workout chips or rest indicator
+                let workoutContent: React.ReactNode;
+                if (primary?.isRestDay) {
+                  workoutContent = (
+                    <span className="text-[11px] text-[var(--text-subtle)] italic">rest</span>
+                  );
+                } else if (dayEntries.length > 0 && dayEntries.some((pd) => pd.routineId)) {
+                  workoutContent = (
+                    <div className="flex flex-wrap gap-1">
+                      {dayEntries
+                        .filter((pd) => pd.routineId)
+                        .map((pd) => {
+                          const name = routineNames.get(pd.routineId!) ?? "?";
+                          const label = pd.label ? `${name} · ${pd.label}` : name;
+                          return (
+                            <span
+                              key={pd.id}
+                              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                                isCurrentDay && (pd.order ?? 0) === 0
+                                  ? "bg-[var(--accent)]/10 text-[var(--accent)] ring-1 ring-[var(--accent)]/30"
+                                  : status === "completed"
+                                    ? "bg-green-600/10 text-green-600"
+                                    : status === "skipped"
+                                      ? "opacity-50 bg-[var(--surface-elevated)] text-[var(--text-subtle)]"
+                                      : "bg-[var(--surface-elevated)] text-[var(--text-muted)]"
+                              }`}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  );
+                } else {
+                  workoutContent = null;
+                }
 
                 return (
-                  <button
+                  <div
                     key={di}
-                    type="button"
-                    onClick={
-                      canInteract ? () => onDayCellMenu(wi, di) : undefined
-                    }
-                    aria-label={`Week ${wi + 1} ${DAY_LABELS[di]}${
-                      programDay?.isRestDay
-                        ? " (rest)"
-                        : status !== "not_started"
-                          ? ` (${status})`
-                          : ""
-                    }`}
+                    role={canInteract ? "button" : undefined}
+                    tabIndex={canInteract ? 0 : undefined}
+                    onClick={canInteract ? () => onDayCellMenu(wi, di) : undefined}
+                    onKeyDown={canInteract ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDayCellMenu(wi, di); } } : undefined}
+                    aria-label={`Week ${wi + 1} ${DAY_LABELS[di]}${primary?.isRestDay ? " (rest)" : status !== "not_started" ? ` (${status})` : ""}`}
                     aria-current={isCurrentDay ? "step" : undefined}
-                    className={`flex h-9 items-center justify-center rounded-[6px] transition-colors ${bgClass} ${
+                    className={`flex min-h-[38px] items-center gap-3 px-3 py-1.5 ${
                       canInteract
-                        ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                        : "cursor-default"
-                    }`}
+                        ? "cursor-pointer hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-inset focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        : ""
+                    } ${isCurrentDay ? "bg-[var(--accent)]/5" : ""}`}
                   >
-                    {cellContent}
-                  </button>
+                    {/* Day label */}
+                    <span className={`w-6 flex-shrink-0 text-[10px] font-bold uppercase tracking-wider ${isCurrentDay ? "text-[var(--accent)]" : "text-[var(--text-subtle)]"}`}>
+                      {DAY_LABELS[di]}
+                    </span>
+
+                    {/* Workout chips */}
+                    <div className="flex-1 min-w-0">
+                      {workoutContent}
+                    </div>
+
+                    {/* Status icon */}
+                    {statusNode}
+                  </div>
                 );
               })}
             </div>
@@ -532,7 +522,6 @@ export function ProgramDetailPage() {
   const { data: program, isLoading } = useProgram(id);
   const { data: routines } = useRoutines();
   const { data: activeRun } = useActiveRunForProgram(id);
-  const { data: globallyActiveRun } = useGloballyActiveRun();
 
   const [kebabOpen, setKebabOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -669,8 +658,6 @@ export function ProgramDetailPage() {
   const progress = activeRun ? computeRunProgress(program, activeRun) : 0;
   const currentWeekIndex = computeCurrentWeekIndex(program, activeRun);
   const desc = program.description?.split("\n")[0]?.trim();
-  const globallyActiveOtherProgram =
-    globallyActiveRun && globallyActiveRun.programId !== program.id;
 
   return (
     <>
@@ -742,27 +729,16 @@ export function ProgramDetailPage() {
             </>
           ) : null}
 
-          {/* Start / blocked CTA */}
+          {/* Start CTA */}
           {!activeRun ? (
             <div className="pt-1">
-              {globallyActiveOtherProgram ? (
-                <button
-                  type="button"
-                  disabled
-                  title="End your active program first"
-                  className="w-full rounded-full border border-[var(--border)] py-2.5 text-sm font-semibold text-[var(--text-subtle)] cursor-not-allowed opacity-60"
-                >
-                  End your active program first
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setStartDialogOpen(true)}
-                  className="w-full rounded-full bg-[var(--accent)] py-2.5 text-sm font-semibold text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                >
-                  Start program
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setStartDialogOpen(true)}
+                className="w-full rounded-full bg-[var(--accent)] py-2.5 text-sm font-semibold text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Start program
+              </button>
             </div>
           ) : null}
         </div>

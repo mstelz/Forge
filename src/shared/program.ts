@@ -26,6 +26,8 @@ export const ProgramDaySchema = z.object({
   id: uuid,
   weekIndex: z.number().int().min(0),
   dayIndex: z.number().int().min(0).max(6),
+  order: z.number().int().min(0).default(0),
+  label: z.string().max(50).nullable().optional(),
   routineId: uuid.nullable(),
   isRestDay: z.boolean(),
   notes: z.string().max(1000).nullable().optional(),
@@ -46,19 +48,20 @@ const programBase = {
 };
 
 function refineProgramDays(
-  val: { durationWeeks: number; days: { weekIndex: number; dayIndex: number; routineId?: string | null; isRestDay: boolean }[] },
+  val: { durationWeeks: number; days: { weekIndex: number; dayIndex: number; order?: number; routineId?: string | null; isRestDay: boolean }[] },
   ctx: z.RefinementCtx,
 ) {
-  // (weekIndex, dayIndex) uniqueness
+  // (weekIndex, dayIndex, order) uniqueness
   const seen = new Set<string>();
   for (let i = 0; i < val.days.length; i++) {
     const d = val.days[i]!;
-    const key = `${d.weekIndex}:${d.dayIndex}`;
+    const order = d.order ?? 0;
+    const key = `${d.weekIndex}:${d.dayIndex}:${order}`;
     if (seen.has(key)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["days", i, "weekIndex"],
-        message: `Duplicate (weekIndex, dayIndex) pair: (${d.weekIndex}, ${d.dayIndex})`,
+        message: `Duplicate (weekIndex, dayIndex, order) tuple: (${d.weekIndex}, ${d.dayIndex}, ${order})`,
       });
     }
     seen.add(key);
@@ -69,6 +72,15 @@ function refineProgramDays(
         code: z.ZodIssueCode.custom,
         path: ["days", i, "weekIndex"],
         message: `weekIndex ${d.weekIndex} is out of range [0, ${val.durationWeeks - 1}]`,
+      });
+    }
+
+    // isRestDay only valid on order === 0
+    if (d.isRestDay && order !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["days", i, "isRestDay"],
+        message: "isRestDay=true is only valid on the primary workout slot (order 0)",
       });
     }
 

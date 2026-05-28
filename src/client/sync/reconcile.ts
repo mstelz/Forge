@@ -1,5 +1,5 @@
 import { forgeDB } from "../db/forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, Program } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, Program, ProgramRun } from "../../shared";
 
 const API_BASE = "/api/v1";
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -119,17 +119,35 @@ async function reconcilePrograms(serverRows: Program[], pending: PendingWrite[])
   });
 }
 
+async function reconcileProgramRuns(serverRows: ProgramRun[], pending: PendingWrite[]) {
+  const pendingMap = indexPending(pending, "program_run");
+  const localRows = await forgeDB.programRuns.toArray();
+  const serverIds = new Set(serverRows.map((r) => r.id));
+  await forgeDB.transaction("rw", forgeDB.programRuns, async () => {
+    for (const s of serverRows) {
+      if (pendingMap.has(s.id)) continue;
+      await forgeDB.programRuns.put(s);
+    }
+    for (const l of localRows) {
+      if (serverIds.has(l.id)) continue;
+      if (pendingMap.get(l.id) === "create") continue;
+      await forgeDB.programRuns.delete(l.id);
+    }
+  });
+}
+
 export async function reconcileNow(): Promise<void> {
   if (running) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   running = true;
   try {
-    const [exResp, eqResp, rtResp, sessResp, progResp, pending] = await Promise.all([
+    const [exResp, eqResp, rtResp, sessResp, progResp, runsResp, pending] = await Promise.all([
       fetchJson<{ exercises: Exercise[] }>(`${API_BASE}/exercises`),
       fetchJson<{ equipment: Equipment[] }>(`${API_BASE}/equipment`),
       fetchJson<{ routines: Routine[] }>(`${API_BASE}/routines`),
       fetchJson<{ sessions: Session[] }>(`${API_BASE}/sessions`),
       fetchJson<{ programs: Program[] }>(`${API_BASE}/programs`),
+      fetchJson<{ runs: ProgramRun[] }>(`${API_BASE}/program-runs`),
       forgeDB.pendingWrites.toArray(),
     ]);
     await reconcileExercises(exResp.exercises, pending);
@@ -137,6 +155,7 @@ export async function reconcileNow(): Promise<void> {
     await reconcileRoutines(rtResp.routines, pending);
     await reconcileSessions(sessResp.sessions, pending);
     await reconcilePrograms(progResp.programs, pending);
+    await reconcileProgramRuns(runsResp.runs, pending);
   } catch (err) {
     console.warn("[reconcile] failed", err);
   } finally {

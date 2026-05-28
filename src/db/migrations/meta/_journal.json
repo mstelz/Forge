@@ -57,6 +57,13 @@
       "when": 1779910000000,
       "tag": "0007_program_run_week_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1748390400000,
+      "tag": "0008_program_day_multi_workout",
+      "breakpoints": true
     }
   ]
 }

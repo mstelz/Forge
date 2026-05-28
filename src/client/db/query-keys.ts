@@ -43,6 +43,7 @@ export const queryKeys = {
     byId: (id: string) => ["programRuns", "byId", id] as const,
     activeForProgram: (programId: string) => ["programRuns", "active", programId] as const,
     globallyActive: () => ["programRuns", "globallyActive"] as const,
+    activeList: () => ["programRuns", "activeList"] as const,
     finishedForProgram: (programId: string) => ["programRuns", "finished", programId] as const,
   },
   goals: {

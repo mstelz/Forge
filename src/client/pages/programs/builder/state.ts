@@ -7,6 +7,8 @@ export type DraftProgramDay = {
   id: string;
   weekIndex: number;
   dayIndex: number;
+  order: number;
+  label?: string | null;
   routineId: string | null;
   isRestDay: boolean;
   notes?: string | null;
@@ -47,6 +49,8 @@ export function toDraft(program: Program): DraftProgram {
       id: d.id,
       weekIndex: d.weekIndex,
       dayIndex: d.dayIndex,
+      order: d.order ?? 0,
+      label: d.label ?? null,
       routineId: d.routineId,
       isRestDay: d.isRestDay,
       notes: d.notes ?? null,
@@ -67,6 +71,8 @@ export function normalizeDraft(draft: DraftProgram): Program {
       id: d.id,
       weekIndex: d.weekIndex,
       dayIndex: d.dayIndex,
+      order: d.order,
+      label: d.label ?? null,
       routineId: d.routineId ?? null,
       isRestDay: d.isRestDay,
       notes: d.notes ?? null,
@@ -89,8 +95,11 @@ export type BuilderAction =
   | { type: "SET_NAME"; name: string }
   | { type: "SET_DESCRIPTION"; description: string }
   | { type: "SET_DURATION_WEEKS"; weeks: number }
-  | { type: "SET_DAY"; weekIndex: number; dayIndex: number; routineId: string | null; isRestDay: boolean; notes?: string | null; overrides?: RoutineItemOverride[] | null }
-  | { type: "SET_DAY_OVERRIDES"; weekIndex: number; dayIndex: number; overrides: RoutineItemOverride[] | null; notes?: string | null }
+  | { type: "SET_DAY"; weekIndex: number; dayIndex: number; order?: number; routineId: string | null; isRestDay: boolean; label?: string | null; notes?: string | null; overrides?: RoutineItemOverride[] | null }
+  | { type: "ADD_WORKOUT"; weekIndex: number; dayIndex: number; routineId: string; label?: string | null }
+  | { type: "REMOVE_WORKOUT"; weekIndex: number; dayIndex: number; order: number }
+  | { type: "SET_WORKOUT_LABEL"; weekIndex: number; dayIndex: number; order: number; label: string | null }
+  | { type: "SET_DAY_OVERRIDES"; weekIndex: number; dayIndex: number; order?: number; overrides: RoutineItemOverride[] | null; notes?: string | null }
   | { type: "CLEAR_DAY"; weekIndex: number; dayIndex: number }
   | { type: "DUPLICATE_WEEK"; sourceWeek: number; destStart: number; destEnd: number }
   | { type: "REPEAT_PATTERN"; sourceStart: number; sourceEnd: number };
@@ -117,7 +126,6 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
 
     case "SET_DURATION_WEEKS": {
       const weeks = Math.max(1, Math.min(52, action.weeks));
-      // Drop days that are now out-of-range
       const days = state.draft.days.filter((d) => d.weekIndex < weeks);
       return {
         ...state,
@@ -127,23 +135,29 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     }
 
     case "SET_DAY": {
-      const { weekIndex, dayIndex, routineId, isRestDay, notes, overrides } = action;
-      // Upsert: remove existing entry for this slot then add new
+      const { weekIndex, dayIndex, routineId, isRestDay, notes, overrides, label } = action;
+      const order = action.order ?? 0;
+      // Upsert: remove existing entry for this specific slot then add new
       const filtered = state.draft.days.filter(
-        (d) => !(d.weekIndex === weekIndex && d.dayIndex === dayIndex),
+        (d) => !(d.weekIndex === weekIndex && d.dayIndex === dayIndex && d.order === order),
       );
-      // Only persist if there's something to store
+      // If it's a rest day, also remove all higher-order workouts for this day
+      const filteredAll = isRestDay
+        ? filtered.filter((d) => !(d.weekIndex === weekIndex && d.dayIndex === dayIndex))
+        : filtered;
       if (!routineId && !isRestDay && !notes) {
         return {
           ...state,
           isDirty: true,
-          draft: { ...state.draft, days: filtered },
+          draft: { ...state.draft, days: filteredAll },
         };
       }
       const newDay: DraftProgramDay = {
         id: uuidv4(),
         weekIndex,
         dayIndex,
+        order,
+        label: label ?? null,
         routineId: routineId ?? null,
         isRestDay,
         notes: notes ?? null,
@@ -152,14 +166,71 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
       return {
         ...state,
         isDirty: true,
-        draft: { ...state.draft, days: [...filtered, newDay] },
+        draft: { ...state.draft, days: [...filteredAll, newDay] },
       };
+    }
+
+    case "ADD_WORKOUT": {
+      const { weekIndex, dayIndex, routineId, label } = action;
+      // Find the highest existing order for this day and add one
+      const existingOrders = state.draft.days
+        .filter((d) => d.weekIndex === weekIndex && d.dayIndex === dayIndex)
+        .map((d) => d.order);
+      const nextOrder = existingOrders.length > 0 ? Math.max(...existingOrders) + 1 : 0;
+      const newDay: DraftProgramDay = {
+        id: uuidv4(),
+        weekIndex,
+        dayIndex,
+        order: nextOrder,
+        label: label ?? null,
+        routineId,
+        isRestDay: false,
+        notes: null,
+        overrides: null,
+      };
+      return {
+        ...state,
+        isDirty: true,
+        draft: { ...state.draft, days: [...state.draft.days, newDay] },
+      };
+    }
+
+    case "REMOVE_WORKOUT": {
+      const { weekIndex, dayIndex, order } = action;
+      // Remove the specific workout
+      const remaining = state.draft.days.filter(
+        (d) => !(d.weekIndex === weekIndex && d.dayIndex === dayIndex && d.order === order),
+      );
+      // Re-index remaining workouts for this day so orders are gapless 0, 1, 2…
+      const dayWorkouts = remaining
+        .filter((d) => d.weekIndex === weekIndex && d.dayIndex === dayIndex)
+        .sort((a, b) => a.order - b.order)
+        .map((d, i) => ({ ...d, order: i }));
+      const otherDays = remaining.filter(
+        (d) => !(d.weekIndex === weekIndex && d.dayIndex === dayIndex),
+      );
+      return {
+        ...state,
+        isDirty: true,
+        draft: { ...state.draft, days: [...otherDays, ...dayWorkouts] },
+      };
+    }
+
+    case "SET_WORKOUT_LABEL": {
+      const { weekIndex, dayIndex, order, label } = action;
+      const days = state.draft.days.map((d) =>
+        d.weekIndex === weekIndex && d.dayIndex === dayIndex && d.order === order
+          ? { ...d, label }
+          : d,
+      );
+      return { ...state, isDirty: true, draft: { ...state.draft, days } };
     }
 
     case "SET_DAY_OVERRIDES": {
       const { weekIndex, dayIndex, overrides, notes } = action;
+      const order = action.order ?? 0;
       const days = state.draft.days.map((d) =>
-        d.weekIndex === weekIndex && d.dayIndex === dayIndex
+        d.weekIndex === weekIndex && d.dayIndex === dayIndex && d.order === order
           ? { ...d, overrides, ...(notes !== undefined ? { notes } : {}) }
           : d,
       );
@@ -183,11 +254,9 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     case "DUPLICATE_WEEK": {
       const { sourceWeek, destStart, destEnd } = action;
       const sourcedays = state.draft.days.filter((d) => d.weekIndex === sourceWeek);
-      // Remove all days in dest range
       const filtered = state.draft.days.filter(
         (d) => d.weekIndex < destStart || d.weekIndex > destEnd,
       );
-      // Clone source week into each dest week
       const cloned: DraftProgramDay[] = [];
       for (let w = destStart; w <= destEnd; w++) {
         for (const d of sourcedays) {
@@ -205,13 +274,11 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
       const { sourceStart, sourceEnd } = action;
       const patternWeeks = sourceEnd - sourceStart + 1;
       const { durationWeeks } = state.draft;
-      // Remove all days outside of the source pattern
       const filtered = state.draft.days.filter(
         (d) => d.weekIndex >= sourceStart && d.weekIndex <= sourceEnd,
       );
       const cloned: DraftProgramDay[] = [];
       for (let w = sourceEnd + 1; w < durationWeeks; w++) {
-        // Which week in the pattern does w correspond to?
         const patternWeekOffset = (w - sourceEnd - 1) % patternWeeks;
         const sourceWeek = sourceStart + patternWeekOffset;
         const sourcedays = state.draft.days.filter((d) => d.weekIndex === sourceWeek);

@@ -7,6 +7,7 @@ import {
   getProgramRunById,
   getActiveRunForProgram,
   getGloballyActiveRun,
+  listActiveRuns,
   listFinishedRunsForProgram,
 } from "../db/queries";
 import { queryKeys } from "../db/query-keys";
@@ -70,6 +71,24 @@ export function useActiveRunForProgram(programId: string | undefined) {
       : ["programRuns", "activeForProgram", "_disabled"],
     queryFn: () => (programId ? getActiveRunForProgram(programId) : null),
     enabled: !!programId,
+  });
+}
+
+export function useActiveRuns() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const sub = liveQuery(() =>
+      forgeDB.programRuns.where("status").equals("active").toArray(),
+    ).subscribe({
+      next: () =>
+        qc.invalidateQueries({ queryKey: queryKeys.programRuns.activeList() }),
+    });
+    return () => sub.unsubscribe();
+  }, [qc]);
+
+  return useQuery({
+    queryKey: queryKeys.programRuns.activeList(),
+    queryFn: listActiveRuns,
   });
 }
 

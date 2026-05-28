@@ -2,8 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePrograms } from "../../hooks/use-programs";
-import { useGloballyActiveRun } from "../../hooks/use-program-runs";
-import { useFinishedRunsForProgram } from "../../hooks/use-program-runs";
+import { useActiveRuns, useFinishedRunsForProgram } from "../../hooks/use-program-runs";
 import { deleteProgram } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { ActiveProgramCard } from "./active-card";
@@ -77,15 +76,13 @@ export function ProgramListPage() {
   const qc = useQueryClient();
 
   const { data: programs, isLoading } = usePrograms();
-  const { data: globallyActiveRun } = useGloballyActiveRun();
+  const { data: activeRuns } = useActiveRuns();
 
-  // Identify active program (if any)
-  const activeProgram = programs?.find(
-    (p) => p.id === globallyActiveRun?.programId,
-  );
+  // Programs that have an active run
+  const activeProgramIds = new Set(activeRuns?.map((r) => r.programId) ?? []);
 
-  // All other programs (not the active one)
-  const otherPrograms = programs?.filter((p) => p.id !== activeProgram?.id);
+  // All other programs (no active run)
+  const otherPrograms = programs?.filter((p) => !activeProgramIds.has(p.id));
   const filteredOther = useFilteredPrograms(otherPrograms, search);
 
   const totalCount = programs?.length ?? 0;
@@ -101,8 +98,8 @@ export function ProgramListPage() {
   });
 
   const handleDeleteRequest = (program: Program) => {
-    // Guard: refuse to delete if this program has the active run
-    if (globallyActiveRun?.programId === program.id) {
+    // Guard: refuse to delete if this program has an active run
+    if (activeProgramIds.has(program.id)) {
       alert("End the active run first before deleting this program.");
       return;
     }
@@ -165,15 +162,21 @@ export function ProgramListPage() {
           <FullEmptyState />
         ) : (
           <>
-            {/* Active program card */}
-            {activeProgram && globallyActiveRun && !hasSearch ? (
-              <ActiveProgramCard program={activeProgram} run={globallyActiveRun} />
+            {/* Active program cards */}
+            {!hasSearch && activeRuns && activeRuns.length > 0 ? (
+              <section className="space-y-2">
+                {activeRuns.map((run) => {
+                  const program = programs?.find((p) => p.id === run.programId);
+                  if (!program) return null;
+                  return <ActiveProgramCard key={run.id} program={program} run={run} />;
+                })}
+              </section>
             ) : null}
 
             {/* Other programs */}
             {otherPrograms && otherPrograms.length > 0 ? (
               <section>
-                {!hasSearch ? (
+                {!hasSearch && (activeRuns?.length ?? 0) > 0 ? (
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-subtle)]">
                     Other Programs
                   </p>

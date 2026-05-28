@@ -341,6 +341,7 @@ type OverridesSheetProps = {
   onClose: () => void;
   weekIndex: number;
   dayIndex: number;
+  order: number;
   routineId: string;
   routineName: string;
   existingOverrides: RoutineItemOverride[] | null;
@@ -355,6 +356,7 @@ export function OverridesSheet({
   onClose,
   weekIndex,
   dayIndex,
+  order,
   routineId,
   routineName,
   existingOverrides,
@@ -386,6 +388,7 @@ export function OverridesSheet({
       type: "SET_DAY_OVERRIDES",
       weekIndex,
       dayIndex,
+      order,
       overrides: collectOverrides(drafts),
       notes: notes || null,
     });

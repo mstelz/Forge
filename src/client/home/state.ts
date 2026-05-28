@@ -4,12 +4,13 @@
  * Reads from existing Dexie stores only. No server calls, no mutations.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
 import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import { isVolumeLog } from "../hooks/use-history";
+import { computeNextPlayableDay } from "../lib/programs/next-day";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,18 +39,27 @@ export type HomepageCalendarDot = {
   isToday: boolean;
 };
 
+export type ActiveRunState = {
+  run: ProgramRun;
+  program: Program;
+  routine: Routine | null;
+  exerciseNames: Record<string, string>;
+  /** Status of the current program day (the next not_started day in sequence). */
+  dayStatus: "not_started" | "active" | "completed" | "skipped" | null;
+  /** Session ID linked to the current day's state, if any. */
+  daySessionId: string | null;
+  /** The week dots for this program run (7 dots for the current week in the run). */
+  weekDots: HomepageWeekDot[];
+};
+
 export type HomepageState = {
   todayLocal: { y: number; m: number; d: number; weekday: number };
   weekStart: number; // unix ms, Monday 00:00 local
+  /** All currently active program runs with their computed state. */
+  activeRunStates: ActiveRunState[];
+  /** Convenience: first active run, or null. For backward compat with weekDots. */
   activeProgramRun: ProgramRun | null;
-  todayPlannedDay: null;
-  todayRoutine: Routine | null;
-  /** Status of today's program day, null if no program day is scheduled for today. */
-  todayProgramDayStatus: "not_started" | "active" | "completed" | "skipped" | null;
-  /** Session ID linked to today's completed/active program day, if any. */
-  todayProgramDaySessionId: string | null;
   inProgressSession: Session | null;
-  weekDots: HomepageWeekDot[];
   calendarDots: HomepageCalendarDot[];
   weeklyStats: { workouts: number; volumeKg: number; streakWeeks: number };
   topGoals: Goal[];
@@ -151,85 +161,40 @@ export function computeWeeklyVolumeKg(logs: SessionSetLog[]): number {
 // Program calendar helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Get the week-zero start ms for a run (00:00 local of the chosen start date).
- * Falls back to startedAt-aligned Monday for old runs without weekZeroStartDate.
- */
-function getWeekZeroMs(run: ProgramRun): number {
-  return run.weekZeroStartDate ?? getMondayWeekStart(new Date(run.startedAt)).getTime();
-}
-
-/** 00:00:00.000 local time for the given date. */
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-/**
- * Given a calendar date, compute (weekIndex, dayIndex) in the program.
- * Returns null if outside the program's range.
- * dayIndex: 0 = program start day, 1 = next day, ..., 6 = last day of week.
- */
-function calendarDateToProgramDay(
-  date: Date,
-  program: Program,
-  run: ProgramRun,
-): { weekIndex: number; dayIndex: number } | null {
-  const weekZeroMs = getWeekZeroMs(run);
-  const daysSinceStart = Math.round((startOfDay(date).getTime() - weekZeroMs) / 86400000);
-  if (daysSinceStart < 0) return null;
-  const weekIndex = Math.floor(daysSinceStart / 7);
-  const dayIndex = daysSinceStart % 7;
-  if (weekIndex >= program.durationWeeks) return null;
-  return { weekIndex, dayIndex };
-}
-
 // ---------------------------------------------------------------------------
-// weekDots: build from active program, or emit 7 "empty" dots
+// weekDots: build from active program run position
 // ---------------------------------------------------------------------------
-
-function buildEmptyWeekDots(): HomepageWeekDot[] {
-  return Array.from({ length: 7 }, (_, i) => ({ index: i, state: "empty" as WeekDotState }));
-}
 
 function buildProgramWeekDots(
   program: Program,
   run: ProgramRun,
-  today: Date,
 ): HomepageWeekDot[] {
-  const weekZeroMs = getWeekZeroMs(run);
-  const daysSinceStart = Math.round((startOfDay(today).getTime() - weekZeroMs) / 86400000);
-
-  if (daysSinceStart < 0) {
-    return buildEmptyWeekDots();
-  }
-
-  const weekIndex = Math.floor(daysSinceStart / 7);
-  const todayDayIndex = daysSinceStart % 7;
-
-  if (weekIndex >= program.durationWeeks) {
-    return buildEmptyWeekDots();
-  }
+  const nextDay = computeNextPlayableDay(program, run);
+  const weekIndex = nextDay?.weekIndex ?? (program.durationWeeks - 1);
 
   return Array.from({ length: 7 }, (_, dayIndex): HomepageWeekDot => {
-    const programDay = program.days.find(
+    const dayEntries = program.days.filter(
       (d) => d.weekIndex === weekIndex && d.dayIndex === dayIndex,
     );
+    const primary = dayEntries.find((d) => d.order === 0) ?? dayEntries[0] ?? null;
     const ds = run.dayStates.find(
       (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
     );
-    const isToday = dayIndex === todayDayIndex;
+    const isCurrent =
+      nextDay !== null &&
+      dayIndex === nextDay.dayIndex &&
+      weekIndex === nextDay.weekIndex;
 
-    if (!programDay) {
+    if (!primary) {
       return { index: dayIndex, state: "empty" };
     }
 
-    if (programDay.isRestDay) {
+    if (primary.isRestDay) {
       return { index: dayIndex, state: "rest" };
     }
 
-    if (!programDay.routineId) {
+    const hasWorkout = dayEntries.some((d) => d.routineId != null);
+    if (!hasWorkout) {
       return { index: dayIndex, state: "empty" };
     }
 
@@ -237,8 +202,8 @@ function buildProgramWeekDots(
 
     if (status === "completed") return { index: dayIndex, state: "done" };
     if (status === "skipped") return { index: dayIndex, state: "skipped" };
-    if (isToday && status === "active") return { index: dayIndex, state: "today_active" };
-    if (isToday) return { index: dayIndex, state: "today_idle" };
+    if (isCurrent && status === "active") return { index: dayIndex, state: "today_active" };
+    if (isCurrent) return { index: dayIndex, state: "today_idle" };
     return { index: dayIndex, state: "planned" };
   });
 }
@@ -250,30 +215,17 @@ function buildProgramWeekDots(
 function buildCalendarDots(
   today: Date,
   finishedSessionsByDate: Map<string, boolean>,
-  program: Program | null,
-  run: ProgramRun | null,
+  scheduledWorkoutDates: Set<string>,
 ): HomepageCalendarDot[] {
   const days = calendarWeekDays(today);
   const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
   return days.map((d) => {
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
     const ymd = toYMD(d);
-
-    let hasScheduledWorkout = false;
-    if (program && run) {
-      const slot = calendarDateToProgramDay(d, program, run);
-      if (slot) {
-        const pd = program.days.find(
-          (p) => p.weekIndex === slot.weekIndex && p.dayIndex === slot.dayIndex,
-        );
-        hasScheduledWorkout = !!(pd?.routineId && !pd.isRestDay);
-      }
-    }
-
     return {
       ...ymd,
       hasFinishedSession: finishedSessionsByDate.has(key),
-      hasScheduledWorkout,
+      hasScheduledWorkout: scheduledWorkoutDates.has(key),
       isToday: key === todayKey,
     };
   });
@@ -321,33 +273,47 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
     };
   }
 
-  // Load planned routine from active program run
   let plannedRoutine: Routine | null = null;
   let isRestDay = false;
+
   try {
-    const activeRun = await forgeDB.programRuns
+    const MS_PER_DAY = 86_400_000;
+    const activeRuns = await forgeDB.programRuns
       .where("status")
       .equals("active")
-      .first();
-    if (activeRun) {
-      const program = await forgeDB.programs.get(activeRun.programId);
-      if (program) {
-        const dayDate = new Date(date.y, date.m - 1, date.d, 0, 0, 0, 0);
-        const slot = calendarDateToProgramDay(dayDate, program, activeRun);
-        if (slot) {
-          const pd = program.days.find(
-            (d) => d.weekIndex === slot.weekIndex && d.dayIndex === slot.dayIndex,
-          );
-          if (pd?.isRestDay) {
-            isRestDay = true;
-          } else if (pd?.routineId) {
-            plannedRoutine = await forgeDB.routines.get(pd.routineId).catch(() => null) ?? null;
-          }
-        }
+      .toArray();
+
+    for (const run of activeRuns) {
+      const startMs = run.weekZeroStartDate ?? run.startedAt;
+      const dayOffset = Math.round((start - startMs) / MS_PER_DAY);
+      if (dayOffset < 0) continue;
+
+      const weekIndex = Math.floor(dayOffset / 7);
+      const dayIndex = dayOffset % 7;
+
+      const program = await forgeDB.programs.get(run.programId) ?? null;
+      if (!program) continue;
+
+      const dayEntries = program.days.filter(
+        (d) => d.weekIndex === weekIndex && d.dayIndex === dayIndex,
+      );
+      if (dayEntries.length === 0) continue;
+
+      const primary = dayEntries.find((d) => (d.order ?? 0) === 0) ?? dayEntries[0];
+      if (!primary) continue;
+
+      if (primary.isRestDay) {
+        isRestDay = true;
+        break;
       }
+
+      if (primary.routineId) {
+        plannedRoutine = await forgeDB.routines.get(primary.routineId).catch(() => null) ?? null;
+      }
+      break;
     }
   } catch {
-    // programRuns or programs table may not exist yet
+    // ok
   }
 
   return {
@@ -441,50 +407,90 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
         finishedByDate.set(key, true);
       }
 
-      // Active program run
-      let activeProgramRun: ProgramRun | null = null;
-      let activeProgram: Program | null = null;
-      let todayRoutine: Routine | null = null;
-      let todayProgramDayStatus: HomepageState["todayProgramDayStatus"] = null;
-      let todayProgramDaySessionId: string | null = null;
+      // All active program runs — position-based, not calendar-based
+      const activeRunStates: ActiveRunState[] = [];
+      const scheduledWorkoutDates = new Set<string>();
+      const MS_PER_DAY = 86_400_000;
 
       try {
-        activeProgramRun = await forgeDB.programRuns
+        const activeRuns = await forgeDB.programRuns
           .where("status")
           .equals("active")
-          .first() ?? null;
+          .toArray();
+        activeRuns.sort((a, b) => a.startedAt - b.startedAt);
 
-        if (activeProgramRun) {
-          activeProgram = await forgeDB.programs.get(activeProgramRun.programId) ?? null;
+        for (const run of activeRuns) {
+          const startMs = run.weekZeroStartDate ?? run.startedAt;
+          if (startMs > Date.now()) continue;
 
-          if (activeProgram) {
-            const slot = calendarDateToProgramDay(now, activeProgram, activeProgramRun);
-            if (slot) {
-              const pd = activeProgram.days.find(
-                (d) => d.weekIndex === slot.weekIndex && d.dayIndex === slot.dayIndex,
-              );
-              if (pd?.routineId && !pd.isRestDay) {
-                todayRoutine = await forgeDB.routines.get(pd.routineId).catch(() => null) ?? null;
-                const ds = activeProgramRun.dayStates.find(
-                  (s) => s.weekIndex === slot.weekIndex && s.dayIndex === slot.dayIndex,
-                );
-                todayProgramDayStatus = ds?.status ?? "not_started";
-                todayProgramDaySessionId = ds?.sessionId ?? null;
-              } else if (pd?.isRestDay) {
-                todayProgramDayStatus = null; // rest day, not a workout day
+          const program = await forgeDB.programs.get(run.programId) ?? null;
+          if (!program) continue;
+
+          // Compute scheduled workout calendar dates for this run (for calendar dots)
+          const seenSlots = new Set<string>();
+          for (const pd of program.days) {
+            if (pd.isRestDay || !pd.routineId) continue;
+            const slotKey = `${pd.weekIndex}:${pd.dayIndex}`;
+            if (seenSlots.has(slotKey)) continue;
+            seenSlots.add(slotKey);
+
+            const ds = run.dayStates.find(
+              (s) => s.weekIndex === pd.weekIndex && s.dayIndex === pd.dayIndex,
+            );
+            if (ds?.status === "completed" || ds?.status === "skipped") continue;
+
+            const calMs = startMs + (pd.weekIndex * 7 + pd.dayIndex) * MS_PER_DAY;
+            const cal = new Date(calMs);
+            const key = `${cal.getFullYear()}-${cal.getMonth()}-${cal.getDate()}`;
+            scheduledWorkoutDates.add(key);
+          }
+
+          const nextDay = computeNextPlayableDay(program, run);
+          let routine: Routine | null = null;
+          const exerciseNames: Record<string, string> = {};
+          let dayStatus: ActiveRunState["dayStatus"] = null;
+          let daySessionId: string | null = null;
+
+          if (nextDay) {
+            // Use the primary workout (order=0) for the homepage routine display
+            const primaryEntry = program.days.find(
+              (d) => d.weekIndex === nextDay.weekIndex && d.dayIndex === nextDay.dayIndex && (d.order ?? 0) === 0,
+            ) ?? program.days.find(
+              (d) => d.weekIndex === nextDay.weekIndex && d.dayIndex === nextDay.dayIndex,
+            );
+            if (primaryEntry?.routineId) {
+              routine = await forgeDB.routines.get(primaryEntry.routineId).catch(() => null) ?? null;
+              if (routine) {
+                const exerciseIds = routine.blocks.flatMap((b) => b.items.map((i) => i.exerciseId));
+                const unique = [...new Set(exerciseIds)];
+                const exercises = await forgeDB.exercises.bulkGet(unique).catch(() => []);
+                for (const ex of exercises) {
+                  if (ex) exerciseNames[ex.id] = ex.name;
+                }
               }
             }
+            const ds = run.dayStates.find(
+              (s) => s.weekIndex === nextDay.weekIndex && s.dayIndex === nextDay.dayIndex,
+            );
+            dayStatus = ds?.status ?? "not_started";
+            daySessionId = ds?.sessionId ?? null;
           }
+
+          activeRunStates.push({
+            run,
+            program,
+            routine,
+            exerciseNames,
+            dayStatus,
+            daySessionId,
+            weekDots: buildProgramWeekDots(program, run),
+          });
         }
       } catch {
         // ok
       }
 
-      const weekDots = activeProgram && activeProgramRun
-        ? buildProgramWeekDots(activeProgram, activeProgramRun, now)
-        : buildEmptyWeekDots();
-
-      const calendarDots = buildCalendarDots(now, finishedByDate, activeProgram, activeProgramRun);
+      const calendarDots = buildCalendarDots(now, finishedByDate, scheduledWorkoutDates);
 
       // Top goals
       let topGoals: Goal[] = [];
@@ -507,13 +513,9 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       return {
         todayLocal: { ...toYMD(now), weekday: now.getDay() },
         weekStart,
-        activeProgramRun,
-        todayPlannedDay: null,
-        todayRoutine,
-        todayProgramDayStatus,
-        todayProgramDaySessionId,
+        activeRunStates,
+        activeProgramRun: activeRunStates[0]?.run ?? null,
         inProgressSession,
-        weekDots,
         calendarDots,
         weeklyStats: {
           workouts: weeklyWorkouts,

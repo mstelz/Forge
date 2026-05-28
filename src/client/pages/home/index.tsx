@@ -8,6 +8,7 @@ import {
   getDayDetail,
   type HomepageCalendarDot,
   type HomepageWeekDot,
+  type ActiveRunState,
   type DayDetail,
   type Goal,
 } from "../../home/state";
@@ -158,28 +159,24 @@ function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => v
 // ---------------------------------------------------------------------------
 
 function TodayCard({
-  routine,
+  activeState,
   inProgressSession,
-  todayProgramDayStatus,
-  todayProgramDaySessionId,
 }: {
-  routine: Routine | null;
-  inProgressSession: ReturnType<typeof useHomepageState>["data"] extends undefined ? null : NonNullable<ReturnType<typeof useHomepageState>["data"]>["inProgressSession"];
-  todayProgramDayStatus: "not_started" | "active" | "completed" | "skipped" | null;
-  todayProgramDaySessionId: string | null;
+  activeState: ActiveRunState;
+  inProgressSession: NonNullable<ReturnType<typeof useHomepageState>["data"]>["inProgressSession"];
 }) {
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime();
   const sessionIsToday = inProgressSession != null && inProgressSession.startedAt >= todayStart;
+  const { routine, exerciseNames, dayStatus, daySessionId } = activeState;
 
-  // Program day already completed today
-  if (routine != null && todayProgramDayStatus === "completed") {
+  if (routine != null && dayStatus === "completed") {
     return (
       <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
         <div className="flex">
           <div className="w-1 flex-shrink-0 bg-green-500" aria-hidden="true" />
           <div className="flex-1 p-4">
-            <CompletedDayVariant routine={routine} sessionId={todayProgramDaySessionId} />
+            <CompletedDayVariant routine={routine} sessionId={daySessionId} />
           </div>
         </div>
       </div>
@@ -188,12 +185,11 @@ function TodayCard({
 
   return (
     <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
-      {/* 4px amber left accent */}
       <div className="flex">
         <div className="w-1 flex-shrink-0 bg-[var(--accent)]" aria-hidden="true" />
         <div className="flex-1 p-4">
           {routine != null ? (
-            <RoutineVariant routine={routine} sessionIsToday={sessionIsToday} inProgressSession={inProgressSession} />
+            <RoutineVariant routine={routine} exerciseNames={exerciseNames} sessionIsToday={sessionIsToday} inProgressSession={inProgressSession} />
           ) : (
             <NoProgramVariant />
           )}
@@ -205,10 +201,12 @@ function TodayCard({
 
 function RoutineVariant({
   routine,
+  exerciseNames,
   sessionIsToday,
   inProgressSession,
 }: {
   routine: Routine;
+  exerciseNames: Record<string, string>;
   sessionIsToday: boolean;
   inProgressSession: { id: string } | null;
 }) {
@@ -233,7 +231,7 @@ function RoutineVariant({
         <ul className="mt-3 space-y-1">
           {previewItems.map((item) => (
             <li key={item.id} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-[var(--text)]">{item.exerciseId}</span>
+              <span className="text-xs text-[var(--text)]">{exerciseNames[item.exerciseId] ?? item.exerciseId}</span>
               <span className="text-[10px] tabular-nums text-[var(--text-subtle)]">
                 {repLabel(item)}
               </span>
@@ -916,16 +914,25 @@ export function HomePage() {
           {/* Daily Briefing Strip */}
           <DailyBriefingStrip />
 
-          {/* Primary Today Card */}
-          <TodayCard
-            routine={data.todayRoutine}
-            inProgressSession={data.inProgressSession}
-            todayProgramDayStatus={data.todayProgramDayStatus}
-            todayProgramDaySessionId={data.todayProgramDaySessionId}
-          />
-
-          {/* Program Strip */}
-          <ProgramStrip weekDots={data.weekDots} />
+          {/* Program today cards — one per active run, or no-program fallback */}
+          {data.activeRunStates.length > 0 ? (
+            data.activeRunStates.map((activeState) => (
+              <TodayCard
+                key={activeState.run.id}
+                activeState={activeState}
+                inProgressSession={data.inProgressSession}
+              />
+            ))
+          ) : (
+            <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
+              <div className="flex">
+                <div className="w-1 flex-shrink-0 bg-[var(--accent)]" aria-hidden="true" />
+                <div className="flex-1 p-4">
+                  <NoProgramVariant />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Mini Calendar (interactive) */}
           <MiniCalendar calendarDots={data.calendarDots} onDayTap={handleDayTap} />

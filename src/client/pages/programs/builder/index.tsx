@@ -20,11 +20,9 @@ import { useDiscardGuard, DiscardDialog } from "../../routines/builder/discard-g
 
 type Mode = "create" | "edit";
 
-// ─── Day-of-week labels ───────────────────────────────────────────────────────
+// ─── Day labels ───────────────────────────────────────────────────────────────
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-// dayIndex in spec: 0=Mon … 6=Sun (based on design showing Mon-Sun order)
+const DAY_LABELS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"];
 
 // ─── Routine picker sheet ────────────────────────────────────────────────────
 
@@ -33,12 +31,15 @@ type DayPickerSheetProps = {
   onClose: () => void;
   weekIndex: number;
   dayIndex: number;
+  order: number;
   currentRoutineId: string | null;
   isRestDay: boolean;
   notes: string | null;
   routines: Routine[];
   dispatch: React.Dispatch<BuilderAction>;
-  onSelectAndCustomize: (routineId: string) => void;
+  onSelectAndCustomize: (routineId: string, order: number) => void;
+  /** When true, we're adding a second+ workout; dispatch ADD_WORKOUT instead of SET_DAY */
+  isAddingWorkout?: boolean;
 };
 
 function DayPickerSheet({
@@ -46,12 +47,14 @@ function DayPickerSheet({
   onClose,
   weekIndex,
   dayIndex,
+  order,
   currentRoutineId,
   isRestDay,
   notes,
   routines,
   dispatch,
   onSelectAndCustomize,
+  isAddingWorkout = false,
 }: DayPickerSheetProps) {
   const [search, setSearch] = useState("");
   const [draftNotes, setDraftNotes] = useState(notes ?? "");
@@ -64,29 +67,43 @@ function DayPickerSheet({
     : routines;
 
   const handleSelectRoutine = (routineId: string) => {
-    dispatch({
-      type: "SET_DAY",
-      weekIndex,
-      dayIndex,
-      routineId,
-      isRestDay: false,
-      notes: showNotes ? draftNotes || null : null,
-    });
+    if (isAddingWorkout) {
+      dispatch({ type: "ADD_WORKOUT", weekIndex, dayIndex, routineId });
+    } else {
+      dispatch({
+        type: "SET_DAY",
+        weekIndex,
+        dayIndex,
+        order,
+        routineId,
+        isRestDay: false,
+        notes: showNotes ? draftNotes || null : null,
+      });
+    }
     setSearch("");
     onClose();
   };
 
   const handleSelectAndCustomize = (routineId: string) => {
-    dispatch({
-      type: "SET_DAY",
-      weekIndex,
-      dayIndex,
-      routineId,
-      isRestDay: false,
-      notes: showNotes ? draftNotes || null : null,
-    });
-    setSearch("");
-    onSelectAndCustomize(routineId);
+    if (isAddingWorkout) {
+      dispatch({ type: "ADD_WORKOUT", weekIndex, dayIndex, routineId });
+      setSearch("");
+      // For add mode, compute the next order (after add it'll be workouts.length)
+      // We don't know it here precisely, so just close and let the user tap the chip
+      onClose();
+    } else {
+      dispatch({
+        type: "SET_DAY",
+        weekIndex,
+        dayIndex,
+        order,
+        routineId,
+        isRestDay: false,
+        notes: showNotes ? draftNotes || null : null,
+      });
+      setSearch("");
+      onSelectAndCustomize(routineId, order);
+    }
   };
 
   const handleMarkRest = () => {
@@ -94,6 +111,7 @@ function DayPickerSheet({
       type: "SET_DAY",
       weekIndex,
       dayIndex,
+      order: 0,
       routineId: null,
       isRestDay: true,
       notes: showNotes ? draftNotes || null : null,
@@ -142,30 +160,32 @@ function DayPickerSheet({
         <div className="w-9" />
       </header>
 
-      {/* Quick actions */}
-      <div className="flex gap-2 px-4 pt-3">
-        <button
-          type="button"
-          onClick={handleMarkRest}
-          className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Rest day
-        </button>
-        <button
-          type="button"
-          onClick={handleClear}
-          className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Clear
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowNotes((v) => !v)}
-          className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Notes
-        </button>
-      </div>
+      {/* Quick actions — hidden in add-workout mode */}
+      {!isAddingWorkout && (
+        <div className="flex gap-2 px-4 pt-3">
+          <button
+            type="button"
+            onClick={handleMarkRest}
+            className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Rest day
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNotes((v) => !v)}
+            className="flex-1 rounded-full border border-[var(--border)] py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Notes
+          </button>
+        </div>
+      )}
 
       {/* Notes textarea */}
       {showNotes ? (
@@ -503,119 +523,151 @@ function RepeatPatternModal({
 type DayCellPickerTarget = {
   weekIndex: number;
   dayIndex: number;
+  order: number;
   routineId: string | null;
   isRestDay: boolean;
   notes: string | null;
   overrides: RoutineItemOverride[] | null;
+  /** True when opening the picker to add a second+ workout to the day */
+  isAddingWorkout: boolean;
 };
 
 type WeekGridProps = {
   state: BuilderState;
   routineMap: Map<string, Routine>;
-  onCellTap: (target: DayCellPickerTarget) => void;
+  onWorkoutTap: (target: DayCellPickerTarget) => void;
+  onAddWorkout: (weekIndex: number, dayIndex: number) => void;
+  onRemoveWorkout: (weekIndex: number, dayIndex: number, order: number) => void;
 };
 
-function WeekGrid({ state, routineMap, onCellTap }: WeekGridProps) {
+function WeekGrid({ state, routineMap, onWorkoutTap, onAddWorkout, onRemoveWorkout }: WeekGridProps) {
   const { durationWeeks, days } = state.draft;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[340px] border-collapse" role="grid" aria-label="Program schedule grid">
-        <thead>
-          <tr>
-            <th className="w-14 pb-1" />
-            {DAY_LABELS.map((d) => (
-              <th
-                key={d}
-                className="pb-1 text-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]"
-              >
-                {d}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: durationWeeks }, (_, wi) => {
-            return (
-              <tr key={wi}>
-                <td className="pr-2 text-right">
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-subtle)]">
-                    W{wi + 1}
+    <div className="space-y-2">
+      {Array.from({ length: durationWeeks }, (_, wi) => (
+        <div key={wi} className="rounded-[var(--radius-card)] overflow-hidden bg-[var(--surface)]">
+          {/* Week header */}
+          <div className="flex items-center px-3 py-2 border-b border-[var(--border)]">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-subtle)]">
+              Week {String(wi + 1).padStart(2, "0")}
+            </span>
+          </div>
+
+          {/* Day rows */}
+          <div className="divide-y divide-[var(--border)]">
+            {Array.from({ length: 7 }, (_, di) => {
+              const dayEntries = days
+                .filter((d) => d.weekIndex === wi && d.dayIndex === di)
+                .sort((a, b) => a.order - b.order);
+              const primary = dayEntries.find((d) => d.order === 0) ?? dayEntries[0];
+              const isRest = primary?.isRestDay ?? false;
+              const workouts = dayEntries.filter((d) => d.routineId);
+
+              return (
+                <div
+                  key={di}
+                  className="flex min-h-[42px] items-start gap-2 px-3 py-2"
+                >
+                  {/* Day label */}
+                  <span className="mt-1 w-6 flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-subtle)]">
+                    {DAY_LABELS[di]}
                   </span>
-                </td>
-                {Array.from({ length: 7 }, (_, di) => {
-                  const day = days.find(
-                    (d) => d.weekIndex === wi && d.dayIndex === di,
-                  );
-                  const routine = day?.routineId
-                    ? routineMap.get(day.routineId)
-                    : null;
 
-                  const hasOverrides = !!(day?.overrides?.length);
-
-                  return (
-                    <td key={di} className="p-0.5">
+                  {/* Content */}
+                  <div className="flex flex-1 flex-wrap items-center gap-1.5 min-w-0">
+                    {isRest ? (
                       <button
                         type="button"
                         onClick={() =>
-                          onCellTap({
+                          onWorkoutTap({
                             weekIndex: wi,
                             dayIndex: di,
-                            routineId: day?.routineId ?? null,
-                            isRestDay: day?.isRestDay ?? false,
-                            notes: day?.notes ?? null,
-                            overrides: day?.overrides ?? null,
+                            order: 0,
+                            routineId: null,
+                            isRestDay: true,
+                            notes: primary?.notes ?? null,
+                            overrides: null,
+                            isAddingWorkout: false,
                           })
                         }
-                        aria-label={`Week ${wi + 1} ${DAY_LABELS[di]}: ${
-                          day?.isRestDay
-                            ? "rest day"
-                            : routine
-                              ? routine.name
-                              : "empty"
-                        }${hasOverrides ? " (overridden)" : ""}`}
-                        className="relative flex h-10 w-full items-center justify-center rounded-[6px] border border-[var(--border)] text-center transition-colors hover:border-[var(--accent)]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                        style={{
-                          background: day?.isRestDay
-                            ? "var(--surface)"
-                            : day?.routineId
-                              ? "var(--surface)"
-                              : "transparent",
-                        }}
+                        className="rounded-md px-2 py-0.5 text-[11px] text-[var(--text-subtle)] border border-dashed border-[var(--border)] hover:border-[var(--accent)]/60 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] italic"
                       >
-                        {day?.isRestDay ? (
-                          <span className="text-[9px] font-bold uppercase text-[var(--text-subtle)]">
-                            Rest
-                          </span>
-                        ) : routine ? (
-                          <span className="truncate px-0.5 text-[9px] font-semibold text-[var(--accent)]">
-                            {routine.name
-                              .split(" ")
-                              .map((w) => w[0])
-                              .join("")
-                              .toUpperCase()
-                              .slice(0, 3)}
-                          </span>
-                        ) : (
-                          <span className="text-[var(--text-subtle)] opacity-60">
-                            <PlusSmallIcon />
-                          </span>
-                        )}
-                        {hasOverrides ? (
-                          <span
-                            aria-hidden="true"
-                            className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
-                          />
-                        ) : null}
+                        rest
                       </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    ) : (
+                      <>
+                        {workouts.map((d) => {
+                          const routine = routineMap.get(d.routineId!);
+                          const hasOverrides = !!(d.overrides?.length);
+                          const chipLabel = d.label
+                            ? `${routine?.name ?? "?"} · ${d.label}`
+                            : (routine?.name ?? "?");
+                          return (
+                            <div
+                              key={d.id}
+                              className="flex items-center gap-0.5 rounded-md bg-[var(--surface-elevated)] ring-1 ring-[var(--border)] pl-2 pr-0.5 py-0.5"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onWorkoutTap({
+                                    weekIndex: wi,
+                                    dayIndex: di,
+                                    order: d.order,
+                                    routineId: d.routineId,
+                                    isRestDay: false,
+                                    notes: d.notes ?? null,
+                                    overrides: d.overrides ?? null,
+                                    isAddingWorkout: false,
+                                  })
+                                }
+                                aria-label={`Edit ${chipLabel}`}
+                                className="flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] rounded"
+                              >
+                                {chipLabel}
+                                {hasOverrides ? (
+                                  <span
+                                    aria-label="has overrides"
+                                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] opacity-70"
+                                  />
+                                ) : null}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveWorkout(wi, di, d.order);
+                                }}
+                                aria-label={`Remove ${chipLabel}`}
+                                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[var(--text-subtle)] hover:text-red-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+                              >
+                                <XSmallIcon />
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Add workout button */}
+                        {!isRest && (
+                          <button
+                            type="button"
+                            onClick={() => onAddWorkout(wi, di)}
+                            aria-label={`Add workout to Week ${wi + 1} ${DAY_LABELS[di]}`}
+                            className="flex items-center gap-0.5 rounded-md border border-dashed border-[var(--border)] px-1.5 py-0.5 text-[11px] text-[var(--text-subtle)] hover:border-[var(--accent)]/60 hover:text-[var(--accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
+                          >
+                            <PlusSmallIcon />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -865,53 +917,73 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
         </div>
 
         {/* Week grid */}
-        <div className="mx-4 mt-2 rounded-[var(--radius-card)] bg-[var(--surface)] p-3">
+        <div className="mx-4 mt-2 space-y-0">
           <WeekGrid
             state={state}
             routineMap={routineMap}
-            onCellTap={(target) => {
+            onWorkoutTap={(target) => {
               if (target.routineId) {
                 setOverridesTarget(target);
               } else {
                 setPickerTarget(target);
               }
             }}
+            onAddWorkout={(weekIndex, dayIndex) => {
+              setPickerTarget({
+                weekIndex,
+                dayIndex,
+                order: 0,
+                routineId: null,
+                isRestDay: false,
+                notes: null,
+                overrides: null,
+                isAddingWorkout: true,
+              });
+            }}
+            onRemoveWorkout={(weekIndex, dayIndex, order) => {
+              dispatch({ type: "REMOVE_WORKOUT", weekIndex, dayIndex, order });
+            }}
           />
         </div>
       </div>
 
-      {/* Routine picker — only for empty/rest days, or when changing routine from OverridesSheet */}
+      {/* Routine picker — for empty/rest days, adding a workout, or changing from OverridesSheet */}
       {pickerTarget ? (
         <DayPickerSheet
           open={true}
           onClose={() => setPickerTarget(null)}
           weekIndex={pickerTarget.weekIndex}
           dayIndex={pickerTarget.dayIndex}
+          order={pickerTarget.order}
           currentRoutineId={pickerTarget.routineId}
           isRestDay={pickerTarget.isRestDay}
           notes={pickerTarget.notes}
           routines={routines}
           dispatch={dispatch}
-          onSelectAndCustomize={(routineId) => {
+          isAddingWorkout={pickerTarget.isAddingWorkout}
+          onSelectAndCustomize={(routineId, order) => {
             const target = pickerTarget;
             setPickerTarget(null);
             setOverridesTarget({
               ...target,
+              order,
               routineId,
               isRestDay: false,
               overrides: null,
+              isAddingWorkout: false,
             });
           }}
         />
       ) : null}
 
-      {/* Overrides editor — opens directly when tapping an assigned day */}
+      {/* Overrides editor — opens when tapping a workout chip */}
       {overridesTarget?.routineId ? (
         <OverridesSheet
           open={true}
           onClose={() => setOverridesTarget(null)}
           weekIndex={overridesTarget.weekIndex}
           dayIndex={overridesTarget.dayIndex}
+          order={overridesTarget.order}
           routineId={overridesTarget.routineId}
           routineName={routineMap.get(overridesTarget.routineId)?.name ?? ""}
           existingOverrides={overridesTarget.overrides}
@@ -919,7 +991,7 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
           exerciseMap={exerciseMap}
           dispatch={dispatch}
           onChangeRoutine={() => {
-            setPickerTarget(overridesTarget);
+            setPickerTarget({ ...overridesTarget, isAddingWorkout: false });
             setOverridesTarget(null);
           }}
         />
@@ -1033,6 +1105,14 @@ function PlusSmallIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function XSmallIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }

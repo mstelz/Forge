@@ -21,6 +21,9 @@ const endpointFor = (entity: PendingWrite["entity"]) => {
   if (entity === "routine") return `${API_BASE}/routines`;
   if (entity === "session") return `${API_BASE}/sessions`;
   if (entity === "session_log") return `${API_BASE}/sessions`; // URL built in send()
+  if (entity === "program") return `${API_BASE}/programs`;
+  if (entity === "program_run") return `${API_BASE}/program-runs`;
+  if (entity === "goal") return `${API_BASE}/goals`;
   return `${API_BASE}/equipment`;
 };
 

@@ -24,6 +24,7 @@ describe("DUPLICATE_WEEK — deep-clone with fresh UUIDs", () => {
           id: "day-src-1",
           weekIndex: 0,
           dayIndex: 1,
+          order: 0,
           routineId: "routine-abc",
           isRestDay: false,
           notes: null,
@@ -32,6 +33,7 @@ describe("DUPLICATE_WEEK — deep-clone with fresh UUIDs", () => {
           id: "day-src-2",
           weekIndex: 0,
           dayIndex: 3,
+          order: 0,
           routineId: null,
           isRestDay: true,
           notes: null,
@@ -73,9 +75,9 @@ describe("DUPLICATE_WEEK — deep-clone with fresh UUIDs", () => {
     const state = makeState({
       durationWeeks: 4,
       days: [
-        { id: "src", weekIndex: 0, dayIndex: 0, routineId: "r1", isRestDay: false, notes: null },
+        { id: "src", weekIndex: 0, dayIndex: 0, order: 0, routineId: "r1", isRestDay: false, notes: null },
         // Existing day in week 1 that should be overwritten
-        { id: "existing", weekIndex: 1, dayIndex: 2, routineId: "r99", isRestDay: false, notes: null },
+        { id: "existing", weekIndex: 1, dayIndex: 2, order: 0, routineId: "r99", isRestDay: false, notes: null },
       ],
     });
 
@@ -105,9 +107,9 @@ describe("REPEAT_PATTERN — tiles and truncates correctly", () => {
       durationWeeks: 5,
       days: [
         // Week 0: Mon (dayIndex 0) has routineId "r-mon"
-        { id: "w0-mon", weekIndex: 0, dayIndex: 0, routineId: "r-mon", isRestDay: false, notes: null },
+        { id: "w0-mon", weekIndex: 0, dayIndex: 0, order: 0, routineId: "r-mon", isRestDay: false, notes: null },
         // Week 1: Wed (dayIndex 2) has routineId "r-wed"
-        { id: "w1-wed", weekIndex: 1, dayIndex: 2, routineId: "r-wed", isRestDay: false, notes: null },
+        { id: "w1-wed", weekIndex: 1, dayIndex: 2, order: 0, routineId: "r-wed", isRestDay: false, notes: null },
       ],
     });
 
@@ -145,9 +147,9 @@ describe("REPEAT_PATTERN — tiles and truncates correctly", () => {
     const state = makeState({
       durationWeeks: 4,
       days: [
-        { id: "w0", weekIndex: 0, dayIndex: 0, routineId: "r1", isRestDay: false, notes: null },
+        { id: "w0", weekIndex: 0, dayIndex: 0, order: 0, routineId: "r1", isRestDay: false, notes: null },
         // This day is outside source range (week 2) — should be removed and replaced
-        { id: "w2-old", weekIndex: 2, dayIndex: 0, routineId: "old-routine", isRestDay: false, notes: null },
+        { id: "w2-old", weekIndex: 2, dayIndex: 0, order: 0, routineId: "old-routine", isRestDay: false, notes: null },
       ],
     });
 
@@ -178,6 +180,7 @@ describe("normalizeDraft + ProgramCreateInput — Zod validation on save", () =>
           id: "00000000-0000-0000-0000-000000000001",
           weekIndex: 0,
           dayIndex: 1,
+          order: 0,
           routineId: "00000000-0000-0000-0000-000000000099",
           isRestDay: false,
           notes: null,
@@ -199,6 +202,7 @@ describe("normalizeDraft + ProgramCreateInput — Zod validation on save", () =>
           id: "00000000-0000-0000-0000-000000000001",
           weekIndex: 0,
           dayIndex: 1,
+          order: 0,
           routineId: "00000000-0000-0000-0000-000000000099",
           isRestDay: true, // conflicts with routineId
           notes: null,

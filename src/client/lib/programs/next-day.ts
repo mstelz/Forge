@@ -5,6 +5,7 @@
  * Walks (weekIndex, dayIndex) in ascending order and returns the first
  * slot that is:
  *   - Not a rest day
+ *   - Has at least one workout with a routineId
  *   - Has a day-state of 'not_started' (or no day-state row at all)
  *
  * Returns null when the run is exhausted (all non-rest days resolved).
@@ -15,16 +16,12 @@ import type { Program, ProgramRun } from "../../../shared";
 export type NextPlayableDay = {
   weekIndex: number;
   dayIndex: number;
-  /** routineId of the day, if assigned */
+  /** routineId of the primary (order=0) workout for this day, if assigned */
   routineId: string | null;
 };
 
 /**
  * Compute the next playable day for a program run.
- *
- * @param program - The full program document (includes sparse days[]).
- * @param run     - The active program run (includes dayStates[]).
- * @returns       The first non-rest, not_started day, or null if exhausted.
  */
 export function computeNextPlayableDay(
   program: Program,
@@ -34,15 +31,20 @@ export function computeNextPlayableDay(
 
   for (let w = 0; w < program.durationWeeks; w++) {
     for (let d = 0; d < 7; d++) {
-      const programDay = program.days.find(
+      const dayEntries = program.days.filter(
         (pd) => pd.weekIndex === w && pd.dayIndex === d,
       );
 
-      // Skip rest days
-      if (programDay?.isRestDay) continue;
+      // No entries for this slot — skip
+      if (dayEntries.length === 0) continue;
 
-      // Skip days with no routine (unfilled sparse days are not playable)
-      if (!programDay?.routineId) continue;
+      // The primary entry (order=0) determines rest status
+      const primary = dayEntries.find((pd) => pd.order === 0) ?? dayEntries[0]!;
+      if (primary.isRestDay) continue;
+
+      // Must have at least one entry with a routineId
+      const hasWorkout = dayEntries.some((pd) => pd.routineId != null);
+      if (!hasWorkout) continue;
 
       // Check day-state: not_started (missing row = not_started) qualifies
       const ds = run.dayStates.find(
@@ -53,12 +55,11 @@ export function computeNextPlayableDay(
         return {
           weekIndex: w,
           dayIndex: d,
-          routineId: programDay.routineId,
+          routineId: primary.routineId,
         };
       }
     }
   }
 
-  // All non-rest days have been resolved (completed or skipped)
   return null;
 }

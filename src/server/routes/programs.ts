@@ -39,6 +39,8 @@ function rowToDay(row: ProgramDayRow): ProgramDay {
     id: row.id,
     weekIndex: row.weekIndex,
     dayIndex: row.dayIndex,
+    order: row.order ?? 0,
+    label: row.label ?? null,
     routineId: row.routineId ?? null,
     isRestDay: row.isRestDay === 1,
     notes: row.notes ?? null,
@@ -63,7 +65,7 @@ async function loadProgram(id: string): Promise<Program | null> {
     .where(eq(programDays.programId, id))
     .all();
 
-  days.sort((a, b) => a.weekIndex - b.weekIndex || a.dayIndex - b.dayIndex);
+  days.sort((a, b) => a.weekIndex - b.weekIndex || a.dayIndex - b.dayIndex || (a.order ?? 0) - (b.order ?? 0));
 
   return {
     id: program.id,
@@ -87,6 +89,8 @@ function insertDays(programId: string, days: ProgramCreateInput["days"]): void {
         programId,
         weekIndex: day.weekIndex,
         dayIndex: day.dayIndex,
+        order: day.order ?? 0,
+        label: day.label ?? null,
         routineId: day.routineId ?? null,
         isRestDay: day.isRestDay ? 1 : 0,
         notes: day.notes ?? null,

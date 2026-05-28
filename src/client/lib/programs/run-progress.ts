@@ -1,31 +1,41 @@
 import type { Program, ProgramRun } from "../../../shared";
 
+/** Returns unique non-rest (weekIndex, dayIndex) pairs that have at least one scheduled workout. */
+function getPlayableDaySlots(program: Program): Array<{ weekIndex: number; dayIndex: number }> {
+  const seen = new Set<string>();
+  const slots: Array<{ weekIndex: number; dayIndex: number }> = [];
+  for (const d of program.days) {
+    // A slot is playable if it has a routine (order 0 rest day records don't count)
+    if (d.isRestDay || !d.routineId) continue;
+    const key = `${d.weekIndex}:${d.dayIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    slots.push({ weekIndex: d.weekIndex, dayIndex: d.dayIndex });
+  }
+  return slots;
+}
+
 /**
  * Returns completion % (0–100) for a program run.
  * completed_or_skipped_non_rest_days / total_non_rest_days
  */
 export function computeRunProgress(program: Program, run: ProgramRun): number {
-  const nonRestDays = program.days.filter((d) => !d.isRestDay && d.routineId != null);
-  if (nonRestDays.length === 0) return 0;
+  const slots = getPlayableDaySlots(program);
+  if (slots.length === 0) return 0;
 
-  const resolvedCount = nonRestDays.filter(({ weekIndex, dayIndex }) => {
+  const resolvedCount = slots.filter(({ weekIndex, dayIndex }) => {
     const ds = run.dayStates.find(
       (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
     );
     return ds?.status === "completed" || ds?.status === "skipped";
   }).length;
 
-  return Math.round((resolvedCount / nonRestDays.length) * 100);
+  return Math.round((resolvedCount / slots.length) * 100);
 }
 
 /**
  * Returns an array of N "dot" values (0.0–1.0) summarizing the run progress
  * across the program duration. Used for the 8-dot row on the active card.
- *
- * Each dot represents a proportion of weeks. A dot is:
- *   1.0 (filled) when all its weeks are fully resolved
- *   0.5 (half) when some are resolved
- *   0.0 (empty) when none are resolved
  */
 export function computeWeekDots(
   program: Program,
@@ -36,7 +46,6 @@ export function computeWeekDots(
   const dots: number[] = [];
 
   for (let i = 0; i < dotCount; i++) {
-    // Which weeks does this dot represent?
     const weekStart = Math.floor((i * durationWeeks) / dotCount);
     const weekEnd = Math.floor(((i + 1) * durationWeeks) / dotCount);
 
@@ -45,21 +54,25 @@ export function computeWeekDots(
       continue;
     }
 
-    let totalDays = 0;
-    let resolvedDays = 0;
-
+    const slotsInRange: Array<{ weekIndex: number; dayIndex: number }> = [];
+    const seen = new Set<string>();
     for (let w = weekStart; w < Math.min(weekEnd, durationWeeks); w++) {
-      const nonRestInWeek = program.days.filter(
-        (d) => d.weekIndex === w && !d.isRestDay && d.routineId != null,
-      );
-      totalDays += nonRestInWeek.length;
-      resolvedDays += nonRestInWeek.filter(({ weekIndex, dayIndex }) => {
-        const ds = run.dayStates.find(
-          (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
-        );
-        return ds?.status === "completed" || ds?.status === "skipped";
-      }).length;
+      for (const d of program.days) {
+        if (d.weekIndex !== w || d.isRestDay || !d.routineId) continue;
+        const key = `${d.weekIndex}:${d.dayIndex}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        slotsInRange.push({ weekIndex: d.weekIndex, dayIndex: d.dayIndex });
+      }
     }
+
+    const totalDays = slotsInRange.length;
+    const resolvedDays = slotsInRange.filter(({ weekIndex, dayIndex }) => {
+      const ds = run.dayStates.find(
+        (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
+      );
+      return ds?.status === "completed" || ds?.status === "skipped";
+    }).length;
 
     if (totalDays === 0) {
       dots.push(0);

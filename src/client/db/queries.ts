@@ -159,6 +159,12 @@ export const getActiveRunForProgram = async (
   return run ?? null;
 };
 
+export const listActiveRuns = async (): Promise<ProgramRun[]> => {
+  const runs = await forgeDB.programRuns.where("status").equals("active").toArray();
+  runs.sort((a, b) => a.startedAt - b.startedAt);
+  return runs;
+};
+
 export const getGloballyActiveRun = async (): Promise<ProgramRun | null> => {
   const run = await forgeDB.programRuns
     .filter((r) => r.status === "active")

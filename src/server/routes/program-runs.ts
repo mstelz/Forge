@@ -8,7 +8,7 @@ import {
   type ProgramRun,
   type ProgramRunDayState,
 } from "../../shared/program-run";
-import { idConflict, notFound, validationError, apiError } from "../lib/errors";
+import { idConflict, notFound, validationError } from "../lib/errors";
 
 export const programRunsRoute = new Hono();
 
@@ -128,16 +128,6 @@ programRunsRoute.post("/", async (c) => {
     .where(eq(programRuns.id, input.id))
     .get();
   if (existing) return idConflict(c, input.id);
-
-  // Check: no globally active run
-  const globalActive = await db
-    .select({ id: programRuns.id })
-    .from(programRuns)
-    .where(eq(programRuns.status, "active"))
-    .get();
-  if (globalActive) {
-    return apiError(c, 409, { error: "active_run_exists", id: globalActive.id });
-  }
 
   const tx = sqlite.transaction(() => {
     db.insert(programRuns)

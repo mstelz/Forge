@@ -249,16 +249,19 @@ export const programDays = sqliteTable(
       .references(() => programs.id, { onDelete: "cascade" }),
     weekIndex: integer("week_index").notNull(),
     dayIndex: integer("day_index").notNull(),
+    order: integer("order").notNull().default(0),
+    label: text("label"),
     routineId: text("routine_id"),
     isRestDay: integer("is_rest_day").notNull().default(0),
     notes: text("notes"),
     overridesJson: text("overrides_json"),
   },
   (t) => ({
-    programWeekDayIdx: uniqueIndex("idx_program_days_program_week_day").on(
+    programWeekDayOrderIdx: uniqueIndex("idx_program_days_program_week_day_order").on(
       t.programId,
       t.weekIndex,
       t.dayIndex,
+      t.order,
     ),
     routineIdx: index("idx_program_days_routine").on(t.routineId),
   }),

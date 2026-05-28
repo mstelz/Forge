@@ -233,6 +233,8 @@ function rowToProgramDay(row: ProgramDayRow): ProgramDay {
     id: row.id,
     weekIndex: row.weekIndex,
     dayIndex: row.dayIndex,
+    order: row.order ?? 0,
+    label: row.label ?? null,
     routineId: row.routineId ?? null,
     isRestDay: Boolean(row.isRestDay),
     notes: row.notes ?? null,
