@@ -32,6 +32,7 @@ function recordIfOrphaned(table: string, column: string, tag: string, when: numb
 
 recordIfOrphaned("program_days", "overrides_json", "0006_program_day_overrides", 1779900000000);
 recordIfOrphaned("program_runs", "week_zero_start_date", "0007_program_run_week_zero", 1779910000000);
+recordIfOrphaned("program_days", "order", "0008_program_day_multi_workout", 1748390400000);
 
 migrate(db, { migrationsFolder: MIGRATIONS_DIR });
 console.log("migrations applied");
