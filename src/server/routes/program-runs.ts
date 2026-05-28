@@ -177,7 +177,10 @@ programRunsRoute.patch("/:id", async (c) => {
     .where(eq(programs.id, input.programId))
     .get();
 
-  if (program) {
+  // Only enforce week bounds for active runs — terminal transitions (completed /
+  // abandoned) are allowed to carry out-of-bounds day states from edge cases
+  // like manually-inserted data or runs that exceeded their planned duration.
+  if (program && input.status === "active") {
     for (const ds of input.dayStates) {
       if (ds.weekIndex >= program.durationWeeks) {
         return c.json(
