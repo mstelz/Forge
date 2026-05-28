@@ -13,7 +13,7 @@
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/mstelz/Forge/main/src/client/assets/icon-192.png</Icon>
+  <Icon>https://raw.githubusercontent.com/mstelz/Forge/main/public/icon-192.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
