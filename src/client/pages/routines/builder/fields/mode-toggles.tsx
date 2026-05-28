@@ -41,25 +41,20 @@ function ModeToggle({ label, value, onChange }: ToggleProps) {
 
 type Props = {
   repMode: Mode;
-  rpeMode: Mode;
   setTypeMode: Mode;
   onRepModeChange: (m: Mode) => void;
-  onRpeModeChange: (m: Mode) => void;
   onSetTypeModeChange: (m: Mode) => void;
 };
 
 export function ModeToggles({
   repMode,
-  rpeMode,
   setTypeMode,
   onRepModeChange,
-  onRpeModeChange,
   onSetTypeModeChange,
 }: Props) {
   return (
     <div className="space-y-2">
       <ModeToggle label="Reps" value={repMode} onChange={onRepModeChange} />
-      <ModeToggle label="RPE" value={rpeMode} onChange={onRpeModeChange} />
       <ModeToggle label="Type" value={setTypeMode} onChange={onSetTypeModeChange} />
     </div>
   );

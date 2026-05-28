@@ -83,8 +83,8 @@ export function computeNextCursor(
         }
       }
     } else {
-      // superset: round-major walk
-      const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+      // superset: round-major walk — rounds = max set count across exercises
+      const roundCount = Math.max(0, ...block.items.map((item) => item.setTargets.length));
       for (let round = 0; round < roundCount; round++) {
         for (let itemIndex = 0; itemIndex < block.items.length; itemIndex++) {
           const item = block.items[itemIndex];

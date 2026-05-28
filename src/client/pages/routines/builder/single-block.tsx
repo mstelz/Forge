@@ -2,7 +2,7 @@ import { useState, type Dispatch } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { BuilderAction, DraftBlock, DraftItem } from "./state";
-import { repsSummary, rpeSummary, restSummary, setTypeChip, durationSummary } from "./summary";
+import { repsSummary, restSummary, setTypeChip, durationSummary } from "./summary";
 import { PrescriptionEditor } from "./prescription-editor";
 import { RestInput } from "./fields/rest";
 import { ExercisePicker } from "../../../components/exercise-picker";
@@ -38,7 +38,6 @@ export function SingleBlock({ block, exerciseMap, dispatch }: Props) {
   const isMixed = exercise?.type === "mixed";
 
   const reps = repsSummary(item);
-  const rpe = rpeSummary(item);
   const rest = restSummary(block.restSec);
   const dur = durationSummary(item);
   const chip = setTypeChip(item);
@@ -47,7 +46,6 @@ export function SingleBlock({ block, exerciseMap, dispatch }: Props) {
     `${item.setCount} ×`,
     isCardio || isMixed ? null : reps,
     dur != null ? dur : null,
-    rpe,
     rest ? `${rest} rest` : null,
   ].filter(Boolean).join(" · ");
 

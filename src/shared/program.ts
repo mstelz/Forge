@@ -13,7 +13,6 @@ export const RoutineItemOverrideSchema = z.object({
   uniformReps: z.number().int().min(1).max(999).optional(),
   uniformRepsMin: z.number().int().min(1).max(999).optional(),
   uniformRepsMax: z.number().int().min(1).max(999).optional(),
-  uniformRpe: z.number().min(1).max(10).multipleOf(0.5).optional(),
   notes: z.string().max(1000).nullable().optional(),
 });
 export type RoutineItemOverride = z.infer<typeof RoutineItemOverrideSchema>;

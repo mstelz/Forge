@@ -11,12 +11,6 @@ export function repsSummary(item: DraftItem): string {
   return item.uniformReps != null ? String(item.uniformReps) : "—";
 }
 
-export function rpeSummary(item: DraftItem): string | null {
-  if (item.rpeMode === "per_set") return "varies";
-  if (item.uniformRpe == null) return null;
-  return `RPE ${item.uniformRpe % 1 === 0 ? item.uniformRpe : item.uniformRpe.toFixed(1)}`;
-}
-
 export function restSummary(restSec: number | null | undefined): string | null {
   if (restSec == null) return null;
   return formatMmSs(restSec);

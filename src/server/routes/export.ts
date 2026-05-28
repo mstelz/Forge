@@ -134,7 +134,6 @@ function rowToSetTarget(row: RoutineSetTargetRow): SetTarget {
     reps: row.reps ?? undefined,
     repsMin: row.repsMin ?? undefined,
     repsMax: row.repsMax ?? undefined,
-    rpe: row.rpe ?? undefined,
     setType: row.setType as SetTarget["setType"],
     techniqueNotes: row.techniqueNotes ?? null,
   };
@@ -147,12 +146,10 @@ function rowToItem(row: RoutineItemRow, targets: SetTarget[]): RoutineItem {
     order: row.order,
     setCount: row.setCount,
     repMode: row.repMode as RoutineItem["repMode"],
-    rpeMode: row.rpeMode as RoutineItem["rpeMode"],
     setTypeMode: row.setTypeMode as RoutineItem["setTypeMode"],
     uniformReps: row.uniformReps ?? undefined,
     uniformRepsMin: row.uniformRepsMin ?? undefined,
     uniformRepsMax: row.uniformRepsMax ?? undefined,
-    uniformRpe: row.uniformRpe ?? undefined,
     uniformSetType: row.uniformSetType != null
       ? (row.uniformSetType as RoutineItem["uniformSetType"])
       : undefined,

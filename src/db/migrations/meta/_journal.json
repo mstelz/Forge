@@ -64,6 +64,13 @@
       "when": 1748390400000,
       "tag": "0008_program_day_multi_workout",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1748476800000,
+      "tag": "0009_remove_routine_rpe",
+      "breakpoints": true
     }
   ]
 }

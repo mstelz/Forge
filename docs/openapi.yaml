@@ -267,11 +267,6 @@ components:
           type: integer
           minimum: 1
           maximum: 999
-        rpe:
-          type: number
-          minimum: 1
-          maximum: 10
-          description: Must be in 0.5 increments.
         setType:
           type: string
           enum: [normal, amrap, to_failure, drop_set, rest_pause]
@@ -282,7 +277,7 @@ components:
 
     RoutineItem:
       type: object
-      required: [id, exerciseId, order, setCount, repMode, rpeMode, setTypeMode]
+      required: [id, exerciseId, order, setCount, repMode, setTypeMode]
       properties:
         id:
           type: string
@@ -300,9 +295,6 @@ components:
         repMode:
           type: string
           enum: [uniform, per_set]
-        rpeMode:
-          type: string
-          enum: [uniform, per_set]
         setTypeMode:
           type: string
           enum: [uniform, per_set]
@@ -318,10 +310,6 @@ components:
           type: integer
           minimum: 1
           maximum: 999
-        uniformRpe:
-          type: number
-          minimum: 1
-          maximum: 10
         uniformSetType:
           type: string
           enum: [normal, amrap, to_failure, drop_set, rest_pause]
@@ -365,7 +353,7 @@ components:
           minimum: 1
           maximum: 20
           nullable: true
-          description: Required for `superset` blocks; must be absent for `single`.
+          description: Unused for new routines. Rounds are derived at runtime as the max `setCount` across items. Must be absent (null) for `single` blocks.
         restSec:
           type: integer
           minimum: 0
@@ -660,11 +648,6 @@ components:
           type: integer
           minimum: 1
           maximum: 999
-        uniformRpe:
-          type: number
-          minimum: 1
-          maximum: 10
-          multipleOf: 0.5
         notes:
           type: string
           maxLength: 1000
@@ -673,7 +656,7 @@ components:
 
     ProgramDay:
       type: object
-      required: [id, weekIndex, dayIndex, routineId, isRestDay]
+      required: [id, weekIndex, dayIndex, order, routineId, isRestDay]
       properties:
         id:
           type: string
@@ -685,12 +668,23 @@ components:
           type: integer
           minimum: 0
           maximum: 6
+        order:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Position within a day (0 = primary slot). Allows multiple workouts on the same day.
+        label:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: Optional label for this workout slot, e.g. "AM" or "PM".
         routineId:
           type: string
           format: uuid
           nullable: true
         isRestDay:
           type: boolean
+          description: Only valid when `order` is 0. Mutually exclusive with `routineId`.
         notes:
           type: string
           maxLength: 1000
@@ -784,6 +778,9 @@ components:
           type: integer
           minimum: 0
           maximum: 6
+        weekZeroStartDate:
+          type: integer
+          description: Unix ms of 00:00 local on the chosen start date (day 0 of week 0). Used to map program days to calendar dates.
         dayStates:
           type: array
           items:
@@ -1845,6 +1842,9 @@ paths:
                 startedAt:
                   type: integer
                   description: Unix timestamp (ms).
+                weekZeroStartDate:
+                  type: integer
+                  description: Unix ms of 00:00 local on the chosen start date. Determines how program days map to calendar dates.
       responses:
         "201":
           description: Created

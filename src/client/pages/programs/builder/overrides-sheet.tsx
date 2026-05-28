@@ -2,7 +2,6 @@ import { useState, type Dispatch } from "react";
 import { useRoutine } from "../../../hooks/use-routines";
 import { SetCountStepper } from "../../routines/builder/fields/set-count";
 import { UniformRepsInput } from "../../routines/builder/fields/uniform-reps";
-import { UniformRpeInput } from "../../routines/builder/fields/uniform-rpe";
 import type { RoutineBlock, RoutineItem, RoutineItemOverride, Exercise } from "../../../../shared";
 import type { BuilderAction } from "./state";
 
@@ -15,7 +14,6 @@ type ItemOverrideDraft = {
   uniformReps?: number;
   uniformRepsMin?: number;
   uniformRepsMax?: number;
-  uniformRpe?: number;
   notes?: string;
 };
 
@@ -29,7 +27,6 @@ function initDrafts(existing: RoutineItemOverride[] | null): Drafts {
       uniformReps: ov.uniformReps,
       uniformRepsMin: ov.uniformRepsMin,
       uniformRepsMax: ov.uniformRepsMax,
-      uniformRpe: ov.uniformRpe,
       notes: ov.notes ?? undefined,
     };
   }
@@ -44,7 +41,6 @@ function collectOverrides(drafts: Drafts): RoutineItemOverride[] | null {
     if (d.uniformReps != null) ov.uniformReps = d.uniformReps;
     if (d.uniformRepsMin != null) ov.uniformRepsMin = d.uniformRepsMin;
     if (d.uniformRepsMax != null) ov.uniformRepsMax = d.uniformRepsMax;
-    if (d.uniformRpe != null) ov.uniformRpe = d.uniformRpe;
     if (d.notes) ov.notes = d.notes;
     if (Object.keys(ov).length > 1) overrides.push(ov);
   }
@@ -58,7 +54,6 @@ function hasItemOverride(draft: ItemOverrideDraft | undefined): boolean {
     draft.uniformReps != null ||
     draft.uniformRepsMin != null ||
     draft.uniformRepsMax != null ||
-    draft.uniformRpe != null ||
     !!draft.notes
   );
 }
@@ -74,13 +69,6 @@ function itemRepsSummary(item: RoutineItem, draft: ItemOverrideDraft | undefined
   if (item.uniformSetType === "to_failure") return "fail";
   if (repsMin != null && repsMax != null) return `${repsMin}–${repsMax}`;
   return reps != null ? String(reps) : "—";
-}
-
-function itemRpeSummary(item: RoutineItem, draft: ItemOverrideDraft | undefined): string | null {
-  if (item.rpeMode === "per_set") return "varies";
-  const rpe = draft?.uniformRpe ?? item.uniformRpe;
-  if (rpe == null) return null;
-  return `RPE ${rpe % 1 === 0 ? rpe : rpe.toFixed(1)}`;
 }
 
 // ─── Override prescription panel ─────────────────────────────────────────────
@@ -146,19 +134,6 @@ function OverridePrescriptionPanel({ item, draft, exerciseType, onUpdate, onRese
         </div>
       )}
 
-      {/* RPE */}
-      {item.rpeMode === "uniform" && (
-        <div className="flex items-center gap-3">
-          <UniformRpeInput
-            value={draft.uniformRpe ?? item.uniformRpe}
-            onChange={(rpe) => onUpdate({ uniformRpe: rpe === item.uniformRpe ? undefined : rpe })}
-          />
-          {draft.uniformRpe != null && draft.uniformRpe !== item.uniformRpe && (
-            <span className="text-[10px] text-[var(--accent)]">base: {item.uniformRpe ?? "—"}</span>
-          )}
-        </div>
-      )}
-
       {/* Notes */}
       <div>
         <textarea
@@ -200,12 +175,10 @@ function OverrideItemCard({ item, exercise, draft, onUpdate, onReset }: ItemCard
 
   const effectiveSetCount = draft.setCount ?? item.setCount;
   const reps = itemRepsSummary(item, draft);
-  const rpe = itemRpeSummary(item, draft);
 
   const summaryParts = [
     `${effectiveSetCount} ×`,
     exercise?.type !== "cardio" ? reps : null,
-    rpe,
   ].filter(Boolean).join(" · ");
 
   return (
@@ -280,7 +253,7 @@ function OverrideBlockCard({ block, exerciseMap, drafts, onUpdate, onReset }: Bl
     <div className="rounded-[var(--radius-card)] bg-[var(--surface)] overflow-hidden">
       <div className="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2">
         <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400">
-          Superset · {block.roundCount ?? 1} rounds
+          Superset
         </span>
       </div>
       <div className="divide-y divide-[var(--border)]">
@@ -291,8 +264,7 @@ function OverrideBlockCard({ block, exerciseMap, drafts, onUpdate, onReset }: Bl
           const [expanded, setExpanded] = useState(false);
           const effectiveSetCount = draft.setCount ?? item.setCount;
           const reps = itemRepsSummary(item, draft);
-          const rpe = itemRpeSummary(item, draft);
-          const summaryParts = [`${effectiveSetCount} ×`, exercise?.type !== "cardio" ? reps : null, rpe].filter(Boolean).join(" · ");
+          const summaryParts = [`${effectiveSetCount} ×`, exercise?.type !== "cardio" ? reps : null].filter(Boolean).join(" · ");
 
           return (
             <div key={item.id}>

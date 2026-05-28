@@ -3,7 +3,6 @@ import type { BuilderAction, DraftItem } from "./state";
 import { SetCountStepper } from "./fields/set-count";
 import { ModeToggles } from "./fields/mode-toggles";
 import { UniformRepsInput } from "./fields/uniform-reps";
-import { UniformRpeInput } from "./fields/uniform-rpe";
 import { UniformSetTypeSelector } from "./fields/uniform-set-type";
 import { DurationInputs } from "./fields/duration";
 import { PerSetTable } from "./fields/per-set-table";
@@ -31,19 +30,10 @@ export function PrescriptionEditor({ blockId, item, exerciseType, dispatch }: Pr
 
       <ModeToggles
         repMode={item.repMode}
-        rpeMode={item.rpeMode}
         setTypeMode={item.setTypeMode}
         onRepModeChange={(m) => d({ type: "SET_ITEM_REP_MODE", blockId, itemId: item.id, mode: m })}
-        onRpeModeChange={(m) => d({ type: "SET_ITEM_RPE_MODE", blockId, itemId: item.id, mode: m })}
         onSetTypeModeChange={(m) => d({ type: "SET_ITEM_SET_TYPE_MODE", blockId, itemId: item.id, mode: m })}
       />
-
-      {item.rpeMode === "uniform" && (
-        <UniformRpeInput
-          value={item.uniformRpe}
-          onChange={(rpe) => d({ type: "SET_UNIFORM_RPE", blockId, itemId: item.id, rpe })}
-        />
-      )}
 
       {item.repMode === "uniform" && showReps && (
         <UniformRepsInput
@@ -78,7 +68,6 @@ export function PrescriptionEditor({ blockId, item, exerciseType, dispatch }: Pr
         callbacks={{
           onReps: (si, reps) => d({ type: "SET_SET_TARGET_REPS", blockId, itemId: item.id, setIndex: si, reps }),
           onRange: (si, min, max) => d({ type: "SET_SET_TARGET_REPS_RANGE", blockId, itemId: item.id, setIndex: si, min, max }),
-          onRpe: (si, rpe) => d({ type: "SET_SET_TARGET_RPE", blockId, itemId: item.id, setIndex: si, rpe }),
           onSetType: (si, t) => d({ type: "SET_SET_TARGET_SET_TYPE", blockId, itemId: item.id, setIndex: si, setType: t }),
           onNotes: (si, notes) => d({ type: "SET_SET_TARGET_NOTES", blockId, itemId: item.id, setIndex: si, notes }),
         }}

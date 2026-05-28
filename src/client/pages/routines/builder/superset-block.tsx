@@ -6,7 +6,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { BuilderAction, DraftBlock, DraftItem } from "./state";
-import { repsSummary, rpeSummary, restSummary, setTypeChip, durationSummary } from "./summary";
+import { repsSummary, restSummary, setTypeChip, durationSummary } from "./summary";
 import { PrescriptionEditor } from "./prescription-editor";
 import { RestInput } from "./fields/rest";
 import { ExercisePicker } from "../../../components/exercise-picker";
@@ -71,10 +71,6 @@ export function SupersetBlock({ block, supersetIndex, exerciseMap, dispatch }: P
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <RoundCountStepper
-                value={block.roundCount ?? 3}
-                onChange={(n) => dispatch({ type: "SET_BLOCK_ROUND_COUNT", blockId: block.id, roundCount: n })}
-              />
               <BlockOverflowMenu
                 onDelete={() => dispatch({ type: "REMOVE_BLOCK", blockId: block.id })}
               />
@@ -166,7 +162,6 @@ function SupersetItemRow({
   const exerciseName = exercise?.name ?? "Missing exercise";
 
   const reps = repsSummary(item);
-  const rpe = rpeSummary(item);
   const rest = restSummary(block.restSec);
   const dur = durationSummary(item);
   const chip = setTypeChip(item);
@@ -178,7 +173,6 @@ function SupersetItemRow({
     `${item.setCount} ×`,
     isCardio || isMixed ? null : reps,
     dur,
-    rpe,
     rest ? `${rest} rest` : null,
   ].filter(Boolean).join(" · ");
 
@@ -279,33 +273,6 @@ function SupersetItemRow({
         }}
         title="Replace exercise"
       />
-    </div>
-  );
-}
-
-function RoundCountStepper({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-      <button
-        type="button"
-        aria-label="Decrease rounds"
-        disabled={value <= 1}
-        onClick={() => onChange(Math.max(1, value - 1))}
-        className="px-1.5 py-0.5 rounded bg-[var(--surface-elevated)] hover:text-[var(--text)] disabled:opacity-30 focus:outline-none"
-      >
-        −
-      </button>
-      <span className="min-w-[2ch] text-center font-semibold text-[var(--text)] tabular">{value}</span>
-      <button
-        type="button"
-        aria-label="Increase rounds"
-        disabled={value >= 20}
-        onClick={() => onChange(Math.min(20, value + 1))}
-        className="px-1.5 py-0.5 rounded bg-[var(--surface-elevated)] hover:text-[var(--text)] disabled:opacity-30 focus:outline-none"
-      >
-        +
-      </button>
-      <span className="text-[var(--text-subtle)] text-[10px]">rounds</span>
     </div>
   );
 }

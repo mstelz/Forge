@@ -30,7 +30,6 @@ export function defaultItem(exerciseId: string): DraftItem {
     exerciseId,
     setCount: 3,
     repMode: "uniform",
-    rpeMode: "uniform",
     setTypeMode: "uniform",
     uniformReps: 10,
     uniformSetType: "normal",
@@ -54,7 +53,7 @@ export function defaultSupersetBlock(exerciseIds: [string, string]): DraftBlock 
   return {
     id: uuidv4(),
     type: "superset",
-    roundCount: 3,
+    roundCount: null,
     restSec: null,
     tempo: null,
     notes: null,
@@ -83,7 +82,6 @@ export function resizeSetTargets(
     reps: item.uniformReps,
     repsMin: item.uniformRepsMin,
     repsMax: item.uniformRepsMax,
-    rpe: item.uniformRpe,
     setType: (item.uniformSetType as SetType | undefined) ?? "normal",
   };
 
@@ -119,12 +117,10 @@ export function normalizeDraft(draft: DraftRoutine): Routine {
         order: ii,
         setCount: it.setCount,
         repMode: it.repMode,
-        rpeMode: it.rpeMode,
         setTypeMode: it.setTypeMode,
         uniformReps: it.uniformReps,
         uniformRepsMin: it.uniformRepsMin,
         uniformRepsMax: it.uniformRepsMax,
-        uniformRpe: it.uniformRpe,
         uniformSetType: it.uniformSetType,
         setTargets: it.setTargets?.map((st, si) => ({ ...st, order: si })),
         durationSec: it.durationSec,
@@ -151,24 +147,20 @@ export type BuilderAction =
   | { type: "REPLACE_EXERCISE"; blockId: string; itemId: string; exerciseId: string }
   | { type: "ADD_ITEM_TO_SUPERSET"; blockId: string; exerciseId: string }
   | { type: "REMOVE_ITEM"; blockId: string; itemId: string }
-  | { type: "SET_BLOCK_ROUND_COUNT"; blockId: string; roundCount: number }
   | { type: "SET_BLOCK_REST"; blockId: string; restSec: number | null }
   | { type: "SET_BLOCK_TEMPO"; blockId: string; tempo: string }
   | { type: "SET_BLOCK_NOTES"; blockId: string; notes: string }
   | { type: "SET_ITEM_SET_COUNT"; blockId: string; itemId: string; setCount: number }
   | { type: "SET_ITEM_REP_MODE"; blockId: string; itemId: string; mode: "uniform" | "per_set" }
-  | { type: "SET_ITEM_RPE_MODE"; blockId: string; itemId: string; mode: "uniform" | "per_set" }
   | { type: "SET_ITEM_SET_TYPE_MODE"; blockId: string; itemId: string; mode: "uniform" | "per_set" }
   | { type: "SET_UNIFORM_REPS"; blockId: string; itemId: string; reps: number | undefined }
   | { type: "SET_UNIFORM_REPS_RANGE"; blockId: string; itemId: string; min: number | undefined; max: number | undefined }
-  | { type: "SET_UNIFORM_RPE"; blockId: string; itemId: string; rpe: number | undefined }
   | { type: "SET_UNIFORM_SET_TYPE"; blockId: string; itemId: string; setType: SetType }
   | { type: "SET_DURATION_SEC"; blockId: string; itemId: string; sec: number | undefined }
   | { type: "SET_DURATION_RANGE"; blockId: string; itemId: string; min: number | undefined; max: number | undefined }
   | { type: "SET_ITEM_NOTES"; blockId: string; itemId: string; notes: string }
   | { type: "SET_SET_TARGET_REPS"; blockId: string; itemId: string; setIndex: number; reps: number | undefined }
   | { type: "SET_SET_TARGET_REPS_RANGE"; blockId: string; itemId: string; setIndex: number; min: number | undefined; max: number | undefined }
-  | { type: "SET_SET_TARGET_RPE"; blockId: string; itemId: string; setIndex: number; rpe: number | undefined }
   | { type: "SET_SET_TARGET_SET_TYPE"; blockId: string; itemId: string; setIndex: number; setType: SetType }
   | { type: "SET_SET_TARGET_NOTES"; blockId: string; itemId: string; setIndex: number; notes: string };
 
@@ -200,7 +192,7 @@ function mapItem(state: BuilderState, blockId: string, itemId: string, fn: (it: 
 }
 
 function syncSetTargets(item: DraftItem): DraftItem {
-  const anyPerSet = item.repMode === "per_set" || item.rpeMode === "per_set" || item.setTypeMode === "per_set";
+  const anyPerSet = item.repMode === "per_set" || item.setTypeMode === "per_set";
   if (!anyPerSet) {
     return { ...item, setTargets: undefined };
   }
@@ -216,9 +208,6 @@ function syncSetTargets(item: DraftItem): DraftItem {
       out.reps = t.reps;
       out.repsMin = t.repsMin;
       out.repsMax = t.repsMax;
-    }
-    if (item.rpeMode === "per_set") {
-      out.rpe = t.rpe;
     }
     return out;
   });
@@ -306,9 +295,6 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         items: b.items.filter((it) => it.id !== action.itemId),
       }));
 
-    case "SET_BLOCK_ROUND_COUNT":
-      return mapBlock(state, action.blockId, (b) => ({ ...b, roundCount: action.roundCount }));
-
     case "SET_BLOCK_REST":
       return mapBlock(state, action.blockId, (b) => ({ ...b, restSec: action.restSec }));
 
@@ -341,17 +327,6 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         return syncSetTargets(updated);
       });
 
-    case "SET_ITEM_RPE_MODE":
-      return mapItem(state, action.blockId, action.itemId, (it) => {
-        const updated = { ...it, rpeMode: action.mode };
-        if (action.mode === "per_set") {
-          const targets = resizeSetTargets(it.setTargets as DraftSetTarget[] | undefined, it.setCount, it);
-          const withRpe = targets.map((t) => ({ ...t, rpe: it.uniformRpe ?? t.rpe }));
-          return syncSetTargets({ ...updated, setTargets: withRpe as RoutineItem["setTargets"] });
-        }
-        return syncSetTargets(updated);
-      });
-
     case "SET_ITEM_SET_TYPE_MODE":
       return mapItem(state, action.blockId, action.itemId, (it) => {
         const updated = { ...it, setTypeMode: action.mode };
@@ -377,12 +352,6 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         uniformReps: undefined,
         uniformRepsMin: action.min,
         uniformRepsMax: action.max,
-      }));
-
-    case "SET_UNIFORM_RPE":
-      return mapItem(state, action.blockId, action.itemId, (it) => ({
-        ...it,
-        uniformRpe: action.rpe,
       }));
 
     case "SET_UNIFORM_SET_TYPE":
@@ -426,14 +395,6 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
         ...it,
         setTargets: (it.setTargets ?? []).map((t, i) =>
           i === action.setIndex ? { ...t, reps: undefined, repsMin: action.min, repsMax: action.max } : t,
-        ),
-      }));
-
-    case "SET_SET_TARGET_RPE":
-      return mapItem(state, action.blockId, action.itemId, (it) => ({
-        ...it,
-        setTargets: (it.setTargets ?? []).map((t, i) =>
-          i === action.setIndex ? { ...t, rpe: action.rpe } : t,
         ),
       }));
 

@@ -28,7 +28,6 @@ interface LiveItem {
   exerciseId: string;
   setCount: number;
   uniformReps?: number;
-  uniformRpe?: number;
   restSec?: number;
   notes?: string;
   setTargets: PlannedSlot[];
@@ -57,7 +56,6 @@ function buildLiveStructure(routine: Routine): LiveStructure {
           reps: item.repMode === "uniform" ? (item.uniformReps ?? undefined) : (perSet?.reps ?? undefined),
           repsMin: item.repMode === "uniform" ? (item.uniformRepsMin ?? undefined) : (perSet?.repsMin ?? undefined),
           repsMax: item.repMode === "uniform" ? (item.uniformRepsMax ?? undefined) : (perSet?.repsMax ?? undefined),
-          rpe: item.rpeMode === "uniform" ? (item.uniformRpe ?? undefined) : (perSet?.rpe ?? undefined),
           setType: item.setTypeMode === "uniform" ? (item.uniformSetType ?? "normal") : (perSet?.setType ?? "normal"),
         };
       });
@@ -67,7 +65,6 @@ function buildLiveStructure(routine: Routine): LiveStructure {
         exerciseId: item.exerciseId,
         setCount: item.setCount,
         uniformReps: item.uniformReps ?? undefined,
-        uniformRpe: item.uniformRpe ?? undefined,
         notes: item.notes ?? undefined,
         setTargets,
       };

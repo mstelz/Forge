@@ -16,7 +16,6 @@ const REP_OPTIONAL = new Set<SetType>(["amrap", "to_failure"]);
 type RowCallbacks = {
   onReps: (setIndex: number, reps: number | undefined) => void;
   onRange: (setIndex: number, min: number | undefined, max: number | undefined) => void;
-  onRpe: (setIndex: number, rpe: number | undefined) => void;
   onSetType: (setIndex: number, t: SetType) => void;
   onNotes: (setIndex: number, notes: string) => void;
 };
@@ -29,10 +28,9 @@ type Props = {
 export function PerSetTable({ item, callbacks }: Props) {
   const targets = item.setTargets ?? [];
   const showReps = item.repMode === "per_set";
-  const showRpe = item.rpeMode === "per_set";
   const showType = item.setTypeMode === "per_set";
 
-  if (!showReps && !showRpe && !showType) return null;
+  if (!showReps && !showType) return null;
 
   return (
     <div className="mt-2 overflow-x-auto">
@@ -41,7 +39,6 @@ export function PerSetTable({ item, callbacks }: Props) {
           <tr className="text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border)]">
             <th className="py-1 pr-2 text-left font-medium w-8">#</th>
             {showReps && <th className="py-1 px-1 text-left font-medium">Reps</th>}
-            {showRpe && <th className="py-1 px-1 text-left font-medium">RPE</th>}
             {showType && <th className="py-1 px-1 text-left font-medium">Type</th>}
             <th className="py-1 pl-1 w-6" />
           </tr>
@@ -53,7 +50,6 @@ export function PerSetTable({ item, callbacks }: Props) {
               index={i}
               target={t}
               showReps={showReps}
-              showRpe={showRpe}
               showType={showType}
               callbacks={callbacks}
             />
@@ -68,14 +64,12 @@ function PerSetRow({
   index,
   target,
   showReps,
-  showRpe,
   showType,
   callbacks,
 }: {
   index: number;
   target: NonNullable<DraftItem["setTargets"]>[number];
   showReps: boolean;
-  showRpe: boolean;
   showType: boolean;
   callbacks: RowCallbacks;
 }) {
@@ -137,21 +131,6 @@ function PerSetRow({
                 {rangeMode ? "±" : "~"}
               </button>
             )}
-          </td>
-        )}
-        {showRpe && (
-          <td className="py-1.5 px-1">
-            <input
-              type="number" min={1} max={10} step={0.5}
-              value={target.rpe ?? ""}
-              placeholder="—"
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                callbacks.onRpe(index, isNaN(v) ? undefined : Math.round(v * 2) / 2);
-              }}
-              aria-label={`Set ${index + 1} RPE`}
-              className="w-14 h-7 rounded bg-[var(--surface-elevated)] px-1 text-center focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-            />
           </td>
         )}
         {showType && (

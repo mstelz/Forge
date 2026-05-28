@@ -21,12 +21,6 @@ export type Mode = z.infer<typeof ModeEnum>;
 const uuid = z.string().uuid();
 const orderInt = z.number().int().nonnegative();
 const reps = z.number().int().min(1).max(999);
-const halfStep = (n: number) => n * 2 === Math.round(n * 2);
-const rpe = z
-  .number()
-  .min(1)
-  .max(10)
-  .refine(halfStep, { message: "RPE must be in 0.5 increments" });
 
 const REP_REQUIRED_TYPES: ReadonlySet<SetType> = new Set([
   "normal",
@@ -42,7 +36,6 @@ export const SetTargetSchema = z
     reps: reps.optional(),
     repsMin: reps.optional(),
     repsMax: reps.optional(),
-    rpe: rpe.optional(),
     setType: SetTypeEnum,
     techniqueNotes: z.string().max(500).nullable().optional(),
   })
@@ -84,12 +77,10 @@ export const RoutineItemSchema = z
     order: orderInt,
     setCount: z.number().int().min(1).max(20),
     repMode: ModeEnum,
-    rpeMode: ModeEnum,
     setTypeMode: ModeEnum,
     uniformReps: reps.optional(),
     uniformRepsMin: reps.optional(),
     uniformRepsMax: reps.optional(),
-    uniformRpe: rpe.optional(),
     uniformSetType: SetTypeEnum.optional(),
     setTargets: z.array(SetTargetSchema).optional(),
     durationSec: z.number().int().min(1).max(86_400).optional(),
@@ -100,7 +91,6 @@ export const RoutineItemSchema = z
   .superRefine((val, ctx) => {
     const anyPerSet =
       val.repMode === "per_set" ||
-      val.rpeMode === "per_set" ||
       val.setTypeMode === "per_set";
 
     // setTargets presence + length + dense order
@@ -190,26 +180,6 @@ export const RoutineItemSchema = z
           path: ["uniformReps"],
           message: "uniform reps fields must be absent when repMode is per_set",
         });
-      }
-    }
-
-    // RPE mode gating
-    if (val.rpeMode === "per_set" && val.uniformRpe != null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["uniformRpe"],
-        message: "uniformRpe must be absent when rpeMode is per_set",
-      });
-    }
-    if (val.rpeMode === "uniform" && val.setTargets) {
-      for (let i = 0; i < val.setTargets.length; i++) {
-        if (val.setTargets[i]!.rpe != null) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["setTargets", i, "rpe"],
-            message: "per-set rpe must be absent when rpeMode is uniform",
-          });
-        }
       }
     }
 
@@ -328,13 +298,6 @@ export const RoutineBlockSchema = z
           code: z.ZodIssueCode.custom,
           path: ["items"],
           message: "superset must have 2–6 items",
-        });
-      }
-      if (val.roundCount == null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["roundCount"],
-          message: "superset must have roundCount in [1,20]",
         });
       }
     }
