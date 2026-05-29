@@ -1,10 +1,11 @@
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 import { ChevronRight } from "lucide-react";
 import { SettingsContext } from "../../contexts/settings-context";
 import { updateSettings } from "../../db/mutations";
 import { setTheme } from "../../lib/theme";
 import { triggerExport } from "../../export/trigger";
+import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Settings } from "../../../shared/settings";
@@ -190,6 +191,8 @@ export function SettingsPage() {
   const settings = useContext(SettingsContext);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const save = (patch: Partial<Settings>) => {
     void updateSettings({ ...settings, ...patch, updatedAt: Date.now() });
@@ -204,6 +207,28 @@ export function SettingsPage() {
     const result = await triggerExport();
     if (!result.ok) {
       alert(`Export failed — try again\n\n${result.error}`);
+    }
+  };
+
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const result = await importFromJson(text);
+      if (!result.ok) {
+        alert(`Import failed\n\n${result.error}`);
+      } else {
+        const summary = Object.entries(result.counts)
+          .map(([k, v]) => `${v} ${k}`)
+          .join(", ");
+        alert(`Import successful${summary ? `\n\n${summary}` : ""}`);
+        window.location.reload();
+      }
+    } catch (err) {
+      alert(`Import failed\n\n${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   };
 
@@ -263,11 +288,10 @@ export function SettingsPage() {
             <SettingsLabel>Distance</SettingsLabel>
             <SegmentedControl
               options={[
-                { value: "m", label: "m" },
                 { value: "km", label: "km" },
                 { value: "mi", label: "mi" },
               ]}
-              value={settings.distanceUnit}
+              value={settings.distanceUnit === "m" ? "km" : settings.distanceUnit}
               onChange={(v) => save({ distanceUnit: v as Settings["distanceUnit"] })}
             />
           </SettingsRow>
@@ -359,10 +383,35 @@ export function SettingsPage() {
           >
             <div className="flex flex-col items-start gap-0.5">
               <span className="text-sm font-medium text-[var(--text)]">Export workout data</span>
-              <span className="text-xs text-[var(--text-muted)]">Export as JSON</span>
+              <span className="text-xs text-[var(--text-muted)]">Download as JSON</span>
             </div>
             <ChevronRight size={16} className="text-[var(--text-subtle)]" aria-hidden="true" />
           </button>
+
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="flex w-full items-center justify-between px-4 py-3 bg-[var(--surface)] border-t border-[var(--border)] hover:bg-[var(--surface-elevated)] transition-colors disabled:opacity-50"
+          >
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-sm font-medium text-[var(--text)]">
+                {importing ? "Importing…" : "Import workout data"}
+              </span>
+              <span className="text-xs text-[var(--text-muted)]">Restore from JSON export</span>
+            </div>
+            <ChevronRight size={16} className="text-[var(--text-subtle)]" aria-hidden="true" />
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImport(file);
+            }}
+          />
 
           <button
             type="button"

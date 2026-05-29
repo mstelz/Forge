@@ -367,6 +367,8 @@ export function SessionDetailPage() {
           const displayName = exerciseNamesRef.current.get(exerciseId) ?? "Unknown exercise";
           const exerciseType = exerciseTypesRef.current.get(exerciseId) ?? "strength";
 
+          const blockIdx = sessionItemToBlockIndex.get(sessionItemId) ?? 0;
+
           return (
             <ExerciseBlock
               key={sessionItemId}
@@ -376,6 +378,7 @@ export function SessionDetailPage() {
               exerciseType={exerciseType}
               isSuperset={isSuperset}
               supersetNum={supersetNum}
+              blockIndex={blockIdx}
             />
           );
         })}
@@ -401,6 +404,7 @@ export function SessionDetailPage() {
                     exerciseType={exType}
                     isSuperset={false}
                     supersetNum={null}
+                    blockIndex={0}
                   />
                 );
               })}
@@ -499,12 +503,21 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+const SUPERSET_COLORS = [
+  { border: "border-amber-400", text: "text-amber-400" },
+  { border: "border-sky-400", text: "text-sky-400" },
+  { border: "border-emerald-400", text: "text-emerald-400" },
+  { border: "border-violet-400", text: "text-violet-400" },
+  { border: "border-rose-400", text: "text-rose-400" },
+] as const;
+
 function ExerciseBlock({
   logs,
   exerciseName,
   exerciseType,
   isSuperset,
   supersetNum,
+  blockIndex,
 }: {
   logs: SessionSetLog[];
   exerciseId: string;
@@ -512,21 +525,23 @@ function ExerciseBlock({
   exerciseType: string;
   isSuperset: boolean;
   supersetNum: number | null;
+  blockIndex: number;
 }) {
   const sorted = [...logs].sort((a, b) => a.order - b.order);
+  const supersetColor = SUPERSET_COLORS[blockIndex % SUPERSET_COLORS.length]!;
 
   return (
     <div
       className={[
         "rounded-[var(--radius-card)] bg-[var(--surface)] overflow-hidden",
-        isSuperset ? "border-l-4 border-[var(--accent)]" : "",
+        isSuperset ? `border-l-4 ${supersetColor.border}` : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
       {isSuperset && supersetNum === 1 ? (
         <div className="px-4 pt-3 pb-1">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+          <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${supersetColor.text}`}>
             Superset
           </span>
         </div>

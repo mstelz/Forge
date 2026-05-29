@@ -5,6 +5,7 @@ import { ExerciseDetailPage } from "./pages/exercises/detail";
 import { ExerciseNewPage } from "./pages/exercises/new";
 import { ExerciseEditPage } from "./pages/exercises/edit";
 import { EquipmentListPage } from "./pages/equipment/list";
+import { EquipmentDetailPage } from "./pages/equipment/detail";
 import { RoutineListPage } from "./pages/routines/list";
 import { RoutineBuilderPage } from "./pages/routines/builder";
 import { WorkoutStartPage } from "./pages/workout/start";
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
       { path: "/exercises/:id", element: <ExerciseDetailPage /> },
       { path: "/exercises/:id/edit", element: <ExerciseEditPage /> },
       { path: "/equipment", element: <EquipmentListPage /> },
+      { path: "/equipment/:id", element: <EquipmentDetailPage /> },
       { path: "/routines", element: <RoutineListPage /> },
       { path: "/routines/new", element: <RoutineBuilderPage mode="create" /> },
       { path: "/routines/:id", element: <RoutineBuilderPage mode="edit" /> },

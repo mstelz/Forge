@@ -200,9 +200,9 @@ export function HistoryListPage() {
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-card)] bg-[var(--surface)] py-2.5 text-center">
-      <p className="text-lg font-bold text-[var(--text)] tabular-nums">{value}</p>
-      <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+    <div className="rounded-[var(--radius-card)] bg-[var(--surface)] py-2.5 text-center overflow-hidden min-w-0">
+      <p className="text-base font-bold text-[var(--text)] tabular-nums truncate px-1">{value}</p>
+      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-subtle)] truncate px-1">
         {label}
       </p>
     </div>

@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { forgeDB } from "../../../db/forge-db";
 import {
   DndContext,
   DragOverlay,
@@ -324,6 +325,35 @@ export function EditStructureSheet({
     }
   });
 
+  // Resolved exercise names — supplement the prop with a DB lookup so names
+  // appear immediately even if the parent ref hasn't populated yet.
+  const [resolvedNames, setResolvedNames] = useState<Map<string, string>>(
+    () => new Map(exerciseNames),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const allIds = draft.blocks.flatMap((b) => b.items.map((i) => i.exerciseId));
+    const uniqueIds = Array.from(new Set(allIds));
+    const missing = uniqueIds.filter((id) => !exerciseNames.has(id));
+
+    const base = new Map(exerciseNames);
+    if (missing.length === 0) {
+      setResolvedNames(base);
+      return;
+    }
+    Promise.all(
+      missing.map((id) =>
+        forgeDB.exercises.get(id).then((ex) => [id, ex?.name ?? null] as const),
+      ),
+    ).then((pairs) => {
+      for (const [id, name] of pairs) {
+        if (name) base.set(id, name);
+      }
+      setResolvedNames(base);
+    });
+  }, [open, draft, exerciseNames]);
+
   // Re-sync draft when the sheet opens with a fresh session
   // (We track the session.liveStructure as a stable prop — the sheet only stages edits)
   const [prevLiveStructure, setPrevLiveStructure] = useState(session.liveStructure);
@@ -563,7 +593,7 @@ export function EditStructureSheet({
         aria-modal="true"
         aria-label="Edit structure"
         className="fixed bottom-0 left-0 right-0 z-50 flex flex-col rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)]"
-        style={{ maxHeight: "90dvh" }}
+        style={{ height: "90dvh" }}
       >
         {/* Sheet header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
@@ -605,7 +635,7 @@ export function EditStructureSheet({
                     key={block.id}
                     block={block}
                     blockIndex={blockIndex}
-                    exerciseNames={exerciseNames}
+                    exerciseNames={resolvedNames}
                     onAction={handleAction}
                   />
                 ))
@@ -618,7 +648,7 @@ export function EditStructureSheet({
                   <span className="text-sm font-semibold text-[var(--text-muted)]">
                     {activeBlock.type === "superset"
                       ? `Superset · ${activeBlock.items.length} exercises`
-                      : (exerciseNames.get(activeBlock.items[0]?.exerciseId ?? "") ?? "Exercise")}
+                      : (resolvedNames.get(activeBlock.items[0]?.exerciseId ?? "") ?? "Exercise")}
                   </span>
                 </div>
               ) : null}

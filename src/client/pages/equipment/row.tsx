@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -111,12 +112,15 @@ export function EquipmentRow({ equipment, referenceCount, onRequestDelete }: Pro
             ) : null}
           </div>
         ) : (
-          <>
+          <Link
+            to={`/equipment/${equipment.id}`}
+            className="flex-1 min-w-0 block"
+          >
             <p className="truncate text-sm font-semibold text-[var(--text)]">{equipment.name}</p>
             <p className="text-[11px] uppercase tracking-wider text-[var(--text-subtle)]">
               {referenceCount} {referenceCount === 1 ? "exercise" : "exercises"}
             </p>
-          </>
+          </Link>
         )}
       </div>
       {editing ? null : (

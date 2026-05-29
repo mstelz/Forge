@@ -59,6 +59,12 @@ app.route("/api/v1", auth(api));
 
 // Serve built SPA in production. In dev, Vite owns the client at :5173.
 if (process.env.NODE_ENV === "production") {
+  // Explicit favicon route ensures correct Content-Type regardless of proxy config.
+  app.get("/favicon.svg", (c) => {
+    const file = Bun.file(`${CLIENT_DIR}/favicon.svg`);
+    return new Response(file, { headers: { "Content-Type": "image/svg+xml" } });
+  });
+
   app.use("/*", serveStatic({ root: CLIENT_DIR }));
   app.get("*", serveStatic({ path: `${CLIENT_DIR}/index.html` }));
 }
