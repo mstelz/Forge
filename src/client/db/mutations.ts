@@ -349,3 +349,28 @@ export async function updateSettings(record: Settings): Promise<Settings> {
 
 // Re-export SETTINGS_ID for convenience
 export { SETTINGS_ID };
+
+// ---------------------------------------------------------------------------
+// Profile mutations
+// ---------------------------------------------------------------------------
+
+import type { Profile, WeightLog } from "../../shared/profile";
+
+export async function createProfile(record: Profile): Promise<Profile> {
+  await forgeDB.profiles.put(record);
+  return record;
+}
+
+export async function updateProfile(record: Profile): Promise<Profile> {
+  await forgeDB.profiles.put(record);
+  return record;
+}
+
+export async function addWeightLog(record: WeightLog): Promise<WeightLog> {
+  await forgeDB.weightLogs.put(record);
+  return record;
+}
+
+export async function deleteWeightLog(id: string): Promise<void> {
+  await forgeDB.weightLogs.delete(id);
+}

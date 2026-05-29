@@ -39,6 +39,8 @@ export async function importFromJson(json: string): Promise<ImportResult> {
         forgeDB.sessionSetLogs,
         forgeDB.goals,
         forgeDB.settings,
+        forgeDB.profiles,
+        forgeDB.weightLogs,
       ],
       async () => {
         if (entities.exercises.length) {
@@ -84,6 +86,14 @@ export async function importFromJson(json: string): Promise<ImportResult> {
         if (entities.settings) {
           await forgeDB.settings.put(entities.settings);
           counts.settings = 1;
+        }
+        if (entities.profiles?.length) {
+          await forgeDB.profiles.bulkPut(entities.profiles);
+          counts.profiles = entities.profiles.length;
+        }
+        if (entities.weightLogs?.length) {
+          await forgeDB.weightLogs.bulkPut(entities.weightLogs);
+          counts.weightLogs = entities.weightLogs.length;
         }
       },
     );

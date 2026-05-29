@@ -191,3 +191,18 @@ export const listFinishedRunsForProgram = async (
 export const listGoals = (): Promise<Goal[]> => forgeDB.goals.toArray();
 
 export const getGoal = (id: string): Promise<Goal | undefined> => forgeDB.goals.get(id);
+
+// ---------------------------------------------------------------------------
+// Profiles
+// ---------------------------------------------------------------------------
+
+import type { Profile, WeightLog } from "../../shared/profile";
+
+export const listProfiles = (): Promise<Profile[]> =>
+  forgeDB.profiles.orderBy("createdAt").toArray();
+
+export const getProfileById = (id: string): Promise<Profile | undefined> =>
+  forgeDB.profiles.get(id);
+
+export const listWeightLogs = (profileId: string): Promise<WeightLog[]> =>
+  forgeDB.weightLogs.where("profileId").equals(profileId).sortBy("date");

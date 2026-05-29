@@ -19,6 +19,8 @@ import type { Program, ProgramDay } from "../../shared/program";
 import type { ProgramRun, ProgramRunDayState } from "../../shared/program-run";
 import type { Goal } from "../../shared/goals";
 import type { Settings } from "../../shared/settings";
+import type { Profile, WeightLog } from "../../shared/profile";
+import { ProfileSchema, WeightLogSchema } from "../../shared/profile";
 
 // ---------------------------------------------------------------------------
 // Filename helper — YYYY-MM-DD in local time
@@ -166,6 +168,22 @@ async function clientDump(): Promise<string> {
     "goals",
   );
 
+  // ── Profiles ──────────────────────────────────────────────────────────────
+  const profileRows = storeNames.has("profiles") ? await forgeDB.profiles.toArray() : [];
+  const validProfiles = validateRows<Profile>(
+    profileRows,
+    (r) => ProfileSchema.safeParse(r),
+    "profiles",
+  );
+
+  // ── WeightLogs ────────────────────────────────────────────────────────────
+  const weightLogRows = storeNames.has("weightLogs") ? await forgeDB.weightLogs.toArray() : [];
+  const validWeightLogs = validateRows<WeightLog>(
+    weightLogRows,
+    (r) => WeightLogSchema.safeParse(r),
+    "weightLogs",
+  );
+
   // ── Settings (singleton, optional) ────────────────────────────────────────
   let validSettings: Settings | undefined;
   if (storeNames.has("settings")) {
@@ -200,6 +218,8 @@ async function clientDump(): Promise<string> {
       sessionSetLogs: validLogs,
       goals: validGoals,
       ...(validSettings ? { settings: validSettings } : {}),
+      profiles: validProfiles,
+      weightLogs: validWeightLogs,
     },
     ...(warnings.length > 0 ? { _warnings: warnings } : {}),
   };

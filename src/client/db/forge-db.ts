@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, ProgramDay, ProgramRunDayState, Settings } from "../../shared";
+import type { Profile, WeightLog } from "../../shared/profile";
 
 export type MetaRow = {
   key: string;
@@ -21,6 +22,8 @@ export class ForgeDB extends Dexie {
   programRunDayStates!: Table<ProgramRunDayState, string>;
   goals!: Table<Goal, string>;
   settings!: Table<Settings, string>;
+  profiles!: Table<Profile, string>;
+  weightLogs!: Table<WeightLog, string>;
 
   constructor() {
     super("forge");
@@ -118,6 +121,24 @@ export class ForgeDB extends Dexie {
       programRunDayStates: "id, programRunId, weekIndex, dayIndex",
       goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId",
       settings: "id",
+    });
+
+    this.version(9).stores({
+      exercises: "id, name, type, updatedAt",
+      equipment: "id, name",
+      pendingWrites: "id, createdAt, entity",
+      meta: "key",
+      routines: "id, name, updatedAt",
+      sessions: "id, status, startedAt, sourceRoutineId, sourceType",
+      sessionSetLogs: "id, sessionId, [exerciseId+loggedAt], [sessionId+performedExerciseId+order], plannedSetId",
+      programs: "id, name, updatedAt",
+      programDays: "id, programId, weekIndex, dayIndex, order",
+      programRuns: "id, programId, status, startedAt",
+      programRunDayStates: "id, programRunId, weekIndex, dayIndex",
+      goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId",
+      settings: "id",
+      profiles: "id, name, createdAt",
+      weightLogs: "id, profileId, date",
     });
   }
 }

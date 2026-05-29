@@ -55,4 +55,13 @@ export const queryKeys = {
     all: ["settings"] as const,
     singleton: () => ["settings", "singleton"] as const,
   },
+  profiles: {
+    all: ["profiles"] as const,
+    list: () => ["profiles", "list"] as const,
+    byId: (id: string) => ["profiles", "byId", id] as const,
+  },
+  weightLogs: {
+    all: ["weightLogs"] as const,
+    byProfileId: (profileId: string) => ["weightLogs", "byProfileId", profileId] as const,
+  },
 } as const;

@@ -22,6 +22,7 @@ import { ProgramNewPage } from "./pages/programs/new";
 import { ProgramDetailPage } from "./pages/programs/detail";
 import { ProgramEditPage } from "./pages/programs/edit";
 import { SettingsPage } from "./pages/settings/index";
+import { ProfilePage } from "./pages/profile/index";
 
 const router = createBrowserRouter([
   {
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
       { path: "/workout/sessions/:id", element: <SessionDetailPage /> },
       { path: "/history", element: <HistoryListPage /> },
       { path: "/settings", element: <SettingsPage /> },
+      { path: "/profile", element: <ProfilePage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

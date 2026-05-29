@@ -14,11 +14,13 @@ import {
   type Goal,
 } from "../../home/state";
 import { createSession } from "../../db/mutations";
+import { useProfiles } from "../../hooks/use-profile";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
 import { computeNextPlayableDay, computeTodayProgramDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
+import type { RoutineItemOverride } from "../../../shared/program";
 
 // ---------------------------------------------------------------------------
 // Estimated duration helper
@@ -80,7 +82,21 @@ function Skeleton({ className }: { className?: string }) {
 // Top Bar
 // ---------------------------------------------------------------------------
 
-function TopBar({ openDrawer }: { openDrawer: () => void }) {
+function nameInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function TopBar({
+  openDrawer,
+  profile,
+}: {
+  openDrawer: () => void;
+  profile: { name: string; avatarDataUrl: string | null } | null;
+}) {
+  const initials = profile ? nameInitials(profile.name) : "?";
+
   return (
     <div className="flex items-center justify-between px-4 pt-4 pb-2">
       <button
@@ -96,13 +112,23 @@ function TopBar({ openDrawer }: { openDrawer: () => void }) {
         FORGE
       </span>
 
-      {/* Avatar with initials */}
-      <div
-        aria-hidden="true"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface)] text-[10px] font-bold uppercase text-[var(--text-subtle)] ring-1 ring-[var(--border)]"
+      <Link
+        to="/profile"
+        aria-label="View profile"
+        className="flex h-8 w-8 items-center justify-center rounded-full overflow-hidden bg-[var(--surface)] ring-1 ring-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] hover:ring-[var(--accent)] transition-all"
       >
-        MS
-      </div>
+        {profile?.avatarDataUrl ? (
+          <img
+            src={profile.avatarDataUrl}
+            alt={profile.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <span className="text-[10px] font-bold uppercase text-[var(--accent)]">
+            {initials}
+          </span>
+        )}
+      </Link>
     </div>
   );
 }
@@ -452,12 +478,45 @@ function DayDetailContent({
   detail: DayDetail;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
   const dateLabel = new Date(detail.date.y, detail.date.m - 1, detail.date.d).toLocaleDateString(
     "en-US",
     { weekday: "long", month: "short", day: "numeric" },
   );
 
   const dateQuery = `${detail.date.y}-${String(detail.date.m).padStart(2, "0")}-${String(detail.date.d).padStart(2, "0")}`;
+
+  const handleLogWorkout = useCallback(async (
+    routine: Routine,
+    programContext: NonNullable<DayDetail["plannedProgramContext"]>,
+  ) => {
+    const now = Date.now();
+    const session: Session = {
+      id: uuidv4(),
+      status: "in_progress",
+      sourceType: "program_day",
+      sourceRoutineId: routine.id,
+      sourceProgramId: programContext.programId,
+      sourceProgramWeekIndex: programContext.weekIndex,
+      sourceProgramDayIndex: programContext.dayIndex,
+      templateSnapshot: JSON.stringify(routine),
+      liveStructure: JSON.stringify(buildLiveStructure(routine, programContext.overrides as RoutineItemOverride[])),
+      restTimer: null,
+      title: routine.name,
+      notes: null,
+      startedAt: now,
+      endedAt: null,
+      pausedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await createSession(session);
+    qc.setQueryData(queryKeys.sessions.active(), session);
+    onClose();
+    navigate("/workout/active");
+  }, [navigate, qc, onClose]);
 
   return (
     <div>
@@ -482,7 +541,13 @@ function DayDetailContent({
       ) : detail.isRestDay ? (
         <RestDayContent />
       ) : detail.plannedRoutine ? (
-        <PlannedDayContent routine={detail.plannedRoutine} isFuture={detail.isFutureDay} dateQuery={dateQuery} />
+        <PlannedDayContent
+          routine={detail.plannedRoutine}
+          programContext={detail.plannedProgramContext}
+          isFuture={detail.isFutureDay}
+          dateQuery={dateQuery}
+          onLogWorkout={handleLogWorkout}
+        />
       ) : detail.isFutureDay ? (
         <FutureDayContent />
       ) : (
@@ -550,12 +615,16 @@ function FinishedDayContent({
 
 function PlannedDayContent({
   routine,
+  programContext,
   isFuture,
   dateQuery,
+  onLogWorkout,
 }: {
-  routine: import("../../../shared").Routine;
+  routine: Routine;
+  programContext: DayDetail["plannedProgramContext"];
   isFuture: boolean;
   dateQuery: string;
+  onLogWorkout: (routine: Routine, ctx: NonNullable<DayDetail["plannedProgramContext"]>) => void;
 }) {
   return (
     <div>
@@ -564,12 +633,22 @@ function PlannedDayContent({
         {isFuture ? "Scheduled workout" : "Workout not yet logged"}
       </p>
       {!isFuture ? (
-        <Link
-          to={`/workout/start?date=${dateQuery}`}
-          className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Log this workout
-        </Link>
+        programContext ? (
+          <button
+            type="button"
+            onClick={() => onLogWorkout(routine, programContext)}
+            className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Log this workout
+          </button>
+        ) : (
+          <Link
+            to={`/workout/start?date=${dateQuery}`}
+            className="text-xs font-semibold text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Log this workout
+          </Link>
+        )
       ) : null}
     </div>
   );
@@ -910,6 +989,8 @@ function HomeSkeleton() {
 export function HomePage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
   const { data, isLoading } = useHomepageState();
+  const { data: profiles } = useProfiles();
+  const profile = profiles?.[0] ?? null;
 
   const [selectedDot, setSelectedDot] = useState<HomepageCalendarDot | null>(null);
   const [dayDetail, setDayDetail] = useState<DayDetail | null>(null);
@@ -928,6 +1009,7 @@ export function HomePage() {
         date: { y: dot.y, m: dot.m, d: dot.d },
         plannedRoutine: null,
         plannedDayState: null,
+        plannedProgramContext: null,
         session: null,
         sessionStats: null,
         isRestDay: false,
@@ -957,7 +1039,7 @@ export function HomePage() {
 
   return (
     <>
-      <TopBar openDrawer={openDrawer} />
+      <TopBar openDrawer={openDrawer} profile={profile} />
 
       {hasError ? <ErrorBanner /> : null}
 

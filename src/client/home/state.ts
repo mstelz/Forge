@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
 import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
+import type { RoutineItemOverride } from "../../shared/program";
 import { isVolumeLog } from "../hooks/use-history";
 import { computeNextPlayableDay, computeTodayProgramDay } from "../lib/programs/next-day";
 
@@ -82,6 +83,13 @@ export type DayDetail = {
   date: { y: number; m: number; d: number };
   plannedRoutine: Routine | null;
   plannedDayState: null;
+  plannedProgramContext: {
+    programId: string;
+    runId: string;
+    weekIndex: number;
+    dayIndex: number;
+    overrides: RoutineItemOverride[] | null;
+  } | null;
   session: Session | null;
   sessionStats: { exerciseCount: number; setCount: number; durationMs: number } | null;
   isRestDay: boolean;
@@ -274,6 +282,7 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
   }
 
   let plannedRoutine: Routine | null = null;
+  let plannedProgramContext: DayDetail["plannedProgramContext"] = null;
   let isRestDay = false;
 
   try {
@@ -309,6 +318,13 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
 
       if (primary.routineId) {
         plannedRoutine = await forgeDB.routines.get(primary.routineId).catch(() => null) ?? null;
+        plannedProgramContext = {
+          programId: run.programId,
+          runId: run.id,
+          weekIndex,
+          dayIndex,
+          overrides: primary.overrides ?? null,
+        };
       }
       break;
     }
@@ -320,6 +336,7 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
     date,
     plannedRoutine,
     plannedDayState: null,
+    plannedProgramContext,
     session,
     sessionStats,
     isRestDay,
