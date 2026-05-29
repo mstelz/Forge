@@ -25,6 +25,7 @@ const endpointFor = (entity: PendingWrite["entity"]) => {
   if (entity === "program") return `${API_BASE}/programs`;
   if (entity === "program_run") return `${API_BASE}/program-runs`;
   if (entity === "goal") return `${API_BASE}/goals`;
+  if (entity === "profile") return `${API_BASE}/profile`;
   return `${API_BASE}/equipment`;
 };
 
@@ -46,6 +47,20 @@ const send = async (entry: PendingWrite): Promise<Response> => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startedAt: p.startedAt, endedAt: p.endedAt }),
     });
+  }
+
+  // Weight logs use nested URL: /profile/:profileId/weight-logs[/:logId]
+  if (entry.entity === "weight_log") {
+    const p = entry.payload as { id: string; profileId: string };
+    const logsBase = `${API_BASE}/profile/${p.profileId}/weight-logs`;
+    if (entry.op === "create") {
+      return fetch(logsBase, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry.payload),
+      });
+    }
+    return fetch(`${logsBase}/${p.id}`, { method: "DELETE" });
   }
 
   // Session logs use nested URL: /sessions/:sessionId/logs[/:logId]
@@ -175,12 +190,34 @@ async function coalesceSettings(): Promise<void> {
   }
 }
 
+async function coalesceProfile(): Promise<void> {
+  const allProfileWrites = await forgeDB.pendingWrites
+    .where("entity")
+    .equals("profile")
+    .sortBy("createdAt");
+
+  // Group updates by profile id; keep only the newest update per id
+  const updatesByProfileId = new Map<string, typeof allProfileWrites>();
+  for (const w of allProfileWrites) {
+    if (w.op !== "update") continue;
+    const id = (w.payload as { id?: string }).id ?? "";
+    if (!updatesByProfileId.has(id)) updatesByProfileId.set(id, []);
+    updatesByProfileId.get(id)!.push(w);
+  }
+  for (const writes of updatesByProfileId.values()) {
+    if (writes.length <= 1) continue;
+    const toDelete = writes.slice(0, writes.length - 1);
+    for (const w of toDelete) await forgeDB.pendingWrites.delete(w.id);
+  }
+}
+
 export async function flushNow(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    // Coalesce settings writes before draining
+    // Coalesce settings and profile writes before draining
     await coalesceSettings();
+    await coalesceProfile();
 
     const queue = await forgeDB.pendingWrites.orderBy("createdAt").toArray();
     const now = Date.now();

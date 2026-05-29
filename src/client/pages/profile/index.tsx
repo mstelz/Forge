@@ -228,7 +228,7 @@ export function ProfilePage() {
   const handleDeleteLog = async (id: string) => {
     setDeletingLogId(id);
     try {
-      await deleteWeightLog(id);
+      await deleteWeightLog(id, profile!.id);
     } finally {
       setDeletingLogId(null);
     }

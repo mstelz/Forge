@@ -310,6 +310,41 @@ export const programRunDayStates = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// Profiles + Weight Logs
+// ---------------------------------------------------------------------------
+
+export const profiles = sqliteTable("profiles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  avatarDataUrl: text("avatar_data_url"),
+  heightCm: real("height_cm"),
+  dateOfBirth: text("date_of_birth"),
+  sex: text("sex"),
+  activityLevel: text("activity_level"),
+  goalType: text("goal_type"),
+  targetWeightKg: real("target_weight_kg"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const weightLogs = sqliteTable(
+  "weight_logs",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    weightKg: real("weight_kg").notNull(),
+    date: text("date").notNull(),
+    note: text("note"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => ({
+    profileDateIdx: index("idx_weight_logs_profile_date").on(t.profileId, t.date),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Settings (singleton)
 // ---------------------------------------------------------------------------
 

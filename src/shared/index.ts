@@ -11,4 +11,5 @@ export * from "./program-run";
 export * from "./goals";
 export * from "./export";
 export * from "./settings";
+export * from "./profile";
 export * from "./version";

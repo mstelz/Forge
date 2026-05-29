@@ -1,5 +1,5 @@
 import { forgeDB } from "../db/forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Profile, WeightLog } from "../../shared";
 import { reconcileProgramRuns as reconcileProgramRunDayStates } from "./program-run-reconciler";
 
 const API_BASE = "/api/v1";
@@ -151,12 +151,46 @@ async function reconcileProgramRuns(serverRows: ProgramRun[], pending: PendingWr
   });
 }
 
+async function reconcileProfiles(serverRows: Profile[], pending: PendingWrite[]) {
+  const pendingMap = indexPending(pending, "profile");
+  const localRows = await forgeDB.profiles.toArray();
+  const serverIds = new Set(serverRows.map((r) => r.id));
+  await forgeDB.transaction("rw", forgeDB.profiles, async () => {
+    for (const s of serverRows) {
+      if (pendingMap.has(s.id)) continue;
+      await forgeDB.profiles.put(s);
+    }
+    for (const l of localRows) {
+      if (serverIds.has(l.id)) continue;
+      if (pendingMap.get(l.id) === "create") continue;
+      await forgeDB.profiles.delete(l.id);
+    }
+  });
+}
+
+async function reconcileWeightLogs(serverRows: WeightLog[], pending: PendingWrite[]) {
+  const pendingMap = indexPending(pending, "weight_log");
+  const localRows = await forgeDB.weightLogs.toArray();
+  const serverIds = new Set(serverRows.map((r) => r.id));
+  await forgeDB.transaction("rw", forgeDB.weightLogs, async () => {
+    for (const s of serverRows) {
+      if (pendingMap.has(s.id)) continue;
+      await forgeDB.weightLogs.put(s);
+    }
+    for (const l of localRows) {
+      if (serverIds.has(l.id)) continue;
+      if (pendingMap.get(l.id) === "create") continue;
+      await forgeDB.weightLogs.delete(l.id);
+    }
+  });
+}
+
 export async function reconcileNow(): Promise<void> {
   if (running) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   running = true;
   try {
-    const [exResp, eqResp, rtResp, sessResp, logsResp, progResp, runsResp, pending] = await Promise.all([
+    const [exResp, eqResp, rtResp, sessResp, logsResp, progResp, runsResp, profileResp, wlResp, pending] = await Promise.all([
       fetchJson<{ exercises: Exercise[] }>(`${API_BASE}/exercises`),
       fetchJson<{ equipment: Equipment[] }>(`${API_BASE}/equipment`),
       fetchJson<{ routines: Routine[] }>(`${API_BASE}/routines`),
@@ -164,6 +198,8 @@ export async function reconcileNow(): Promise<void> {
       fetchJson<{ logs: SessionSetLog[] }>(`${API_BASE}/sessions/logs`),
       fetchJson<{ programs: Program[] }>(`${API_BASE}/programs`),
       fetchJson<{ runs: ProgramRun[] }>(`${API_BASE}/program-runs`),
+      fetchJson<{ profiles: Profile[] }>(`${API_BASE}/profile`),
+      fetchJson<{ logs: WeightLog[] }>(`${API_BASE}/profile/weight-logs`),
       forgeDB.pendingWrites.toArray(),
     ]);
     await reconcileExercises(exResp.exercises, pending);
@@ -174,6 +210,8 @@ export async function reconcileNow(): Promise<void> {
     await reconcilePrograms(progResp.programs, pending);
     await reconcileProgramRuns(runsResp.runs, pending);
     await reconcileProgramRunDayStates();
+    await reconcileProfiles(profileResp.profiles, pending);
+    await reconcileWeightLogs(wlResp.logs, pending);
   } catch (err) {
     console.warn("[reconcile] failed", err);
   } finally {

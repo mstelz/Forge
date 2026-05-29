@@ -445,20 +445,32 @@ export { SETTINGS_ID };
 import type { Profile, WeightLog } from "../../shared/profile";
 
 export async function createProfile(record: Profile): Promise<Profile> {
-  await forgeDB.profiles.put(record);
+  await forgeDB.transaction("rw", forgeDB.profiles, forgeDB.pendingWrites, async () => {
+    await forgeDB.profiles.put(record);
+    await forgeDB.pendingWrites.add(enqueue("profile", "create", record));
+  });
   return record;
 }
 
 export async function updateProfile(record: Profile): Promise<Profile> {
-  await forgeDB.profiles.put(record);
+  await forgeDB.transaction("rw", forgeDB.profiles, forgeDB.pendingWrites, async () => {
+    await forgeDB.profiles.put(record);
+    await forgeDB.pendingWrites.add(enqueue("profile", "update", record));
+  });
   return record;
 }
 
 export async function addWeightLog(record: WeightLog): Promise<WeightLog> {
-  await forgeDB.weightLogs.put(record);
+  await forgeDB.transaction("rw", forgeDB.weightLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.weightLogs.put(record);
+    await forgeDB.pendingWrites.add(enqueue("weight_log", "create", record));
+  });
   return record;
 }
 
-export async function deleteWeightLog(id: string): Promise<void> {
-  await forgeDB.weightLogs.delete(id);
+export async function deleteWeightLog(id: string, profileId: string): Promise<void> {
+  await forgeDB.transaction("rw", forgeDB.weightLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.weightLogs.delete(id);
+    await forgeDB.pendingWrites.add(enqueue("weight_log", "delete", { id, profileId }));
+  });
 }

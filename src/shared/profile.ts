@@ -29,3 +29,6 @@ export const WeightLogSchema = z.object({
 });
 
 export type WeightLog = z.infer<typeof WeightLogSchema>;
+
+export const ProfileUpdateSchema = ProfileSchema.partial().required({ id: true, updatedAt: true });
+export type ProfileUpdate = z.infer<typeof ProfileUpdateSchema>;
