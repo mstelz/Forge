@@ -9,8 +9,6 @@ import {
   ageFromDob,
   bmi,
   bmiCategory,
-  bmr,
-  tdee,
   cmToFtIn,
 } from "../../lib/profile-calc";
 import type { Profile, WeightLog } from "../../../shared/profile";
@@ -107,24 +105,6 @@ function WeightSparkline({ logs, unit }: { logs: WeightLog[]; unit: "kg" | "lb" 
 }
 
 // ---------------------------------------------------------------------------
-// Activity level labels
-// ---------------------------------------------------------------------------
-
-const ACTIVITY_LABELS: Record<NonNullable<Profile["activityLevel"]>, string> = {
-  sedentary: "Sedentary",
-  lightly_active: "Lightly active",
-  moderately_active: "Moderately active",
-  very_active: "Very active",
-  extra_active: "Extra active",
-};
-
-const GOAL_LABELS: Record<NonNullable<Profile["goalType"]>, string> = {
-  lose: "Lose weight",
-  maintain: "Maintain",
-  gain: "Gain weight",
-};
-
-// ---------------------------------------------------------------------------
 // Profile Page
 // ---------------------------------------------------------------------------
 
@@ -182,9 +162,6 @@ export function ProfilePage() {
       heightCm: profile.heightCm,
       dateOfBirth: profile.dateOfBirth,
       sex: profile.sex,
-      activityLevel: profile.activityLevel,
-      goalType: profile.goalType,
-      targetWeightKg: profile.targetWeightKg,
     });
     setAvatarPreview(null);
     setEditing(true);
@@ -268,13 +245,6 @@ export function ProfilePage() {
     latestWeightKg && profile?.heightCm
       ? bmi(latestWeightKg, profile.heightCm)
       : null;
-
-  const bmrVal =
-    latestWeightKg && profile?.heightCm && ageYears != null && profile.sex
-      ? bmr(latestWeightKg, profile.heightCm, ageYears, profile.sex)
-      : null;
-
-  const tdeeVal = bmrVal != null ? tdee(bmrVal, profile?.activityLevel ?? null) : null;
 
   const displayWeight = (kg: number) =>
     weightUnit === "lb"
@@ -391,7 +361,7 @@ export function ProfilePage() {
         {/* ── Body Stats ─────────────────────────────────────────────────── */}
         <Section label="Body Stats">
           {editing ? (
-            <EditBodyStats draft={draft} setDraft={setDraft} />
+            <EditBodyStats draft={draft} setDraft={setDraft} heightUnit={heightUnit} />
           ) : (
             <>
               <StatRow label="Height" value={profile?.heightCm ? displayHeight(profile.heightCm) : "—"} />
@@ -409,39 +379,6 @@ export function ProfilePage() {
               <StatRow
                 label="Sex"
                 value={profile?.sex ? (profile.sex.charAt(0).toUpperCase() + profile.sex.slice(1)) : "—"}
-              />
-            </>
-          )}
-        </Section>
-
-        {/* ── Goals & Activity ───────────────────────────────────────────── */}
-        <Section label="Goals & Activity">
-          {editing ? (
-            <EditGoalsActivity draft={draft} setDraft={setDraft} weightUnit={weightUnit} />
-          ) : (
-            <>
-              <StatRow
-                label="Goal"
-                value={profile?.goalType ? GOAL_LABELS[profile.goalType] : "—"}
-                sub={
-                  profile?.targetWeightKg
-                    ? `Target ${displayWeight(profile.targetWeightKg)}`
-                    : undefined
-                }
-              />
-              <StatRow
-                label="Activity"
-                value={
-                  profile?.activityLevel ? ACTIVITY_LABELS[profile.activityLevel] : "—"
-                }
-              />
-              <StatRow
-                label="BMR"
-                value={bmrVal ? `${Math.round(bmrVal).toLocaleString()} kcal/day` : "—"}
-              />
-              <StatRow
-                label="TDEE"
-                value={tdeeVal ? `${Math.round(tdeeVal).toLocaleString()} kcal/day` : "—"}
               />
             </>
           )}
@@ -548,23 +485,68 @@ export function ProfilePage() {
 function EditBodyStats({
   draft,
   setDraft,
+  heightUnit,
 }: {
   draft: Partial<Profile>;
   setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>;
+  heightUnit: "cm" | "ft";
 }) {
+  const totalIn = draft.heightCm != null ? draft.heightCm / 2.54 : null;
+  const ftVal = totalIn != null ? Math.floor(totalIn / 12) : "";
+  const inVal = totalIn != null ? Math.round(totalIn % 12) : "";
+
+  const handleFtIn = (ft: string, inches: string) => {
+    const f = parseInt(ft, 10);
+    const i = parseInt(inches, 10);
+    if (!ft && !inches) { setDraft((d) => ({ ...d, heightCm: null })); return; }
+    const cm = ((isNaN(f) ? 0 : f) * 12 + (isNaN(i) ? 0 : i)) * 2.54;
+    setDraft((d) => ({ ...d, heightCm: cm > 0 ? cm : null }));
+  };
+
   return (
     <div className="space-y-0">
-      <EditRow label="Height (cm)">
-        <input
-          type="number"
-          inputMode="decimal"
-          value={draft.heightCm ?? ""}
-          onChange={(e) => setDraft((d) => ({ ...d, heightCm: e.target.value ? Number(e.target.value) : null }))}
-          placeholder="e.g. 178"
-          className="w-28 rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-right text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        />
-      </EditRow>
-      <EditRow label="Date of birth">
+      {heightUnit === "ft" ? (
+        <EditRow label="Height">
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              inputMode="numeric"
+              step="1"
+              value={ftVal}
+              onChange={(e) => handleFtIn(e.target.value, String(inVal))}
+              placeholder="5"
+              min={0}
+              max={8}
+              className="w-14 rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-right text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            />
+            <span className="text-xs text-[var(--text-muted)]">ft</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              step="1"
+              value={inVal}
+              onChange={(e) => handleFtIn(String(ftVal), e.target.value)}
+              placeholder="10"
+              min={0}
+              max={11}
+              className="w-14 rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-right text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            />
+            <span className="text-xs text-[var(--text-muted)]">in</span>
+          </div>
+        </EditRow>
+      ) : (
+        <EditRow label="Height (cm)">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={draft.heightCm != null ? Math.round(draft.heightCm) : ""}
+            onChange={(e) => setDraft((d) => ({ ...d, heightCm: e.target.value ? Number(e.target.value) : null }))}
+            placeholder="e.g. 178"
+            className="w-28 rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-right text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          />
+        </EditRow>
+      )}
+      <EditRow label="Age">
         <input
           type="date"
           value={draft.dateOfBirth ?? ""}
@@ -584,78 +566,6 @@ function EditBodyStats({
           <option value="male">Male</option>
           <option value="female">Female</option>
           <option value="other">Other</option>
-        </select>
-      </EditRow>
-    </div>
-  );
-}
-
-function EditGoalsActivity({
-  draft,
-  setDraft,
-  weightUnit,
-}: {
-  draft: Partial<Profile>;
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>;
-  weightUnit: "kg" | "lb";
-}) {
-  const targetDisplay = draft.targetWeightKg != null
-    ? weightUnit === "lb"
-      ? (draft.targetWeightKg * 2.20462).toFixed(1)
-      : String(draft.targetWeightKg)
-    : "";
-
-  const handleTargetChange = (val: string) => {
-    if (!val) { setDraft((d) => ({ ...d, targetWeightKg: null })); return; }
-    const num = parseFloat(val);
-    if (isNaN(num)) return;
-    const kg = weightUnit === "lb" ? num / 2.20462 : num;
-    setDraft((d) => ({ ...d, targetWeightKg: kg }));
-  };
-
-  return (
-    <div className="space-y-0">
-      <EditRow label="Goal">
-        <select
-          value={draft.goalType ?? ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, goalType: (e.target.value || null) as Profile["goalType"] }))
-          }
-          className="rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <option value="">—</option>
-          <option value="lose">Lose weight</option>
-          <option value="maintain">Maintain</option>
-          <option value="gain">Gain weight</option>
-        </select>
-      </EditRow>
-      <EditRow label={`Target (${weightUnit})`}>
-        <input
-          type="number"
-          inputMode="decimal"
-          value={targetDisplay}
-          onChange={(e) => handleTargetChange(e.target.value)}
-          placeholder="—"
-          className="w-28 rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-right text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        />
-      </EditRow>
-      <EditRow label="Activity level">
-        <select
-          value={draft.activityLevel ?? ""}
-          onChange={(e) =>
-            setDraft((d) => ({
-              ...d,
-              activityLevel: (e.target.value || null) as Profile["activityLevel"],
-            }))
-          }
-          className="rounded-lg bg-[var(--surface-elevated)] px-2 py-1.5 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <option value="">—</option>
-          <option value="sedentary">Sedentary</option>
-          <option value="lightly_active">Lightly active</option>
-          <option value="moderately_active">Moderately active</option>
-          <option value="very_active">Very active</option>
-          <option value="extra_active">Extra active</option>
         </select>
       </EditRow>
     </div>
