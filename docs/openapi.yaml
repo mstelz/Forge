@@ -1343,6 +1343,30 @@ paths:
                   - $ref: '#/components/schemas/ErrorIdConflict'
                   - $ref: '#/components/schemas/ErrorInProgressExists'
 
+  /sessions/logs:
+    get:
+      summary: Bulk fetch all session set logs (ordered by loggedAt asc)
+      operationId: listAllSessionLogs
+      description: |
+        Returns all session set logs across all sessions. Used by the client
+        reconciliation loop to restore IndexedDB after a cache wipe (e.g., clearing
+        site data or container restart on self-hosted deployments).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logs]
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionSetLog'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
   /sessions/{id}:
     parameters:
       - name: id
@@ -1445,6 +1469,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorFinished'
+
+  /sessions/{id}/times:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      summary: Edit startedAt/endedAt on any session, including finished ones
+      operationId: updateSessionTimes
+      description: |
+        Updates only the `startedAt` and `endedAt` timestamps. Unlike
+        `PATCH /sessions/{id}`, this endpoint works on sessions with
+        `status: finished`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startedAt]
+              properties:
+                startedAt:
+                  type: integer
+                  description: Unix timestamp (ms).
+                endedAt:
+                  type: integer
+                  nullable: true
+                  description: Unix timestamp (ms).
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
 
   /sessions/{id}/logs:
     parameters:

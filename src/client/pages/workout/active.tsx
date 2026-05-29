@@ -1611,6 +1611,7 @@ export function ActiveWorkoutPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isReopenEdit = !!(location.state as { isReopenEdit?: boolean } | null)?.isReopenEdit;
+  const originalEndedAt = (location.state as { originalEndedAt?: number } | null)?.originalEndedAt ?? null;
   const qc = useQueryClient();
 
   // ── Reactive live-query invalidation ──────────────────────────────────────
@@ -1855,7 +1856,7 @@ export function ActiveWorkoutPage() {
       const finished: Session = {
         ...session,
         status: "finished",
-        endedAt: Date.now(),
+        endedAt: isReopenEdit && originalEndedAt != null ? originalEndedAt : Date.now(),
         updatedAt: Date.now(),
       };
       await finishSession(finished);
@@ -1882,7 +1883,12 @@ export function ActiveWorkoutPage() {
     try {
       if (isReopenEdit) {
         // Re-editing a finished session — "discard" just re-finishes and goes back
-        const finished: Session = { ...session, status: "finished", endedAt: Date.now(), updatedAt: Date.now() };
+        const finished: Session = {
+          ...session,
+          status: "finished",
+          endedAt: originalEndedAt != null ? originalEndedAt : Date.now(),
+          updatedAt: Date.now(),
+        };
         await finishSession(finished);
         navigate(`/workout/sessions/${session.id}`, { replace: true });
       } else {
@@ -2073,7 +2079,12 @@ export function ActiveWorkoutPage() {
           type="button"
           onClick={async () => {
             if (isReopenEdit && session) {
-              const finished: Session = { ...session, status: "finished", endedAt: Date.now(), updatedAt: Date.now() };
+              const finished: Session = {
+                ...session,
+                status: "finished",
+                endedAt: originalEndedAt != null ? originalEndedAt : Date.now(),
+                updatedAt: Date.now(),
+              };
               await finishSession(finished).catch(console.error);
               navigate(`/workout/sessions/${session.id}`, { replace: true });
             } else {

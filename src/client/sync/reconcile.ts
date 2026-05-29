@@ -1,5 +1,5 @@
 import { forgeDB } from "../db/forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, Program, ProgramRun } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun } from "../../shared";
 
 const API_BASE = "/api/v1";
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -97,9 +97,23 @@ async function reconcileSessions(serverRows: Session[], pending: PendingWrite[])
       await forgeDB.sessions.put(s);
     }
   });
-  // NOTE (v1 limitation): session_set_logs are not pulled during reconcile.
-  // Logs are written client-first and the server is authoritative only for
-  // session-level state. Full log reconciliation is deferred to a future version.
+}
+
+async function reconcileSessionLogs(serverLogs: SessionSetLog[], pending: PendingWrite[]) {
+  const pendingLogIds = new Set<string>();
+  for (const r of pending) {
+    if (r.entity === "session_log") {
+      const id = (r.payload as { id?: string }).id;
+      if (id) pendingLogIds.add(id);
+    }
+  }
+
+  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, async () => {
+    for (const log of serverLogs) {
+      if (pendingLogIds.has(log.id)) continue;
+      await forgeDB.sessionSetLogs.put(log);
+    }
+  });
 }
 
 async function reconcilePrograms(serverRows: Program[], pending: PendingWrite[]) {
@@ -141,11 +155,12 @@ export async function reconcileNow(): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   running = true;
   try {
-    const [exResp, eqResp, rtResp, sessResp, progResp, runsResp, pending] = await Promise.all([
+    const [exResp, eqResp, rtResp, sessResp, logsResp, progResp, runsResp, pending] = await Promise.all([
       fetchJson<{ exercises: Exercise[] }>(`${API_BASE}/exercises`),
       fetchJson<{ equipment: Equipment[] }>(`${API_BASE}/equipment`),
       fetchJson<{ routines: Routine[] }>(`${API_BASE}/routines`),
       fetchJson<{ sessions: Session[] }>(`${API_BASE}/sessions`),
+      fetchJson<{ logs: SessionSetLog[] }>(`${API_BASE}/sessions/logs`),
       fetchJson<{ programs: Program[] }>(`${API_BASE}/programs`),
       fetchJson<{ runs: ProgramRun[] }>(`${API_BASE}/program-runs`),
       forgeDB.pendingWrites.toArray(),
@@ -154,6 +169,7 @@ export async function reconcileNow(): Promise<void> {
     await reconcileEquipment(eqResp.equipment, pending);
     await reconcileRoutines(rtResp.routines, pending);
     await reconcileSessions(sessResp.sessions, pending);
+    await reconcileSessionLogs(logsResp.logs, pending);
     await reconcilePrograms(progResp.programs, pending);
     await reconcileProgramRuns(runsResp.runs, pending);
   } catch (err) {

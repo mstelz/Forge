@@ -6,7 +6,7 @@ import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance } from "../../lib/units";
-import { reopenSession } from "../../db/mutations";
+import { reopenSession, updateSessionTimes } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import type { SessionSetLog } from "../../../shared";
 
@@ -29,6 +29,16 @@ function formatDate(ts: number): string {
   const day = d.getDate();
   const year = d.getFullYear();
   return `${weekday}, ${month} ${day} ${year}`;
+}
+
+function toDatetimeLocal(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocal(s: string): number {
+  return new Date(s).getTime();
 }
 
 function formatVolume(kg: number): string {
@@ -55,6 +65,10 @@ export function SessionDetailPage() {
   const { data: logs } = useSessionLogs(id);
   const { data: allSessionLogs } = useAllSessionLogs();
   const [reopening, setReopening] = useState(false);
+  const [editingTimes, setEditingTimes] = useState(false);
+  const [editStartedAt, setEditStartedAt] = useState("");
+  const [editEndedAt, setEditEndedAt] = useState("");
+  const [savingTimes, setSavingTimes] = useState(false);
 
   const exerciseNamesRef = useRef<Map<string, string>>(new Map());
   const exerciseTypesRef = useRef<Map<string, string>>(new Map());
@@ -210,7 +224,13 @@ export function SessionDetailPage() {
             try {
               const reopened = await reopenSession(session.id);
               qc.setQueryData(queryKeys.sessions.active(), reopened);
-              navigate("/workout/active", { state: { isReopenEdit: true } });
+              navigate("/workout/active", {
+                state: {
+                  isReopenEdit: true,
+                  originalEndedAt: session.endedAt,
+                  originalStartedAt: session.startedAt,
+                },
+              });
             } finally {
               setReopening(false);
             }
@@ -227,10 +247,82 @@ export function SessionDetailPage() {
           <h2 className="text-2xl font-bold text-[var(--text)]">
             {session.title ?? "Freeform Session"}
           </h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            {formatDate(session.startedAt)}
-            {session.endedAt != null ? ` · ${formatDuration(durationMs)}` : ""}
-          </p>
+          {editingTimes ? (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                  Start
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editStartedAt}
+                  onChange={(e) => setEditStartedAt(e.target.value)}
+                  className="rounded-lg bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                />
+              </div>
+              {session.endedAt != null && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                    End
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={editEndedAt}
+                    onChange={(e) => setEditEndedAt(e.target.value)}
+                    className="rounded-lg bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  />
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={savingTimes}
+                  onClick={async () => {
+                    if (!editStartedAt) return;
+                    setSavingTimes(true);
+                    try {
+                      const newStart = fromDatetimeLocal(editStartedAt);
+                      const newEnd = session.endedAt != null && editEndedAt
+                        ? fromDatetimeLocal(editEndedAt)
+                        : session.endedAt;
+                      await updateSessionTimes(session.id, newStart, newEnd);
+                      qc.invalidateQueries({ queryKey: queryKeys.sessions.byId(session.id) });
+                      qc.invalidateQueries({ queryKey: queryKeys.sessions.list() });
+                      setEditingTimes(false);
+                    } finally {
+                      setSavingTimes(false);
+                    }
+                  }}
+                  className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] disabled:opacity-40"
+                >
+                  {savingTimes ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingTimes(false)}
+                  className="rounded-lg bg-[var(--surface)] px-4 py-2 text-sm font-semibold text-[var(--text-muted)]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setEditStartedAt(toDatetimeLocal(session.startedAt));
+                setEditEndedAt(session.endedAt != null ? toDatetimeLocal(session.endedAt) : "");
+                setEditingTimes(true);
+              }}
+              className="mt-1 flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              <span>
+                {formatDate(session.startedAt)}
+                {session.endedAt != null ? ` · ${formatDuration(durationMs)}` : ""}
+              </span>
+              <ClockEditIcon />
+            </button>
+          )}
         </div>
 
         {/* Metric tiles */}
@@ -446,15 +538,6 @@ function LogRow({ log, exerciseType }: { log: SessionSetLog; exerciseType: strin
   );
 }
 
-// ---------------------------------------------------------------------------
-// (EditLogSheet removed — editing happens in the full workout logger)
-// ---------------------------------------------------------------------------
-
-// Unused placeholder so the file continues cleanly
-function _unused({ log, onClose }: { log: SessionSetLog; onClose: () => void }) {
-  return null;
-}
-
 function DetailSkeleton() {
   return (
     <div className="px-4 pt-4 space-y-3">
@@ -492,6 +575,16 @@ function SpinnerIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="animate-spin">
       <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
       <path d="M12 2a10 10 0 0 1 10 10" />
+    </svg>
+  );
+}
+
+function ClockEditIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="opacity-50">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l3 3" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
     </svg>
   );
 }

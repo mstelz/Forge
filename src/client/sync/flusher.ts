@@ -21,6 +21,7 @@ const endpointFor = (entity: PendingWrite["entity"]) => {
   if (entity === "routine") return `${API_BASE}/routines`;
   if (entity === "session") return `${API_BASE}/sessions`;
   if (entity === "session_log") return `${API_BASE}/sessions`; // URL built in send()
+  if (entity === "session_times") return `${API_BASE}/sessions`; // URL built in send()
   if (entity === "program") return `${API_BASE}/programs`;
   if (entity === "program_run") return `${API_BASE}/program-runs`;
   if (entity === "goal") return `${API_BASE}/goals`;
@@ -34,6 +35,16 @@ const send = async (entry: PendingWrite): Promise<Response> => {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry.payload),
+    });
+  }
+
+  // Session times edit: PATCH /sessions/:id/times
+  if (entry.entity === "session_times") {
+    const p = entry.payload as { id: string; startedAt: number; endedAt: number | null };
+    return fetch(`${API_BASE}/sessions/${p.id}/times`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startedAt: p.startedAt, endedAt: p.endedAt }),
     });
   }
 

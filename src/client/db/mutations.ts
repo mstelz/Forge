@@ -133,6 +133,22 @@ export async function finishSession(record: Session): Promise<Session> {
   return record;
 }
 
+/** Update startedAt/endedAt on any session (works on finished sessions too). */
+export async function updateSessionTimes(
+  id: string,
+  startedAt: number,
+  endedAt: number | null,
+): Promise<Session> {
+  const session = await forgeDB.sessions.get(id);
+  if (!session) throw new Error("Session not found");
+  const updated: Session = { ...session, startedAt, endedAt, updatedAt: Date.now() };
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.put(updated);
+    await forgeDB.pendingWrites.add(enqueue("session_times", "update", { id, startedAt, endedAt }));
+  });
+  return updated;
+}
+
 /** Reopen a finished session for editing (bypasses guardNotFinished). */
 export async function reopenSession(id: string): Promise<Session> {
   const session = await forgeDB.sessions.get(id);

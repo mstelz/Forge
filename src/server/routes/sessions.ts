@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { eq, and, desc, asc } from "drizzle-orm";
 import { db } from "../../db/client";
 import { sessions, sessionSetLogs } from "../../db/schema";
@@ -88,6 +89,16 @@ sessionsRoute.get("/", async (c) => {
   return c.json({ sessions: rows.map(rowToSession) });
 });
 
+// GET /sessions/logs  — bulk fetch all logs for reconciliation
+sessionsRoute.get("/logs", async (c) => {
+  const logs = await db
+    .select()
+    .from(sessionSetLogs)
+    .orderBy(asc(sessionSetLogs.loggedAt))
+    .all();
+  return c.json({ logs: logs.map(rowToLog) });
+});
+
 // GET /sessions/:id
 sessionsRoute.get("/:id", async (c) => {
   const id = c.req.param("id");
@@ -156,6 +167,33 @@ sessionsRoute.post("/", async (c) => {
     .where(eq(sessions.id, input.id))
     .get();
   return c.json(rowToSession(row!), 201);
+});
+
+// PATCH /sessions/:id/times — edit startedAt/endedAt on any session (including finished)
+sessionsRoute.patch("/:id/times", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+
+  const parsed = z.object({
+    startedAt: z.number().int(),
+    endedAt: z.number().int().nullable(),
+  }).safeParse(body);
+  if (!parsed.success) return validationError(c, parsed.error);
+
+  const existing = await db.select().from(sessions).where(eq(sessions.id, id)).get();
+  if (!existing) return notFound(c);
+
+  db.update(sessions)
+    .set({
+      startedAt: new Date(parsed.data.startedAt),
+      endedAt: parsed.data.endedAt != null ? new Date(parsed.data.endedAt) : null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(sessions.id, id))
+    .run();
+
+  const row = await db.select().from(sessions).where(eq(sessions.id, id)).get();
+  return c.json(rowToSession(row!));
 });
 
 // PATCH /sessions/:id
