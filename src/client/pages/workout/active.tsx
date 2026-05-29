@@ -59,6 +59,7 @@ type LiveBlock = {
   type: "single" | "superset";
   roundCount?: number;
   restSec?: number;
+  notes?: string | null;
   items: LiveItem[];
 };
 
@@ -518,7 +519,7 @@ interface ExerciseCardProps {
   onAddSet: (blockIdx: number, itemIdx: number) => void;
   onDeleteSlot: (blockIdx: number, itemIdx: number, slotIdx: number) => void;
   onDeleteExtraLog: (logId: string) => void;
-  onOpenNote: () => void;
+  onSaveBlockNote: (note: string | null) => void;
   onViewHistory: (exerciseId: string, exerciseName: string) => void;
 }
 
@@ -533,9 +534,17 @@ function ExerciseCard({
   onAddSet,
   onDeleteSlot,
   onDeleteExtraLog,
-  onOpenNote,
+  onSaveBlockNote,
   onViewHistory,
 }: ExerciseCardProps) {
+  const [blockNoteOpen, setBlockNoteOpen] = useState(!!block.notes);
+  const [blockNoteText, setBlockNoteText] = useState(block.notes ?? "");
+
+  // Keep local state in sync if the block note changes externally
+  useEffect(() => {
+    setBlockNoteText(block.notes ?? "");
+    if (block.notes) setBlockNoteOpen(true);
+  }, [block.notes]);
   const isSuperset = block.type === "superset";
   const supersetLabel = `SUPERSET ${String.fromCharCode(65 + blockIdx)}`;
   const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
@@ -668,18 +677,40 @@ function ExerciseCard({
                 <PlusSmIcon />
                 ADD SET
               </button>
-              <button
-                type="button"
-                onClick={onOpenNote}
-                className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
-              >
-                <NoteIcon />
-                ADD NOTE
-              </button>
             </div>
           </div>
         );
       })}
+
+      {/* Block-level note — one per block/superset, stored in liveStructure */}
+      {blockNoteOpen ? (
+        <div className="mt-3 border-t border-[var(--border)] pt-3">
+          <textarea
+            value={blockNoteText}
+            onChange={(e) => setBlockNoteText(e.target.value)}
+            onBlur={() => {
+              const trimmed = blockNoteText.trim() || null;
+              onSaveBlockNote(trimmed);
+              if (!trimmed) setBlockNoteOpen(false);
+            }}
+            placeholder="Add a note for this exercise…"
+            rows={2}
+            autoFocus
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:border-[var(--accent)] focus:outline-none resize-none"
+          />
+        </div>
+      ) : (
+        <div className="mt-3 border-t border-[var(--border)] pt-3">
+          <button
+            type="button"
+            onClick={() => setBlockNoteOpen(true)}
+            className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            <NoteIcon />
+            ADD NOTE
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -858,8 +889,13 @@ function BottomPanel({
       if (existingLog.durationSec != null) { setDurationSec(existingLog.durationSec); setDurationInputStr(secsToTimeStr(existingLog.durationSec)); }
       if (existingLog.distanceM != null) setDist(existingLog.distanceM);
       setSetType((existingLog.setType as LogSetType) ?? "normal");
+      // Pre-fill note from the saved log so editing can't accidentally wipe it
+      setNote(existingLog.notes ?? "");
       return;
     }
+
+    // No existing log — clear note and pre-fill metrics from the last logged set.
+    setNote("");
 
     // No existing log — pre-fill from the last logged set for this exercise.
     const prevLogs = logs
@@ -1797,8 +1833,20 @@ export function ActiveWorkoutPage() {
   // ── Edit workout structure ─────────────────────────────────────────────────
   const [structureOpen, setStructureOpen] = useState(false);
 
-  // ── Note state (lifted so ExerciseCard ADD NOTE can trigger it) ────────────
+  // ── Note state ────────────────────────────────────────────────────────────
   const [noteOpen, setNoteOpen] = useState(false);
+
+  const handleSaveBlockNote = useCallback((blockIdx: number, note: string | null) => {
+    if (!session) return;
+    const updatedBlocks = liveStructure.blocks.map((b, i) =>
+      i === blockIdx ? { ...b, notes: note } : b,
+    );
+    void updateSession({
+      ...session,
+      liveStructure: JSON.stringify({ ...liveStructure, blocks: updatedBlocks }),
+      updatedAt: Date.now(),
+    });
+  }, [session, liveStructure]);
 
   // ── Exercise history sheet ─────────────────────────────────────────────────
   const [historyTarget, setHistoryTarget] = useState<{ id: string; name: string } | null>(null);
@@ -2142,7 +2190,7 @@ export function ActiveWorkoutPage() {
                 onAddSet={handleAddSet}
                 onDeleteSlot={handleDeleteSlot}
                 onDeleteExtraLog={handleDeleteExtraLog}
-                onOpenNote={() => setNoteOpen(true)}
+                onSaveBlockNote={(note) => handleSaveBlockNote(blockIdx, note)}
                 onViewHistory={(id, name) => setHistoryTarget({ id, name })}
               />
             ))}
