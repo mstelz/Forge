@@ -741,6 +741,7 @@ interface BottomPanelProps {
   onTimerToggle: () => void;
   onFinishWorkout: () => void;
   onSkipSet: () => void;
+  onEditSaved: () => void;
   exerciseTypes: Map<string, ExerciseType>;
   noteOpen: boolean;
   onToggleNote: () => void;
@@ -757,6 +758,7 @@ function BottomPanel({
   onTimerToggle,
   onFinishWorkout,
   onSkipSet,
+  onEditSaved,
   exerciseTypes,
   noteOpen,
   onToggleNote,
@@ -995,6 +997,8 @@ function BottomPanel({
       if (existingLog) {
         // Update in place — don't advance rest timer or backfill restAfterSec
         await updateSessionLog({ ...existingLog, ...updatedFields });
+        // Return to the next unlogged set
+        onEditSaved();
       } else {
         // New log: build all writes and commit in one transaction
         const prevLogged = logs
@@ -2238,6 +2242,7 @@ export function ActiveWorkoutPage() {
         onTimerToggle={handleTimerToggle}
         onFinishWorkout={() => setFinishConfirmOpen(true)}
         onSkipSet={handleSkipSet}
+        onEditSaved={() => setSelectedPos(null)}
         exerciseTypes={exerciseTypesRef.current}
         noteOpen={noteOpen}
         onToggleNote={() => setNoteOpen((o) => !o)}
