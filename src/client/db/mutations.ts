@@ -117,7 +117,8 @@ export async function updateSession(record: Session): Promise<Session> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessionSetLogs.where("sessionId").equals(id).delete();
     await forgeDB.sessions.delete(id);
     await forgeDB.pendingWrites.add(enqueue("session", "delete", { id }));
   });
@@ -143,6 +144,15 @@ export async function createSessionLog(record: SessionSetLog): Promise<SessionSe
 
 export async function updateSessionLog(record: SessionSetLog): Promise<SessionSetLog> {
   await guardNotFinished(record.sessionId);
+  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessionSetLogs.put(record);
+    await forgeDB.pendingWrites.add(enqueue("session_log", "update", record));
+  });
+  return record;
+}
+
+/** Update a session log without checking session status — for editing finished sessions. */
+export async function updateSessionLogFinished(record: SessionSetLog): Promise<SessionSetLog> {
   await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
     await forgeDB.sessionSetLogs.put(record);
     await forgeDB.pendingWrites.add(enqueue("session_log", "update", record));

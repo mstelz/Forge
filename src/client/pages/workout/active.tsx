@@ -20,6 +20,7 @@ import {
   finishSession,
   deleteSession,
 } from "../../db/mutations";
+import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { useContext } from "react";
 import { uuidv4 } from "../../lib/uuid";
 import { ExercisePicker } from "../../components/exercise-picker";
@@ -1788,6 +1789,10 @@ export function ActiveWorkoutPage() {
         updatedAt: Date.now(),
       };
       await finishSession(finished);
+      // Update program run day state locally so home page reflects completion immediately
+      if (session.sourceType === "program_day") {
+        reconcileProgramRuns().catch(console.error);
+      }
       navigate(`/workout/sessions/${session.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to finish workout. Please try again.";
@@ -1818,7 +1823,7 @@ export function ActiveWorkoutPage() {
   const handlePauseAndLeave = useCallback(async () => {
     if (!session) return;
     await updateSession({ ...session, pausedAt: Date.now(), updatedAt: Date.now() });
-    navigate("/workout/start", { replace: true });
+    navigate("/", { replace: true });
   }, [session, navigate]);
 
   // ── Skip set ───────────────────────────────────────────────────────────────
@@ -2038,7 +2043,7 @@ export function ActiveWorkoutPage() {
       <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>
         <DialogPortal>
           <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
-          <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+          <DialogContent onPointerDownOutside={(e) => e.preventDefault()} className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
             <DialogTitle className="text-base font-semibold text-[var(--text)]">
               Finish workout?
             </DialogTitle>
@@ -2071,7 +2076,7 @@ export function ActiveWorkoutPage() {
       <Dialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
         <DialogPortal>
           <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
-          <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+          <DialogContent onPointerDownOutside={(e) => e.preventDefault()} className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
             <DialogTitle className="text-base font-semibold text-[var(--text)]">
               Discard workout?
             </DialogTitle>
