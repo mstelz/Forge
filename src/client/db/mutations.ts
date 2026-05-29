@@ -170,6 +170,36 @@ export async function createSessionLog(record: SessionSetLog): Promise<SessionSe
   return record;
 }
 
+/**
+ * Log a new set, optionally back-fill restAfterSec on the previous log, and
+ * update the session (e.g. rest timer) — all in a single IndexedDB transaction
+ * with one guard read. Replaces 3 sequential awaits in the hot path.
+ */
+export async function logSetBatch(
+  newLog: SessionSetLog,
+  updatedSession: Session,
+  prevLogUpdate: SessionSetLog | null,
+): Promise<void> {
+  const session = await forgeDB.sessions.get(newLog.sessionId);
+  if (session?.status === "finished") throw new SessionFinishedError();
+  await forgeDB.transaction(
+    "rw",
+    forgeDB.sessions,
+    forgeDB.sessionSetLogs,
+    forgeDB.pendingWrites,
+    async () => {
+      if (prevLogUpdate) {
+        await forgeDB.sessionSetLogs.put(prevLogUpdate);
+        await forgeDB.pendingWrites.add(enqueue("session_log", "update", prevLogUpdate));
+      }
+      await forgeDB.sessionSetLogs.add(newLog);
+      await forgeDB.pendingWrites.add(enqueue("session_log", "create", newLog));
+      await forgeDB.sessions.put(updatedSession);
+      await forgeDB.pendingWrites.add(enqueue("session", "update", updatedSession));
+    },
+  );
+}
+
 export async function updateSessionLog(record: SessionSetLog): Promise<SessionSetLog> {
   await guardNotFinished(record.sessionId);
   await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {
@@ -177,6 +207,32 @@ export async function updateSessionLog(record: SessionSetLog): Promise<SessionSe
     await forgeDB.pendingWrites.add(enqueue("session_log", "update", record));
   });
   return record;
+}
+
+/** Update an existing log, optionally back-fill the prev log's rest, and update the session — single transaction. */
+export async function updateSetBatch(
+  updatedLog: SessionSetLog,
+  updatedSession: Session,
+  prevLogUpdate: SessionSetLog | null,
+): Promise<void> {
+  const session = await forgeDB.sessions.get(updatedLog.sessionId);
+  if (session?.status === "finished") throw new SessionFinishedError();
+  await forgeDB.transaction(
+    "rw",
+    forgeDB.sessions,
+    forgeDB.sessionSetLogs,
+    forgeDB.pendingWrites,
+    async () => {
+      await forgeDB.sessionSetLogs.put(updatedLog);
+      await forgeDB.pendingWrites.add(enqueue("session_log", "update", updatedLog));
+      if (prevLogUpdate) {
+        await forgeDB.sessionSetLogs.put(prevLogUpdate);
+        await forgeDB.pendingWrites.add(enqueue("session_log", "update", prevLogUpdate));
+      }
+      await forgeDB.sessions.put(updatedSession);
+      await forgeDB.pendingWrites.add(enqueue("session", "update", updatedSession));
+    },
+  );
 }
 
 /** Update a session log without checking session status — for editing finished sessions. */

@@ -20,6 +20,8 @@ import {
   deleteSessionLog,
   finishSession,
   deleteSession,
+  logSetBatch,
+  updateSetBatch,
 } from "../../db/mutations";
 import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { useContext } from "react";
@@ -912,7 +914,7 @@ function BottomPanel({
       setLogging(true);
       try {
         const now = Date.now();
-        await updateSessionLog({
+        const updatedExtraLog = {
           ...extraLog,
           reps,
           weightKg: storedKg,
@@ -924,16 +926,19 @@ function BottomPanel({
           loggedAt: now,
           enteredWeight: weightDisplay,
           enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
-        });
-        // Back-fill rest time on the prior logged set
+        };
         const prevLogged = logs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt)[0];
-        if (prevLogged && prevLogged.restAfterSec == null) {
-          const elapsedSec = Math.round((now - prevLogged.loggedAt) / 1000);
-          await updateSessionLog({ ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, elapsedSec)) });
-        }
-        // Auto-start rest timer
+        const prevLogUpdate =
+          prevLogged && prevLogged.restAfterSec == null
+            ? { ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))) }
+            : null;
         const restSec = block.restSec ?? currentItem.restSec ?? 90;
-        await updateSession({ ...session, restTimer: JSON.stringify({ status: "running", startedAt: now, durationSec: restSec, pausedAt: null, remainingSec: restSec }), updatedAt: now });
+        const updatedSession: Session = {
+          ...session,
+          restTimer: JSON.stringify({ status: "running", startedAt: now, durationSec: restSec, pausedAt: null, remainingSec: restSec } satisfies RestTimerData),
+          updatedAt: now,
+        };
+        await updateSetBatch(updatedExtraLog, updatedSession, prevLogUpdate);
         setNote(""); onCloseNote(); setRpe(null);
         prevSlotKey.current = null;
       } catch (err) {
@@ -991,17 +996,17 @@ function BottomPanel({
         // Update in place — don't advance rest timer or backfill restAfterSec
         await updateSessionLog({ ...existingLog, ...updatedFields });
       } else {
-        // New log: back-fill restAfterSec on the previous logged set first
+        // New log: build all writes and commit in one transaction
         const prevLogged = logs
           .filter((l) => l.status === "logged")
           .sort((a, b) => b.loggedAt - a.loggedAt)[0];
-        if (prevLogged && prevLogged.restAfterSec == null) {
-          const elapsedSec = Math.round((now - prevLogged.loggedAt) / 1000);
-          await updateSessionLog({
-            ...prevLogged,
-            restAfterSec: Math.min(3600, Math.max(0, elapsedSec)),
-          });
-        }
+        const prevLogUpdate =
+          prevLogged && prevLogged.restAfterSec == null
+            ? {
+                ...prevLogged,
+                restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))),
+              }
+            : null;
 
         const order = logs.filter((l) => l.status === "logged").length;
         const record: SessionSetLog = {
@@ -1018,24 +1023,21 @@ function BottomPanel({
           status: "logged",
           ...updatedFields,
         };
-        await createSessionLog(record);
-      }
 
-      // Auto-start rest timer only when logging a new set (not editing an existing one)
-      if (!existingLog) {
         const restSec = block.restSec ?? currentItem.restSec ?? 90;
-        const newTimer: RestTimerData = {
-          status: "running",
-          startedAt: now,
-          durationSec: restSec,
-          pausedAt: null,
-          remainingSec: restSec,
-        };
-        await updateSession({
+        const updatedSession: Session = {
           ...session,
-          restTimer: JSON.stringify(newTimer),
+          restTimer: JSON.stringify({
+            status: "running",
+            startedAt: now,
+            durationSec: restSec,
+            pausedAt: null,
+            remainingSec: restSec,
+          } satisfies RestTimerData),
           updatedAt: now,
-        });
+        };
+
+        await logSetBatch(record, updatedSession, prevLogUpdate);
       }
 
       setNote(""); onCloseNote(); setRpe(null);
