@@ -161,9 +161,11 @@ export function useHistorySessions(filters?: Partial<HistoryFilter>) {
 
   useEffect(() => {
     const sub = liveQuery(async () => {
-      const s = await forgeDB.sessions.count();
+      // Watch finished count specifically so status changes (in_progress → finished)
+      // trigger invalidation even when total session count is unchanged.
+      const finished = await forgeDB.sessions.where("status").equals("finished").count();
       const l = await forgeDB.sessionSetLogs.count();
-      return { s, l };
+      return { finished, l };
     }).subscribe({
       next: () => qc.invalidateQueries({ queryKey: queryKeys.history.all }),
     });
@@ -185,9 +187,9 @@ export function useHistorySummary(filters?: Partial<HistoryFilter>) {
 
   useEffect(() => {
     const sub = liveQuery(async () => {
-      const s = await forgeDB.sessions.count();
+      const finished = await forgeDB.sessions.where("status").equals("finished").count();
       const l = await forgeDB.sessionSetLogs.count();
-      return { s, l };
+      return { finished, l };
     }).subscribe({
       next: () => qc.invalidateQueries({ queryKey: queryKeys.history.all }),
     });

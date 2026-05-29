@@ -235,6 +235,8 @@ export function SettingsPage() {
   const handleResetConfirm = async () => {
     setResetting(true);
     try {
+      // Close the open connection before deleting so IndexedDB doesn't block.
+      forgeDB.close();
       await forgeDB.delete();
       window.location.reload();
     } catch {
