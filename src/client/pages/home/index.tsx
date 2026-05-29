@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useContext } from "react";
-import { Link, useOutletContext } from "react-router";
+import { Link, useOutletContext, useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight } from "../../lib/units";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
@@ -12,7 +13,12 @@ import {
   type DayDetail,
   type Goal,
 } from "../../home/state";
-import type { Routine } from "../../../shared";
+import { createSession } from "../../db/mutations";
+import { queryKeys } from "../../db/query-keys";
+import { uuidv4 } from "../../lib/uuid";
+import { buildLiveStructure } from "../workout/start";
+import { computeNextPlayableDay } from "../../lib/programs/next-day";
+import type { Routine, Session } from "../../../shared";
 
 // ---------------------------------------------------------------------------
 // Estimated duration helper
@@ -189,7 +195,7 @@ function TodayCard({
         <div className="w-1 flex-shrink-0 bg-[var(--accent)]" aria-hidden="true" />
         <div className="flex-1 p-4">
           {routine != null ? (
-            <RoutineVariant routine={routine} exerciseNames={exerciseNames} sessionIsToday={sessionIsToday} inProgressSession={inProgressSession} />
+            <RoutineVariant routine={routine} exerciseNames={exerciseNames} sessionIsToday={sessionIsToday} inProgressSession={inProgressSession} activeState={activeState} />
           ) : (
             <NoProgramVariant />
           )}
@@ -204,13 +210,60 @@ function RoutineVariant({
   exerciseNames,
   sessionIsToday,
   inProgressSession,
+  activeState,
 }: {
   routine: Routine;
   exerciseNames: Record<string, string>;
   sessionIsToday: boolean;
   inProgressSession: { id: string } | null;
+  activeState: ActiveRunState;
 }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const duration = estimateDuration(routine);
+
+  const handleStartOrResume = async () => {
+    if (sessionIsToday && inProgressSession) {
+      navigate("/workout/active");
+      return;
+    }
+    const { run, program } = activeState;
+    const nextDay = computeNextPlayableDay(program, run);
+    if (!nextDay) return;
+
+    const primaryEntry =
+      program.days.find(
+        (d) => d.weekIndex === nextDay.weekIndex && d.dayIndex === nextDay.dayIndex && (d.order ?? 0) === 0,
+      ) ??
+      program.days.find(
+        (d) => d.weekIndex === nextDay.weekIndex && d.dayIndex === nextDay.dayIndex,
+      );
+    if (!primaryEntry?.routineId) return;
+
+    const now = Date.now();
+    const session: Session = {
+      id: uuidv4(),
+      status: "in_progress",
+      sourceType: "program_day",
+      sourceRoutineId: primaryEntry.routineId,
+      sourceProgramId: run.programId,
+      sourceProgramWeekIndex: nextDay.weekIndex,
+      sourceProgramDayIndex: nextDay.dayIndex,
+      templateSnapshot: JSON.stringify(routine),
+      liveStructure: JSON.stringify(buildLiveStructure(routine, primaryEntry.overrides)),
+      restTimer: null,
+      title: routine.name,
+      notes: null,
+      startedAt: now,
+      endedAt: null,
+      pausedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await createSession(session);
+    qc.setQueryData(queryKeys.sessions.active(), session);
+    navigate("/workout/active");
+  };
 
   // Gather exercise preview rows (max 6)
   const previewItems = routine.blocks
@@ -240,13 +293,14 @@ function RoutineVariant({
         </ul>
       ) : null}
 
-      <Link
-        to={sessionIsToday && inProgressSession ? `/workout/sessions/${inProgressSession.id}` : "/workout/start"}
+      <button
+        type="button"
+        onClick={handleStartOrResume}
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-opacity"
       >
         <PlayIcon />
         {sessionIsToday && inProgressSession ? "Resume Workout" : "Start Workout"}
-      </Link>
+      </button>
     </>
   );
 }
@@ -459,7 +513,7 @@ function InProgressDayContent({
         </p>
       ) : null}
       <Link
-        to={`/workout/sessions/${session.id}`}
+        to="/workout/active"
         className="flex w-full items-center justify-center rounded-md bg-[var(--accent)] py-2 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         Resume Workout

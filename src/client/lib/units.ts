@@ -16,7 +16,17 @@ export function formatWeight(kg: number, unit: "kg" | "lb"): string {
   return `${display} ${unit}`;
 }
 
+export function weightToKg(display: number, unit: "kg" | "lb"): number {
+  return unit === "lb" ? display / 2.20462 : display;
+}
+
 // ─── Distance ────────────────────────────────────────────────────────────────
+
+export function distanceToMeters(display: number, unit: "m" | "km" | "mi"): number {
+  if (unit === "km") return display * 1000;
+  if (unit === "mi") return display * 1609.344;
+  return display;
+}
 
 export function convertDistance(m: number, unit: "m" | "km" | "mi"): number {
   if (unit === "km") return m / 1000;

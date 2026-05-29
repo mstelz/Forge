@@ -7,6 +7,7 @@ import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Routine, RoutineBlock, RoutineItem, Session } from "../../../shared";
+import type { RoutineItemOverride } from "../../../shared/program";
 
 // ---------------------------------------------------------------------------
 // Live structure builder
@@ -45,17 +46,24 @@ interface LiveStructure {
   blocks: LiveBlock[];
 }
 
-function buildLiveStructure(routine: Routine): LiveStructure {
+export function buildLiveStructure(routine: Routine, overrides?: RoutineItemOverride[] | null): LiveStructure {
   const blocks: LiveBlock[] = routine.blocks.map((block) => {
     const items: LiveItem[] = block.items.map((item: RoutineItem) => {
-      const setTargets: PlannedSlot[] = Array.from({ length: item.setCount }, (_, i) => {
+      const ov = overrides?.find((o) => o.routineItemId === item.id) ?? null;
+      const setCount = ov?.setCount ?? item.setCount;
+      const uniformReps = ov?.uniformReps ?? item.uniformReps ?? undefined;
+      const uniformRepsMin = ov?.uniformRepsMin ?? item.uniformRepsMin ?? undefined;
+      const uniformRepsMax = ov?.uniformRepsMax ?? item.uniformRepsMax ?? undefined;
+      const notes = ov?.notes ?? item.notes ?? undefined;
+
+      const setTargets: PlannedSlot[] = Array.from({ length: setCount }, (_, i) => {
         const perSet = item.setTargets?.[i];
         return {
           id: perSet?.id ?? uuidv4(),
           order: i,
-          reps: item.repMode === "uniform" ? (item.uniformReps ?? undefined) : (perSet?.reps ?? undefined),
-          repsMin: item.repMode === "uniform" ? (item.uniformRepsMin ?? undefined) : (perSet?.repsMin ?? undefined),
-          repsMax: item.repMode === "uniform" ? (item.uniformRepsMax ?? undefined) : (perSet?.repsMax ?? undefined),
+          reps: item.repMode === "uniform" ? (uniformReps ?? undefined) : (perSet?.reps ?? undefined),
+          repsMin: item.repMode === "uniform" ? (uniformRepsMin ?? undefined) : (perSet?.repsMin ?? undefined),
+          repsMax: item.repMode === "uniform" ? (uniformRepsMax ?? undefined) : (perSet?.repsMax ?? undefined),
           setType: item.setTypeMode === "uniform" ? (item.uniformSetType ?? "normal") : (perSet?.setType ?? "normal"),
         };
       });
@@ -63,9 +71,9 @@ function buildLiveStructure(routine: Routine): LiveStructure {
         performedExerciseId: uuidv4(),
         sessionItemId: uuidv4(),
         exerciseId: item.exerciseId,
-        setCount: item.setCount,
-        uniformReps: item.uniformReps ?? undefined,
-        notes: item.notes ?? undefined,
+        setCount,
+        uniformReps,
+        notes,
         setTargets,
       };
     });

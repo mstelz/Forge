@@ -30,9 +30,24 @@ function recordIfOrphaned(table: string, column: string, tag: string, when: numb
   }
 }
 
+// Inverse of recordIfOrphaned: if a column was dropped outside of drizzle, record the
+// migration so drizzle doesn't crash with "no such column" when it tries to DROP it.
+function recordIfDropped(table: string, column: string, tag: string, when: number) {
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  const content = readFileSync(`${MIGRATIONS_DIR}/${tag}.sql`).toString();
+  const hash = createHash("sha256").update(content).digest("hex");
+  const exists = sqlite.prepare("SELECT 1 FROM __drizzle_migrations WHERE hash = ?").get(hash);
+  if (!exists) {
+    console.log(`[migrations] recording orphaned migration ${tag}`);
+    sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)").run(hash, when);
+  }
+}
+
 recordIfOrphaned("program_days", "overrides_json", "0006_program_day_overrides", 1779900000000);
 recordIfOrphaned("program_runs", "week_zero_start_date", "0007_program_run_week_zero", 1779910000000);
 recordIfOrphaned("program_days", "order", "0008_program_day_multi_workout", 1748390400000);
+recordIfDropped("routine_items", "rpe_mode", "0009_remove_routine_rpe", 1748476800000);
 
 migrate(db, { migrationsFolder: MIGRATIONS_DIR });
 console.log("migrations applied");

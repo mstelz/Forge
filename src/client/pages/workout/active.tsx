@@ -25,7 +25,7 @@ import { uuidv4 } from "../../lib/uuid";
 import { ExercisePicker } from "../../components/exercise-picker";
 import { EditStructureSheet } from "./edit-structure/index";
 import { SettingsContext } from "../../contexts/settings-context";
-import { formatWeight, formatDistance } from "../../lib/units";
+import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
 // ─── Internal types ──────────────────────────────────────────────────────────
@@ -45,7 +45,6 @@ type LiveItem = {
   exerciseId: string;
   setCount: number;
   uniformReps?: number;
-  uniformRpe?: number;
   restSec?: number;
   notes?: string;
   setTargets: PlannedSlot[];
@@ -206,6 +205,24 @@ function formatDuration(secs: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function secsToTimeStr(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function parseTimeStr(str: string): number | null {
+  const parts = str.trim().split(":").map((p) => parseInt(p, 10));
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 2) return parts[0]! * 60 + parts[1]!;
+  if (parts.length === 3) return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  return null;
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -378,9 +395,11 @@ function useLastTimeForExercise(exerciseId: string) {
 function LastTimeLine({
   exerciseId,
   sessionId,
+  onViewHistory,
 }: {
   exerciseId: string;
   sessionId: string;
+  onViewHistory: () => void;
 }) {
   const { data: allLogs } = useLastTimeForExercise(exerciseId);
 
@@ -393,7 +412,6 @@ function LastTimeLine({
     if (prev.length === 0) return null;
 
     const mostRecentAt = Math.max(...prev.map((l) => l.loggedAt));
-    // Group logs by session proximity (within 4h of most recent log)
     const sessionLogs = prev
       .filter((l) => mostRecentAt - l.loggedAt < 4 * 3_600_000)
       .sort((a, b) => a.order - b.order);
@@ -413,7 +431,24 @@ function LastTimeLine({
   }, [allLogs, sessionId]);
 
   if (!summary) return null;
-  return <p className="mt-0.5 text-xs text-[var(--text-muted)]">{summary}</p>;
+  return (
+    <button
+      type="button"
+      onClick={onViewHistory}
+      className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none"
+    >
+      <span>{summary}</span>
+      <ChevronRightIcon />
+    </button>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
 }
 
 // ─── Superset round pips ──────────────────────────────────────────────────────
@@ -477,6 +512,8 @@ interface ExerciseCardProps {
   exerciseNames: Map<string, string>;
   onSlotTap: (blockIdx: number, itemIdx: number, slotIdx: number) => void;
   onAddSet: (blockIdx: number, itemIdx: number) => void;
+  onOpenNote: () => void;
+  onViewHistory: (exerciseId: string, exerciseName: string) => void;
 }
 
 function ExerciseCard({
@@ -488,6 +525,8 @@ function ExerciseCard({
   exerciseNames,
   onSlotTap,
   onAddSet,
+  onOpenNote,
+  onViewHistory,
 }: ExerciseCardProps) {
   const isSuperset = block.type === "superset";
   const supersetLabel = `SUPERSET ${String.fromCharCode(65 + blockIdx)}`;
@@ -532,7 +571,7 @@ function ExerciseCard({
             <h2 className="text-lg font-bold text-[var(--text)]">
               {prefix}{name}
             </h2>
-            <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} />
+            <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} onViewHistory={() => onViewHistory(item.exerciseId, name)} />
 
             <div className="mt-3 space-y-1">
               {item.setTargets.map((slot, slotIdx) => {
@@ -572,6 +611,7 @@ function ExerciseCard({
               </button>
               <button
                 type="button"
+                onClick={onOpenNote}
                 className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
               >
                 <NoteIcon />
@@ -643,6 +683,9 @@ interface BottomPanelProps {
   onFinishWorkout: () => void;
   onSkipSet: () => void;
   exerciseTypes: Map<string, ExerciseType>;
+  noteOpen: boolean;
+  onToggleNote: () => void;
+  onCloseNote: () => void;
 }
 
 function BottomPanel({
@@ -656,14 +699,20 @@ function BottomPanel({
   onFinishWorkout,
   onSkipSet,
   exerciseTypes,
+  noteOpen,
+  onToggleNote,
+  onCloseNote,
 }: BottomPanelProps) {
-  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [weightDisplay, setWeightDisplay] = useState<number | null>(null);
+  const [weightInputStr, setWeightInputStr] = useState<string>("");
   const [reps, setReps] = useState<number | null>(null);
+  const [repsInputStr, setRepsInputStr] = useState<string>("");
   const [rpe, setRpe] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number | null>(null);
-  const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [durationInputStr, setDurationInputStr] = useState<string>("");
+  const [distanceDisplay, setDistanceDisplay] = useState<number | null>(null);
+  const [distanceInputStr, setDistanceInputStr] = useState<string>("");
   const [setType, setSetType] = useState<LogSetType>("normal");
-  const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -730,12 +779,23 @@ function BottomPanel({
         l.status === "logged",
     );
 
+    const setWeight = (kg: number) => {
+      const val = Math.round(convertWeight(kg, weightUnit) * 100) / 100;
+      setWeightDisplay(val);
+      setWeightInputStr(String(val));
+    };
+    const setDist = (m: number) => {
+      const val = Math.round(convertDistance(m, distanceUnit) * 1000) / 1000;
+      setDistanceDisplay(val);
+      setDistanceInputStr(String(val));
+    };
+
     if (existingLog) {
-      if (existingLog.weightKg != null) setWeightKg(existingLog.weightKg);
-      if (existingLog.reps != null) setReps(existingLog.reps);
+      if (existingLog.weightKg != null) setWeight(existingLog.weightKg);
+      if (existingLog.reps != null) { setReps(existingLog.reps); setRepsInputStr(String(existingLog.reps)); }
       if (existingLog.rpe != null) setRpe(existingLog.rpe);
-      if (existingLog.durationSec != null) setDurationSec(existingLog.durationSec);
-      if (existingLog.distanceM != null) setDistanceM(existingLog.distanceM);
+      if (existingLog.durationSec != null) { setDurationSec(existingLog.durationSec); setDurationInputStr(secsToTimeStr(existingLog.durationSec)); }
+      if (existingLog.distanceM != null) setDist(existingLog.distanceM);
       setSetType((existingLog.setType as LogSetType) ?? "normal");
       return;
     }
@@ -751,24 +811,86 @@ function BottomPanel({
 
     if (prevLogs.length > 0) {
       const prev = prevLogs[0]!;
-      if (prev.weightKg != null) setWeightKg(prev.weightKg);
-      if (prev.reps != null) setReps(prev.reps);
-      if (prev.durationSec != null) setDurationSec(prev.durationSec);
-      if (prev.distanceM != null) setDistanceM(prev.distanceM);
+      if (prev.weightKg != null) setWeight(prev.weightKg);
+      if (prev.reps != null) { setReps(prev.reps); setRepsInputStr(String(prev.reps)); }
+      if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationInputStr(secsToTimeStr(prev.durationSec)); }
+      if (prev.distanceM != null) setDist(prev.distanceM);
       // Do not pre-fill RPE — it is per-set
     } else {
-      if (currentSlot.reps != null) setReps(currentSlot.reps);
+      if (currentSlot.reps != null) { setReps(currentSlot.reps); setRepsInputStr(String(currentSlot.reps)); }
     }
-  }, [currentItem, currentSlot, logs]);
+  }, [currentItem, currentSlot, logs, weightUnit, distanceUnit]);
 
   const handleLogSet = async () => {
-    if (!cursor || !currentSlot || !currentItem || logging) return;
+    if (!cursor || !currentItem || logging) return;
     const block = liveStructure.blocks[cursor.blockIdx];
     if (!block) return;
 
-    // Validate: require at least one meaningful metric before logging
-    const hasStrengthMetric = (reps != null && reps > 0) || (weightKg != null && weightKg > 0);
-    const hasCardioMetric = (durationSec != null && durationSec > 0) || (distanceM != null && distanceM > 0);
+    const storedKg = weightDisplay != null ? weightToKg(weightDisplay, weightUnit) : null;
+    const storedM = distanceDisplay != null ? distanceToMeters(distanceDisplay, distanceUnit) : null;
+
+    const hasStrengthMetric = (reps != null && reps > 0) || (weightDisplay != null && weightDisplay > 0);
+    const hasCardioMetric = (durationSec != null && durationSec > 0) || (distanceDisplay != null && distanceDisplay > 0);
+
+    // ── Extra set branch (ADD SET button) ────────────────────────────────────
+    if (cursor.isExtra) {
+      const extraLog = [...logs]
+        .filter((l) => l.performedExerciseId === currentItem.performedExerciseId && l.status === "extra")
+        .sort((a, b) => b.loggedAt - a.loggedAt)[0];
+      if (!extraLog) return;
+
+      if (showWeightReps && !showDurationDistance && !hasStrengthMetric) {
+        setValidationError("Enter reps or weight before logging.");
+        return;
+      }
+      if (!showWeightReps && showDurationDistance && !hasCardioMetric) {
+        setValidationError("Enter duration or distance before logging.");
+        return;
+      }
+      if (showWeightReps && showDurationDistance && !hasStrengthMetric && !hasCardioMetric) {
+        setValidationError("Enter at least one metric before logging.");
+        return;
+      }
+      setValidationError(null);
+      setLogging(true);
+      try {
+        const now = Date.now();
+        await updateSessionLog({
+          ...extraLog,
+          reps,
+          weightKg: storedKg,
+          rpe,
+          durationSec: showDurationDistance ? (durationSec ?? null) : null,
+          distanceM: showDurationDistance ? storedM : null,
+          notes: note.trim() || null,
+          setType,
+          loggedAt: now,
+          enteredWeight: weightDisplay,
+          enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
+        });
+        // Back-fill rest time on the prior logged set
+        const prevLogged = logs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt)[0];
+        if (prevLogged && prevLogged.restAfterSec == null) {
+          const elapsedSec = Math.round((now - prevLogged.loggedAt) / 1000);
+          await updateSessionLog({ ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, elapsedSec)) });
+        }
+        // Auto-start rest timer
+        const restSec = block.restSec ?? currentItem.restSec ?? 90;
+        await updateSession({ ...session, restTimer: JSON.stringify({ status: "running", startedAt: now, durationSec: restSec, pausedAt: null, remainingSec: restSec }), updatedAt: now });
+        setNote(""); onCloseNote(); setRpe(null);
+        prevSlotKey.current = null;
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to save. Please try again.");
+      } finally {
+        setLogging(false);
+      }
+      return;
+    }
+
+    // ── Normal / edit planned-slot branch ────────────────────────────────────
+    if (!currentSlot) return;
+
+    // Validate
     if (showWeightReps && !showDurationDistance && !hasStrengthMetric) {
       setValidationError("Enter reps or weight before logging.");
       return;
@@ -797,15 +919,15 @@ function BottomPanel({
 
       const updatedFields = {
         reps,
-        weightKg,
+        weightKg: storedKg,
         rpe,
         durationSec: showDurationDistance ? (durationSec ?? null) : null,
-        distanceM: showDurationDistance ? (distanceM ?? null) : null,
+        distanceM: showDurationDistance ? storedM : null,
         notes: note.trim() || null,
         setType,
         loggedAt: now,
-        enteredWeight: weightKg,
-        enteredWeightUnit: (weightKg != null ? weightUnit : null) as "kg" | "lb" | null,
+        enteredWeight: weightDisplay,
+        enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
       };
 
       if (existingLog) {
@@ -859,9 +981,7 @@ function BottomPanel({
         });
       }
 
-      setNote("");
-      setNoteOpen(false);
-      setRpe(null);
+      setNote(""); onCloseNote(); setRpe(null);
       // Reset slot tracking so the next cursor position pre-fills fresh
       prevSlotKey.current = null;
     } catch (err) {
@@ -922,20 +1042,41 @@ function BottomPanel({
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
-                    aria-label={`Decrease weight in ${weightUnit}`}
-                    onClick={() => { setValidationError(null); setWeightKg((w) => Math.max(0, Number(((w ?? 0) - 2.5).toFixed(2)))); }}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    aria-label={`Decrease weight by 2.5 ${weightUnit}`}
+                    onClick={() => {
+                      setValidationError(null);
+                      const next = Math.max(0, Number(((weightDisplay ?? 0) - 2.5).toFixed(2)));
+                      setWeightDisplay(next);
+                      setWeightInputStr(String(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span aria-label={`Weight: ${weightKg != null ? `${weightKg} kg` : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
-                    {weightKg != null ? weightKg : "—"}
-                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={weightInputStr}
+                    placeholder="—"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      setValidationError(null);
+                      setWeightInputStr(e.target.value);
+                      const v = parseFloat(e.target.value);
+                      setWeightDisplay(isNaN(v) ? null : Math.max(0, v));
+                    }}
+                    className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
+                  />
                   <button
                     type="button"
-                    aria-label={`Increase weight in ${weightUnit}`}
-                    onClick={() => { setValidationError(null); setWeightKg((w) => Number(((w ?? 0) + 2.5).toFixed(2))); }}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    aria-label={`Increase weight by 2.5 ${weightUnit}`}
+                    onClick={() => {
+                      setValidationError(null);
+                      const next = Number(((weightDisplay ?? 0) + 2.5).toFixed(2));
+                      setWeightDisplay(next);
+                      setWeightInputStr(String(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
                   </button>
@@ -950,19 +1091,40 @@ function BottomPanel({
                   <button
                     type="button"
                     aria-label="Decrease reps by 1"
-                    onClick={() => { setValidationError(null); setReps((r) => Math.max(1, (r ?? 1) - 1)); }}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    onClick={() => {
+                      setValidationError(null);
+                      const next = Math.max(1, (reps ?? 1) - 1);
+                      setReps(next);
+                      setRepsInputStr(String(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span aria-label={`Reps: ${reps ?? "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
-                    {reps ?? "—"}
-                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={repsInputStr}
+                    placeholder="—"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      setValidationError(null);
+                      setRepsInputStr(e.target.value);
+                      const v = parseInt(e.target.value, 10);
+                      setReps(isNaN(v) ? null : Math.max(0, v));
+                    }}
+                    className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
+                  />
                   <button
                     type="button"
                     aria-label="Increase reps by 1"
-                    onClick={() => { setValidationError(null); setReps((r) => (r ?? 0) + 1); }}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    onClick={() => {
+                      setValidationError(null);
+                      const next = (reps ?? 0) + 1;
+                      setReps(next);
+                      setRepsInputStr(String(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
                   </button>
@@ -979,20 +1141,40 @@ function BottomPanel({
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                   <button
                     type="button"
-                    aria-label="Decrease duration by 10 seconds"
-                    onClick={() => setDurationSec((d) => Math.max(0, (d ?? 0) - 10))}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    aria-label="Decrease duration by 30 seconds"
+                    onClick={() => {
+                      const next = Math.max(0, (durationSec ?? 0) - 30);
+                      setDurationSec(next);
+                      setDurationInputStr(secsToTimeStr(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
                   </button>
-                  <span aria-label={`Duration: ${durationSec != null ? formatDuration(durationSec) : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
-                    {durationSec != null ? formatDuration(durationSec) : "—"}
-                  </span>
+                  <input
+                    type="text"
+                    inputMode="text"
+                    value={durationInputStr}
+                    placeholder="0:00"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setDurationInputStr(e.target.value)}
+                    onBlur={(e) => {
+                      const parsed = parseTimeStr(e.target.value);
+                      const secs = parsed != null ? Math.max(0, parsed) : null;
+                      setDurationSec(secs);
+                      setDurationInputStr(secs != null ? secsToTimeStr(secs) : "");
+                    }}
+                    className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
+                  />
                   <button
                     type="button"
-                    aria-label="Increase duration by 10 seconds"
-                    onClick={() => setDurationSec((d) => (d ?? 0) + 10)}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                    aria-label="Increase duration by 30 seconds"
+                    onClick={() => {
+                      const next = (durationSec ?? 0) + 30;
+                      setDurationSec(next);
+                      setDurationInputStr(secsToTimeStr(next));
+                    }}
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
                   </button>
@@ -1001,28 +1183,53 @@ function BottomPanel({
 
               <div className="flex flex-1 flex-col gap-1.5" style={{ minWidth: "120px" }}>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                  Distance m
+                  Distance {distanceUnit}
                 </p>
                 <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-                  <button
-                    type="button"
-                    aria-label="Decrease distance by 100 metres"
-                    onClick={() => setDistanceM((d) => Math.max(0, (d ?? 0) - 100))}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
-                  >
-                    −
-                  </button>
-                  <span aria-label={`Distance: ${distanceM != null ? formatDistance(distanceM, distanceUnit) : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
-                    {distanceM != null ? distanceM : "—"}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Increase distance by 100 metres"
-                    onClick={() => setDistanceM((d) => (d ?? 0) + 100)}
-                    className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
-                  >
-                    +
-                  </button>
+                  {(() => {
+                    const distanceStep = distanceUnit === "m" ? 100 : 0.25;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          aria-label={`Decrease distance by ${distanceStep} ${distanceUnit}`}
+                          onClick={() => {
+                            const next = Math.max(0, Math.round(((distanceDisplay ?? 0) - distanceStep) * 1000) / 1000);
+                            setDistanceDisplay(next);
+                            setDistanceInputStr(String(next));
+                          }}
+                          className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={distanceInputStr}
+                          placeholder="—"
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            setDistanceInputStr(e.target.value);
+                            const v = parseFloat(e.target.value);
+                            setDistanceDisplay(isNaN(v) ? null : Math.max(0, v));
+                          }}
+                          className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Increase distance by ${distanceStep} ${distanceUnit}`}
+                          onClick={() => {
+                            const next = Math.round(((distanceDisplay ?? 0) + distanceStep) * 1000) / 1000;
+                            setDistanceDisplay(next);
+                            setDistanceInputStr(String(next));
+                          }}
+                          className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
+                        >
+                          +
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </>
@@ -1044,7 +1251,7 @@ function BottomPanel({
             >
               −
             </button>
-            <span aria-label={`RPE: ${rpe != null ? rpe : "not set"}`} className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
+            <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">
               {rpe != null ? rpe : "—"}
             </span>
             <button
@@ -1078,7 +1285,7 @@ function BottomPanel({
           ))}
           <button
             type="button"
-            onClick={() => setNoteOpen((o) => !o)}
+            onClick={onToggleNote}
             className={[
               "flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
               noteOpen
@@ -1098,6 +1305,7 @@ function BottomPanel({
             onChange={(e) => setNote(e.target.value)}
             placeholder="Add a note…"
             rows={2}
+            autoFocus
             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:border-[var(--accent)] focus:outline-none"
           />
         )}
@@ -1145,6 +1353,101 @@ function BottomPanel({
 
       {/* Toast */}
       {toast && <Toast message={toast.message} type={toast.type} />}
+    </div>
+  );
+}
+
+// ─── Exercise History Sheet ───────────────────────────────────────────────────
+
+function ExerciseHistorySheet({
+  exerciseId,
+  exerciseName,
+  open,
+  onClose,
+}: {
+  exerciseId: string;
+  exerciseName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: allLogs } = useLastTimeForExercise(exerciseId);
+  const { weightUnit, distanceUnit } = useContext(SettingsContext);
+
+  const sessions = useMemo(() => {
+    if (!allLogs) return [];
+    const logged = allLogs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt);
+    const groups: Array<{ date: number; sets: typeof logged }> = [];
+    for (const log of logged) {
+      const last = groups[groups.length - 1];
+      if (last && last.date - log.loggedAt < 4 * 3_600_000) {
+        last.sets.push(log);
+      } else {
+        groups.push({ date: log.loggedAt, sets: [log] });
+      }
+    }
+    return groups.slice(0, 5);
+  }, [allLogs]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-label={`${exerciseName} history`}>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div
+        className="relative w-full max-w-lg rounded-t-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]"
+        style={{ maxHeight: "70dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden="true" />
+        </div>
+        <div className="flex items-center justify-between px-4 pb-3 pt-1">
+          <p className="text-sm font-bold text-[var(--text)]">{exerciseName}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close history"
+            className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 pb-6 space-y-4" style={{ maxHeight: "calc(70dvh - 80px)" }}>
+          {sessions.length === 0 ? (
+            <p className="py-4 text-center text-sm text-[var(--text-muted)]">No history yet</p>
+          ) : (
+            sessions.map((group, gi) => (
+              <div key={gi}>
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  {formatDaysAgo(group.date)}
+                </p>
+                <div className="space-y-1">
+                  {group.sets.map((log, si) => {
+                    const parts: string[] = [];
+                    if (log.weightKg != null) parts.push(formatWeight(log.weightKg, weightUnit));
+                    if (log.reps != null) parts.push(`${log.reps} reps`);
+                    if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
+                    if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
+                    return (
+                      <div key={log.id} className="flex items-center gap-3">
+                        <span className="w-10 text-[10px] font-semibold text-[var(--text-subtle)]">
+                          Set {si + 1}
+                        </span>
+                        <span className="text-sm text-[var(--text)]">{parts.join(" × ") || "—"}</span>
+                        {log.rpe != null && (
+                          <span className="ml-auto text-[10px] text-[var(--text-muted)]">RPE {log.rpe}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1425,6 +1728,12 @@ export function ActiveWorkoutPage() {
   // ── Edit workout structure ─────────────────────────────────────────────────
   const [structureOpen, setStructureOpen] = useState(false);
 
+  // ── Note state (lifted so ExerciseCard ADD NOTE can trigger it) ────────────
+  const [noteOpen, setNoteOpen] = useState(false);
+
+  // ── Exercise history sheet ─────────────────────────────────────────────────
+  const [historyTarget, setHistoryTarget] = useState<{ id: string; name: string } | null>(null);
+
   // ── Add exercise (freeform / mid-session) ─────────────────────────────────
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -1667,6 +1976,8 @@ export function ActiveWorkoutPage() {
                   setSelectedPos({ blockIdx: bi, itemIdx: ii, slotIdx: si })
                 }
                 onAddSet={handleAddSet}
+                onOpenNote={() => setNoteOpen(true)}
+                onViewHistory={(id, name) => setHistoryTarget({ id, name })}
               />
             ))}
             <button
@@ -1708,7 +2019,20 @@ export function ActiveWorkoutPage() {
         onFinishWorkout={() => setFinishConfirmOpen(true)}
         onSkipSet={handleSkipSet}
         exerciseTypes={exerciseTypesRef.current}
+        noteOpen={noteOpen}
+        onToggleNote={() => setNoteOpen((o) => !o)}
+        onCloseNote={() => setNoteOpen(false)}
       />
+
+      {/* Exercise history sheet */}
+      {historyTarget && (
+        <ExerciseHistorySheet
+          exerciseId={historyTarget.id}
+          exerciseName={historyTarget.name}
+          open={true}
+          onClose={() => setHistoryTarget(null)}
+        />
+      )}
 
       {/* Finish Workout confirm dialog */}
       <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>
