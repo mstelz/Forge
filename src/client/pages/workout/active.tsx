@@ -17,6 +17,7 @@ import {
   createSessionLog,
   updateSession,
   updateSessionLog,
+  deleteSessionLog,
   finishSession,
   deleteSession,
 } from "../../db/mutations";
@@ -511,8 +512,10 @@ interface ExerciseCardProps {
   logs: SessionSetLog[];
   cursor: CursorPos | null;
   exerciseNames: Map<string, string>;
-  onSlotTap: (blockIdx: number, itemIdx: number, slotIdx: number) => void;
+  onSlotTap: (blockIdx: number, itemIdx: number, slotIdx: number, isExtra?: boolean) => void;
   onAddSet: (blockIdx: number, itemIdx: number) => void;
+  onDeleteSlot: (blockIdx: number, itemIdx: number, slotIdx: number) => void;
+  onDeleteExtraLog: (logId: string) => void;
   onOpenNote: () => void;
   onViewHistory: (exerciseId: string, exerciseName: string) => void;
 }
@@ -526,6 +529,8 @@ function ExerciseCard({
   exerciseNames,
   onSlotTap,
   onAddSet,
+  onDeleteSlot,
+  onDeleteExtraLog,
   onOpenNote,
   onViewHistory,
 }: ExerciseCardProps) {
@@ -564,6 +569,10 @@ function ExerciseCard({
           }
         }
 
+        const extraLogs = logs
+          .filter((l) => l.performedExerciseId === item.performedExerciseId && l.status === "extra" && l.plannedSetId == null)
+          .sort((a, b) => a.loggedAt - b.loggedAt);
+
         return (
           <div
             key={item.performedExerciseId}
@@ -579,7 +588,8 @@ function ExerciseCard({
                 const isCursor =
                   cursor?.blockIdx === blockIdx &&
                   cursor?.itemIdx === itemIdx &&
-                  cursor?.slotIdx === slotIdx;
+                  cursor?.slotIdx === slotIdx &&
+                  !cursor?.isExtra;
 
                 const log = logMap.get(slot.id);
                 let rowState: SetRowState = "future";
@@ -588,15 +598,61 @@ function ExerciseCard({
                 else if (isCursor) rowState = "cursor";
 
                 return (
-                  <SetRow
-                    key={slot.id}
-                    setNumber={slotIdx + 1}
-                    rowState={rowState}
-                    slot={slot}
-                    log={log}
-                    isCursor={isCursor}
-                    onClick={() => onSlotTap(blockIdx, itemIdx, slotIdx)}
-                  />
+                  <div key={slot.id} className="group flex items-center gap-1">
+                    <div className="flex-1">
+                      <SetRow
+                        setNumber={slotIdx + 1}
+                        rowState={rowState}
+                        slot={slot}
+                        log={log}
+                        isCursor={isCursor}
+                        onClick={() => onSlotTap(blockIdx, itemIdx, slotIdx)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteSlot(blockIdx, itemIdx, slotIdx)}
+                      aria-label={`Delete set ${slotIdx + 1}`}
+                      className="shrink-0 rounded p-1 text-[var(--text-subtle)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {extraLogs.map((extraLog, extraIdx) => {
+                const extraSlotIdx = item.setTargets.length + extraIdx;
+                const isCursor =
+                  cursor?.blockIdx === blockIdx &&
+                  cursor?.itemIdx === itemIdx &&
+                  cursor?.slotIdx === extraSlotIdx &&
+                  cursor?.isExtra === true;
+                const fakeSlot: PlannedSlot = { id: extraLog.id, setType: "normal" };
+                const hasValues = extraLog.reps != null || extraLog.weightKg != null || extraLog.durationSec != null || extraLog.distanceM != null;
+                const rowState: SetRowState = hasValues ? "logged" : isCursor ? "cursor" : "future";
+
+                return (
+                  <div key={extraLog.id} className="group flex items-center gap-1">
+                    <div className="flex-1">
+                      <SetRow
+                        setNumber={item.setTargets.length + extraIdx + 1}
+                        rowState={rowState}
+                        slot={fakeSlot}
+                        log={hasValues ? extraLog : undefined}
+                        isCursor={isCursor}
+                        onClick={() => onSlotTap(blockIdx, itemIdx, extraSlotIdx, true)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteExtraLog(extraLog.id)}
+                      aria-label={`Delete extra set ${item.setTargets.length + extraIdx + 1}`}
+                      className="shrink-0 rounded p-1 text-[var(--text-subtle)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -1742,12 +1798,25 @@ export function ActiveWorkoutPage() {
 
   // ── Add exercise (freeform / mid-session) ─────────────────────────────────
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingExerciseId, setPendingExerciseId] = useState<string | null>(null);
+  const [setCountInput, setSetCountInput] = useState("3");
 
-  const handleAddExercise = useCallback(
-    async (exerciseId: string) => {
+  const handleAddExercise = useCallback((exerciseId: string) => {
+    setPickerOpen(false);
+    setSetCountInput("3");
+    setPendingExerciseId(exerciseId);
+  }, []);
+
+  const confirmAddExercise = useCallback(
+    async (exerciseId: string, setCount: number) => {
       if (!session) return;
-      setPickerOpen(false);
+      setPendingExerciseId(null);
       const sid = uuidv4();
+      const setTargets = Array.from({ length: setCount }, (_, i) => ({
+        id: uuidv4(),
+        order: i,
+        setType: "normal",
+      }));
       const newBlock = {
         id: uuidv4(),
         type: "single" as const,
@@ -1757,12 +1826,8 @@ export function ActiveWorkoutPage() {
             performedExerciseId: uuidv4(),
             sessionItemId: sid,
             exerciseId,
-            setCount: 3,
-            setTargets: [
-              { id: uuidv4(), order: 0, setType: "normal" },
-              { id: uuidv4(), order: 1, setType: "normal" },
-              { id: uuidv4(), order: 2, setType: "normal" },
-            ],
+            setCount,
+            setTargets,
           },
         ],
       };
@@ -1934,6 +1999,62 @@ export function ActiveWorkoutPage() {
     [session, liveStructure, logs],
   );
 
+  // ── Delete slot (planned set) ──────────────────────────────────────────────
+  const handleDeleteSlot = useCallback(
+    async (blockIdx: number, itemIdx: number, slotIdx: number) => {
+      if (!session) return;
+      const block = liveStructure.blocks[blockIdx];
+      if (!block) return;
+      const item = block.items[itemIdx];
+      if (!item) return;
+      const slot = item.setTargets[slotIdx];
+      if (!slot) return;
+
+      // Delete any log tied to this slot
+      const matchingLog = logs.find(
+        (l) => l.performedExerciseId === item.performedExerciseId && l.plannedSetId === slot.id,
+      );
+      if (matchingLog) {
+        await deleteSessionLog(matchingLog.id, session.id);
+      }
+
+      // Remove the slot from setTargets
+      const updatedItem = {
+        ...item,
+        setTargets: item.setTargets.filter((_, i) => i !== slotIdx),
+        setCount: item.setCount - 1,
+      };
+      const updatedBlock = {
+        ...block,
+        items: block.items.map((it, i) => (i === itemIdx ? updatedItem : it)),
+      };
+      const updated = {
+        ...liveStructure,
+        blocks: liveStructure.blocks.map((b, i) => (i === blockIdx ? updatedBlock : b)),
+      };
+      await updateSession({ ...session, liveStructure: JSON.stringify(updated), updatedAt: Date.now() });
+
+      // Clear cursor if it was on the deleted slot
+      setSelectedPos((prev) => {
+        if (prev && prev.blockIdx === blockIdx && prev.itemIdx === itemIdx && prev.slotIdx === slotIdx) {
+          return null;
+        }
+        return prev;
+      });
+    },
+    [session, liveStructure, logs],
+  );
+
+  // ── Delete extra set log ───────────────────────────────────────────────────
+  const handleDeleteExtraLog = useCallback(
+    async (logId: string) => {
+      if (!session) return;
+      await deleteSessionLog(logId, session.id);
+      setSelectedPos((prev) => (prev?.isExtra ? null : prev));
+    },
+    [session],
+  );
+
   // ── Loading / no session ───────────────────────────────────────────────────
   if (sessionLoading || !session) {
     return <PageSkeleton />;
@@ -1998,10 +2119,12 @@ export function ActiveWorkoutPage() {
                 logs={logs}
                 cursor={activeCursor}
                 exerciseNames={exerciseNamesRef.current}
-                onSlotTap={(bi, ii, si) =>
-                  setSelectedPos({ blockIdx: bi, itemIdx: ii, slotIdx: si })
+                onSlotTap={(bi, ii, si, isExtra) =>
+                  setSelectedPos({ blockIdx: bi, itemIdx: ii, slotIdx: si, isExtra })
                 }
                 onAddSet={handleAddSet}
+                onDeleteSlot={handleDeleteSlot}
+                onDeleteExtraLog={handleDeleteExtraLog}
                 onOpenNote={() => setNoteOpen(true)}
                 onViewHistory={(id, name) => setHistoryTarget({ id, name })}
               />
@@ -2024,6 +2147,64 @@ export function ActiveWorkoutPage() {
         onSelect={handleAddExercise}
         title="Add exercise"
       />
+
+      {/* Set count dialog — shown after exercise is picked */}
+      <Dialog open={pendingExerciseId !== null} onOpenChange={(open) => { if (!open) setPendingExerciseId(null); }}>
+        <DialogPortal>
+          <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
+          <DialogContent onPointerDownOutside={(e) => e.preventDefault()} className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
+            <DialogTitle className="text-base font-semibold text-[var(--text)]">
+              How many sets?
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-sm text-[var(--text-muted)]">
+              Choose the number of sets to add for this exercise.
+            </DialogDescription>
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSetCountInput((v) => String(Math.max(1, Number(v) - 1)))}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-raised)] text-xl font-bold text-[var(--text)] hover:bg-[var(--surface-raised-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={setCountInput}
+                onChange={(e) => setSetCountInput(e.target.value)}
+                className="w-16 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] py-2 text-center text-xl font-semibold text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onClick={() => setSetCountInput((v) => String(Math.min(20, Number(v) + 1)))}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-raised)] text-xl font-bold text-[var(--text)] hover:bg-[var(--surface-raised-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                +
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingExerciseId(null)}
+                className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const count = Math.max(1, Math.min(20, Number(setCountInput) || 3));
+                  if (pendingExerciseId) confirmAddExercise(pendingExerciseId, count);
+                }}
+                className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Add
+              </button>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
 
       <EditStructureSheet
         open={structureOpen}
@@ -2190,6 +2371,17 @@ function PlayIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     </svg>
   );
 }
