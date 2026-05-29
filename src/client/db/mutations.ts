@@ -1,5 +1,5 @@
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings, ProgramRunDayStatus } from "../../shared";
 import { SETTINGS_ID } from "../../shared/settings";
 
 import { uuidv4 as uuid } from "../lib/uuid";
@@ -357,6 +357,38 @@ export async function endProgramRun(
   const run = await forgeDB.programRuns.get(id);
   if (!run) return null;
   const updated: ProgramRun = { ...run, status, endedAt, updatedAt: Date.now() };
+  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
+    await forgeDB.programRuns.put(updated);
+    await forgeDB.pendingWrites.add(enqueue("program_run", "update", updated));
+  });
+  return updated;
+}
+
+export async function setProgramRunDayState(
+  runId: string,
+  weekIndex: number,
+  dayIndex: number,
+  status: ProgramRunDayStatus,
+  sessionId: string | null = null,
+): Promise<ProgramRun | null> {
+  await guardRunOpen(runId);
+  const run = await forgeDB.programRuns.get(runId);
+  if (!run) return null;
+  const now = Date.now();
+  const existing = run.dayStates.find(
+    (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
+  );
+  const newDayStates = existing
+    ? run.dayStates.map((s) =>
+        s.weekIndex === weekIndex && s.dayIndex === dayIndex
+          ? { ...s, status, sessionId: sessionId ?? s.sessionId, updatedAt: now }
+          : s,
+      )
+    : [
+        ...run.dayStates,
+        { id: uuid(), weekIndex, dayIndex, status, sessionId, updatedAt: now },
+      ];
+  const updated: ProgramRun = { ...run, dayStates: newDayStates, updatedAt: now };
   await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
     await forgeDB.programRuns.put(updated);
     await forgeDB.pendingWrites.add(enqueue("program_run", "update", updated));

@@ -13,12 +13,12 @@ import {
   type DayDetail,
   type Goal,
 } from "../../home/state";
-import { createSession } from "../../db/mutations";
+import { createSession, setProgramRunDayState } from "../../db/mutations";
 import { useProfiles } from "../../hooks/use-profile";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
-import { computeNextPlayableDay, computeTodayProgramDay } from "../../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayProgramDay, computeTodayCompletedDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
 import type { RoutineItemOverride } from "../../../shared/program";
 
@@ -200,7 +200,21 @@ function TodayCard({
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime();
   const sessionIsToday = inProgressSession != null && inProgressSession.startedAt >= todayStart;
-  const { routine, exerciseNames, dayStatus, daySessionId } = activeState;
+  const { routine, exerciseNames, dayStatus, daySessionId, isRestDay, restDaySlot, run } = activeState;
+
+  if (isRestDay) {
+    const accentColor = dayStatus === "completed" ? "bg-green-500" : "bg-[var(--text-subtle)]";
+    return (
+      <div className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]">
+        <div className="flex">
+          <div className={`w-1 flex-shrink-0 ${accentColor}`} aria-hidden="true" />
+          <div className="flex-1 p-4">
+            <RestDayVariant dayStatus={dayStatus} runId={run.id} restDaySlot={restDaySlot} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (routine != null && dayStatus === "completed") {
     return (
@@ -254,7 +268,7 @@ function RoutineVariant({
       return;
     }
     const { run, program } = activeState;
-    const nextDay = computeTodayProgramDay(program, run) ?? computeNextPlayableDay(program, run);
+    const nextDay = computeTodayProgramDay(program, run) ?? computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run);
     if (!nextDay) return;
 
     const primaryEntry =
@@ -327,6 +341,72 @@ function RoutineVariant({
         <PlayIcon />
         {sessionIsToday && inProgressSession ? "Resume Workout" : "Start Workout"}
       </button>
+    </>
+  );
+}
+
+function RestDayVariant({
+  dayStatus,
+  runId,
+  restDaySlot,
+}: {
+  dayStatus: ActiveRunState["dayStatus"];
+  runId: string;
+  restDaySlot: { weekIndex: number; dayIndex: number } | null;
+}) {
+  const qc = useQueryClient();
+
+  const handleComplete = async () => {
+    if (!restDaySlot) return;
+    await setProgramRunDayState(runId, restDaySlot.weekIndex, restDaySlot.dayIndex, "completed");
+    qc.invalidateQueries({ queryKey: ["homepage", "state"] });
+  };
+
+  const handleSkip = async () => {
+    if (!restDaySlot) return;
+    await setProgramRunDayState(runId, restDaySlot.weekIndex, restDaySlot.dayIndex, "skipped");
+    qc.invalidateQueries({ queryKey: ["homepage", "state"] });
+  };
+
+  if (dayStatus === "completed") {
+    return (
+      <>
+        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-green-500">
+          Rest Day Complete
+        </p>
+        <h2 className="text-base font-bold text-[var(--text)]">Recovery Day</h2>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">
+          Rest logged. Come back strong tomorrow.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
+        Rest Day
+      </p>
+      <h2 className="text-base font-bold text-[var(--text)]">Recovery Day</h2>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        Scheduled rest. Recovery is part of training.
+      </p>
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={handleComplete}
+          className="flex w-full items-center justify-center rounded-md bg-[var(--accent)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-opacity"
+        >
+          Mark Rest Complete
+        </button>
+        <button
+          type="button"
+          onClick={handleSkip}
+          className="flex w-full items-center justify-center rounded-md border border-[var(--border)] py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-colors"
+        >
+          Skip Rest / Work Out Instead
+        </button>
+      </div>
     </>
   );
 }

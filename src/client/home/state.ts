@@ -11,7 +11,7 @@ import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import type { RoutineItemOverride } from "../../shared/program";
 import { isVolumeLog } from "../hooks/use-history";
-import { computeNextPlayableDay, computeTodayProgramDay } from "../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayProgramDay, computeTodayCompletedDay, computeTodayRestDay } from "../lib/programs/next-day";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +49,10 @@ export type ActiveRunState = {
   dayStatus: "not_started" | "active" | "completed" | "skipped" | null;
   /** Session ID linked to the current day's state, if any. */
   daySessionId: string | null;
+  /** True when today's program slot is a rest day (and it hasn't been skipped). */
+  isRestDay: boolean;
+  /** week/day index of today's rest day slot, when isRestDay is true. */
+  restDaySlot: { weekIndex: number; dayIndex: number } | null;
   /** The week dots for this program run (7 dots for the current week in the run). */
   weekDots: HomepageWeekDot[];
 };
@@ -462,13 +466,30 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
             scheduledWorkoutDates.add(key);
           }
 
-          const nextDay = computeTodayProgramDay(program, run) ?? computeNextPlayableDay(program, run);
+          // Check if today is a rest day that hasn't been skipped yet
+          const todayRest = computeTodayRestDay(program, run);
+          const restDaySkipped = todayRest
+            ? run.dayStates.find(
+                (s) => s.weekIndex === todayRest.weekIndex && s.dayIndex === todayRest.dayIndex,
+              )?.status === "skipped"
+            : false;
+          const isRestDay = todayRest != null && !restDaySkipped;
+
+          const nextDay = isRestDay
+            ? todayRest
+            : (computeTodayProgramDay(program, run) ?? computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run));
+
           let routine: Routine | null = null;
           const exerciseNames: Record<string, string> = {};
           let dayStatus: ActiveRunState["dayStatus"] = null;
           let daySessionId: string | null = null;
 
-          if (nextDay) {
+          if (isRestDay && nextDay) {
+            const ds = run.dayStates.find(
+              (s) => s.weekIndex === nextDay.weekIndex && s.dayIndex === nextDay.dayIndex,
+            );
+            dayStatus = ds?.status ?? "not_started";
+          } else if (nextDay) {
             // Use the primary workout (order=0) for the homepage routine display
             const primaryEntry = program.days.find(
               (d) => d.weekIndex === nextDay.weekIndex && d.dayIndex === nextDay.dayIndex && (d.order ?? 0) === 0,
@@ -500,6 +521,8 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
             exerciseNames,
             dayStatus,
             daySessionId,
+            isRestDay,
+            restDaySlot: isRestDay && nextDay ? { weekIndex: nextDay.weekIndex, dayIndex: nextDay.dayIndex } : null,
             weekDots: buildProgramWeekDots(program, run),
           });
         }
