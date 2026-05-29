@@ -1,5 +1,6 @@
 import { forgeDB } from "../db/forge-db";
 import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun } from "../../shared";
+import { reconcileProgramRuns as reconcileProgramRunDayStates } from "./program-run-reconciler";
 
 const API_BASE = "/api/v1";
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -144,7 +145,7 @@ async function reconcileProgramRuns(serverRows: ProgramRun[], pending: PendingWr
     }
     for (const l of localRows) {
       if (serverIds.has(l.id)) continue;
-      if (pendingMap.get(l.id) === "create") continue;
+      if (pendingMap.has(l.id)) continue;
       await forgeDB.programRuns.delete(l.id);
     }
   });
@@ -172,6 +173,7 @@ export async function reconcileNow(): Promise<void> {
     await reconcileSessionLogs(logsResp.logs, pending);
     await reconcilePrograms(progResp.programs, pending);
     await reconcileProgramRuns(runsResp.runs, pending);
+    await reconcileProgramRunDayStates();
   } catch (err) {
     console.warn("[reconcile] failed", err);
   } finally {

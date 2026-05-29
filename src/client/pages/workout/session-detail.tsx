@@ -6,7 +6,8 @@ import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance } from "../../lib/units";
-import { reopenSession, updateSessionTimes } from "../../db/mutations";
+import { reopenSession, updateSessionTimes, deleteSession } from "../../db/mutations";
+import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { queryKeys } from "../../db/query-keys";
 import type { SessionSetLog } from "../../../shared";
 
@@ -65,6 +66,8 @@ export function SessionDetailPage() {
   const { data: logs } = useSessionLogs(id);
   const { data: allSessionLogs } = useAllSessionLogs();
   const [reopening, setReopening] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editingTimes, setEditingTimes] = useState(false);
   const [editStartedAt, setEditStartedAt] = useState("");
   const [editEndedAt, setEditEndedAt] = useState("");
@@ -208,37 +211,49 @@ export function SessionDetailPage() {
         <h1 className="flex-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
           Workout Summary
         </h1>
-        <button
-          type="button"
-          aria-label="Edit workout"
-          title="Edit workout"
-          disabled={reopening}
-          onClick={async () => {
-            if (reopening || !session) return;
-            const existing = await forgeDB.sessions.where("status").equals("in_progress").first().catch(() => null);
-            if (existing) {
-              alert("Another workout is already in progress. Finish or discard it first.");
-              return;
-            }
-            setReopening(true);
-            try {
-              const reopened = await reopenSession(session.id);
-              qc.setQueryData(queryKeys.sessions.active(), reopened);
-              navigate("/workout/active", {
-                state: {
-                  isReopenEdit: true,
-                  originalEndedAt: session.endedAt,
-                  originalStartedAt: session.startedAt,
-                },
-              });
-            } finally {
-              setReopening(false);
-            }
-          }}
-          className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-40"
-        >
-          {reopening ? <SpinnerIcon /> : <EditIcon />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Delete workout"
+            title="Delete workout"
+            disabled={deleting || reopening}
+            onClick={() => setDeleteConfirmOpen(true)}
+            className="rounded-md p-2 text-[var(--text-muted)] hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-40"
+          >
+            <TrashIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="Edit workout"
+            title="Edit workout"
+            disabled={reopening || deleting}
+            onClick={async () => {
+              if (reopening || !session) return;
+              const existing = await forgeDB.sessions.where("status").equals("in_progress").first().catch(() => null);
+              if (existing) {
+                alert("Another workout is already in progress. Finish or discard it first.");
+                return;
+              }
+              setReopening(true);
+              try {
+                const reopened = await reopenSession(session.id);
+                qc.setQueryData(queryKeys.sessions.active(), reopened);
+                navigate("/workout/active", {
+                  state: {
+                    isReopenEdit: true,
+                    originalEndedAt: session.endedAt,
+                    originalStartedAt: session.startedAt,
+                  },
+                });
+              } finally {
+                setReopening(false);
+              }
+            }}
+            className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-40"
+          >
+            {reopening ? <SpinnerIcon /> : <EditIcon />}
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 px-4 pb-24 pt-2 space-y-4">
@@ -417,6 +432,54 @@ export function SessionDetailPage() {
         </button>
       </div>
 
+      {/* Delete confirm sheet */}
+      {deleteConfirmOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
+          onClick={() => setDeleteConfirmOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-t-[var(--radius-card)] bg-[var(--surface)] p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-semibold text-[var(--text)]">Delete this workout?</p>
+            <p className="text-sm text-[var(--text-muted)]">This can't be undone.</p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await deleteSession(session.id);
+                    if (session.sourceType === "program_day") {
+                      reconcileProgramRuns().catch(console.error);
+                    }
+                    qc.invalidateQueries({ queryKey: queryKeys.sessions.list() });
+                    navigate("/history", { replace: true });
+                  } finally {
+                    setDeleting(false);
+                    setDeleteConfirmOpen(false);
+                  }
+                }}
+                className="flex-1 rounded-full bg-red-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="flex-1 rounded-full bg-[var(--surface-elevated)] py-2.5 text-sm font-semibold text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </>
   );
 }
@@ -550,6 +613,17 @@ function DetailSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
   );
 }
 

@@ -613,7 +613,7 @@ function ExerciseCard({
                       type="button"
                       onClick={() => onDeleteSlot(blockIdx, itemIdx, slotIdx)}
                       aria-label={`Delete set ${slotIdx + 1}`}
-                      className="shrink-0 rounded p-1 text-[var(--text-subtle)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="shrink-0 rounded p-1.5 text-[var(--text-subtle)] opacity-40 transition-opacity hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <TrashIcon />
                     </button>
@@ -648,7 +648,7 @@ function ExerciseCard({
                       type="button"
                       onClick={() => onDeleteExtraLog(extraLog.id)}
                       aria-label={`Delete extra set ${item.setTargets.length + extraIdx + 1}`}
-                      className="shrink-0 rounded p-1 text-[var(--text-subtle)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="shrink-0 rounded p-1.5 text-[var(--text-subtle)] opacity-40 transition-opacity hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <TrashIcon />
                     </button>
