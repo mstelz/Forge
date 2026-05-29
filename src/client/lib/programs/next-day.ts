@@ -21,6 +21,48 @@ export type NextPlayableDay = {
 };
 
 /**
+ * Return the program day that maps to today's calendar date, if it is a
+ * not_started workout day.  Returns null if today is a rest day, has no
+ * workout, or has already been started/completed.
+ */
+export function computeTodayProgramDay(
+  program: Program,
+  run: ProgramRun,
+  now: Date = new Date(),
+): NextPlayableDay | null {
+  if (run.status !== "active") return null;
+
+  const startMs = run.weekZeroStartDate ?? run.startedAt;
+  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+  const dayOffset = Math.round((todayMs - startMs) / 86_400_000);
+  if (dayOffset < 0) return null;
+
+  const weekIndex = Math.floor(dayOffset / 7);
+  const dayIndex = dayOffset % 7;
+  if (weekIndex >= program.durationWeeks) return null;
+
+  const dayEntries = program.days.filter(
+    (pd) => pd.weekIndex === weekIndex && pd.dayIndex === dayIndex,
+  );
+  if (dayEntries.length === 0) return null;
+
+  const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0]!;
+  if (primary.isRestDay) return null;
+
+  const hasWorkout = dayEntries.some((pd) => pd.routineId != null);
+  if (!hasWorkout) return null;
+
+  const ds = run.dayStates.find(
+    (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
+  );
+  if (!ds || ds.status === "not_started") {
+    return { weekIndex, dayIndex, routineId: primary.routineId };
+  }
+
+  return null;
+}
+
+/**
  * Compute the next playable day for a program run.
  */
 export function computeNextPlayableDay(

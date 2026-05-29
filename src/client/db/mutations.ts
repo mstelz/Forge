@@ -133,6 +133,18 @@ export async function finishSession(record: Session): Promise<Session> {
   return record;
 }
 
+/** Reopen a finished session for editing (bypasses guardNotFinished). */
+export async function reopenSession(id: string): Promise<Session> {
+  const session = await forgeDB.sessions.get(id);
+  if (!session) throw new Error("Session not found");
+  const reopened: Session = { ...session, status: "in_progress", endedAt: null, updatedAt: Date.now() };
+  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
+    await forgeDB.sessions.put(reopened);
+    await forgeDB.pendingWrites.add(enqueue("session", "update", reopened));
+  });
+  return reopened;
+}
+
 export async function createSessionLog(record: SessionSetLog): Promise<SessionSetLog> {
   await guardNotFinished(record.sessionId);
   await forgeDB.transaction("rw", forgeDB.sessionSetLogs, forgeDB.pendingWrites, async () => {

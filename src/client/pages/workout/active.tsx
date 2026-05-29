@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
 import {
@@ -1460,9 +1460,10 @@ interface OverflowMenuProps {
   onDiscard: () => void;
   onEditStructure: () => void;
   onPauseAndLeave: () => void;
+  isReopenEdit?: boolean;
 }
 
-function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }: OverflowMenuProps) {
+function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave, isReopenEdit }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -1497,14 +1498,16 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
             >
               Edit workout
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => { setOpen(false); onPauseAndLeave(); }}
-              className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
-            >
-              Pause and leave
-            </button>
+            {!isReopenEdit && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onPauseAndLeave(); }}
+                className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
+              >
+                Pause and leave
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -1517,9 +1520,9 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave }:
               type="button"
               role="menuitem"
               onClick={() => { setOpen(false); onDiscard(); }}
-              className="flex w-full items-center px-4 py-2.5 text-sm text-red-500 hover:bg-[var(--surface-elevated)]"
+              className={`flex w-full items-center px-4 py-2.5 text-sm hover:bg-[var(--surface-elevated)] ${isReopenEdit ? "text-[var(--text-muted)]" : "text-red-500"}`}
             >
-              Discard Workout
+              {isReopenEdit ? "Stop editing" : "Discard Workout"}
             </button>
           </div>
         </>
@@ -1550,6 +1553,8 @@ function PageSkeleton() {
 
 export function ActiveWorkoutPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isReopenEdit = !!(location.state as { isReopenEdit?: boolean } | null)?.isReopenEdit;
   const qc = useQueryClient();
 
   // ── Reactive live-query invalidation ──────────────────────────────────────
@@ -1810,14 +1815,21 @@ export function ActiveWorkoutPage() {
   const handleDiscardConfirmed = useCallback(async () => {
     if (!session) return;
     try {
-      await deleteSession(session.id);
-      navigate("/workout/start", { replace: true });
+      if (isReopenEdit) {
+        // Re-editing a finished session — "discard" just re-finishes and goes back
+        const finished: Session = { ...session, status: "finished", endedAt: Date.now(), updatedAt: Date.now() };
+        await finishSession(finished);
+        navigate(`/workout/sessions/${session.id}`, { replace: true });
+      } else {
+        await deleteSession(session.id);
+        navigate("/workout/start", { replace: true });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to discard workout.";
       showPageToast(msg);
       setDiscardConfirmOpen(false);
     }
-  }, [session, navigate, showPageToast]);
+  }, [session, navigate, showPageToast, isReopenEdit]);
 
   // ── Pause and leave ────────────────────────────────────────────────────────
   const handlePauseAndLeave = useCallback(async () => {
@@ -1938,7 +1950,15 @@ export function ActiveWorkoutPage() {
       <header className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-[var(--bg)] px-4 pt-4 pb-3">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={async () => {
+            if (isReopenEdit && session) {
+              const finished: Session = { ...session, status: "finished", endedAt: Date.now(), updatedAt: Date.now() };
+              await finishSession(finished).catch(console.error);
+              navigate(`/workout/sessions/${session.id}`, { replace: true });
+            } else {
+              navigate(-1);
+            }
+          }}
           aria-label="Go back"
           className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
@@ -1950,6 +1970,7 @@ export function ActiveWorkoutPage() {
           onDiscard={handleDiscard}
           onEditStructure={() => setStructureOpen(true)}
           onPauseAndLeave={handlePauseAndLeave}
+          isReopenEdit={isReopenEdit}
         />
       </header>
 
@@ -2078,10 +2099,12 @@ export function ActiveWorkoutPage() {
           <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
           <DialogContent onPointerDownOutside={(e) => e.preventDefault()} className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
             <DialogTitle className="text-base font-semibold text-[var(--text)]">
-              Discard workout?
+              {isReopenEdit ? "Stop editing?" : "Discard workout?"}
             </DialogTitle>
             <DialogDescription className="mt-2 text-sm text-[var(--text-muted)]">
-              All logged sets will be lost. This can't be undone.
+              {isReopenEdit
+                ? "Any changes you made will be saved and you'll return to the session summary."
+                : "All logged sets will be lost. This can't be undone."}
             </DialogDescription>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -2094,9 +2117,9 @@ export function ActiveWorkoutPage() {
               <button
                 type="button"
                 onClick={handleDiscardConfirmed}
-                className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                className={`rounded-full px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 ${isReopenEdit ? "bg-[var(--accent)] focus-visible:ring-[var(--accent)]" : "bg-red-500 focus-visible:ring-red-500"}`}
               >
-                Discard
+                {isReopenEdit ? "Done editing" : "Discard"}
               </button>
             </div>
           </DialogContent>

@@ -10,7 +10,7 @@ import { liveQuery } from "dexie";
 import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import { isVolumeLog } from "../hooks/use-history";
-import { computeNextPlayableDay } from "../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayProgramDay } from "../lib/programs/next-day";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -445,7 +445,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
             scheduledWorkoutDates.add(key);
           }
 
-          const nextDay = computeNextPlayableDay(program, run);
+          const nextDay = computeTodayProgramDay(program, run) ?? computeNextPlayableDay(program, run);
           let routine: Routine | null = null;
           const exerciseNames: Record<string, string> = {};
           let dayStatus: ActiveRunState["dayStatus"] = null;

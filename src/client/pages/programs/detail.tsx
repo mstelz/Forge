@@ -8,7 +8,9 @@ import {
   createProgramRun,
   updateProgramRun,
   endProgramRun,
+  createSession,
 } from "../../db/mutations";
+import { buildLiveStructure } from "../workout/start";
 import { queryKeys } from "../../db/query-keys";
 import { computeRunProgress } from "../../lib/programs/run-progress";
 import { uuidv4 } from "../../lib/uuid";
@@ -20,7 +22,7 @@ import {
   DialogPortal,
   DialogTitle,
 } from "@radix-ui/react-dialog";
-import type { Program, ProgramRun, ProgramRunDayState } from "../../../shared";
+import type { Program, ProgramRun, ProgramRunDayState, Session } from "../../../shared";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -214,23 +216,28 @@ function DayCellMenu({
   weekIndex,
   dayIndex,
   isRestDay,
+  hasRoutine,
   run,
   onSkip,
   onUnskip,
+  onStartWorkout,
 }: {
   open: boolean;
   onClose: () => void;
   weekIndex: number;
   dayIndex: number;
   isRestDay: boolean;
+  hasRoutine: boolean;
   run: ProgramRun | null | undefined;
   onSkip: (weekIndex: number, dayIndex: number) => void;
   onUnskip: (weekIndex: number, dayIndex: number) => void;
+  onStartWorkout: (weekIndex: number, dayIndex: number) => void;
 }) {
   if (!open) return null;
 
   const ds = getDayState(run, weekIndex, dayIndex);
   const status = ds?.status ?? "not_started";
+  const canStart = hasRoutine && !isRestDay && (status === "not_started" || status === "active");
   const canSkip = status !== "completed" && status !== "skipped";
   const canUnskip = status === "skipped";
   const dayLabel = DAY_LABELS[dayIndex] ?? "";
@@ -248,6 +255,18 @@ function DayCellMenu({
         <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-subtle)] pb-2">
           Week {weekIndex + 1} · {dayLabel}
         </p>
+        {canStart ? (
+          <button
+            type="button"
+            onClick={() => {
+              onStartWorkout(weekIndex, dayIndex);
+              onClose();
+            }}
+            className="flex w-full items-center gap-3 rounded-[var(--radius-card)] px-4 py-3 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            {status === "active" ? "Resume workout" : "Start workout"}
+          </button>
+        ) : null}
         {canSkip ? (
           <button
             type="button"
@@ -272,7 +291,7 @@ function DayCellMenu({
             Unskip
           </button>
         ) : null}
-        {!canSkip && !canUnskip ? (
+        {!canStart && !canSkip && !canUnskip ? (
           <p className="px-4 py-3 text-sm text-[var(--text-muted)]">
             No actions available for this day.
           </p>
@@ -634,6 +653,49 @@ export function ProgramDetailPage() {
     },
   });
 
+  const handleStartWorkout = async (weekIndex: number, dayIndex: number) => {
+    if (!activeRun || !program) return;
+
+    const dayEntries = program.days.filter(
+      (pd) => pd.weekIndex === weekIndex && pd.dayIndex === dayIndex,
+    );
+    const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
+    if (!primary?.routineId) return;
+
+    const ds = getDayState(activeRun, weekIndex, dayIndex);
+    if (ds?.status === "active") {
+      navigate("/workout/active");
+      return;
+    }
+
+    const routine = routines?.find((r) => r.id === primary.routineId);
+    if (!routine) return;
+
+    const now = Date.now();
+    const session: Session = {
+      id: uuidv4(),
+      status: "in_progress",
+      sourceType: "program_day",
+      sourceRoutineId: primary.routineId,
+      sourceProgramId: activeRun.programId,
+      sourceProgramWeekIndex: weekIndex,
+      sourceProgramDayIndex: dayIndex,
+      templateSnapshot: JSON.stringify(routine),
+      liveStructure: JSON.stringify(buildLiveStructure(routine, primary.overrides)),
+      restTimer: null,
+      title: routine.name,
+      notes: null,
+      startedAt: now,
+      endedAt: null,
+      pausedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await createSession(session);
+    qc.setQueryData(queryKeys.sessions.active(), session);
+    navigate("/workout/active");
+  };
+
   if (isLoading) {
     return (
       <div className="animate-pulse px-4 pt-8 space-y-4">
@@ -797,6 +859,12 @@ export function ProgramDetailPage() {
                 d.isRestDay,
             )
           }
+          hasRoutine={program.days.some(
+            (d) =>
+              d.weekIndex === dayCellMenuTarget.weekIndex &&
+              d.dayIndex === dayCellMenuTarget.dayIndex &&
+              d.routineId != null,
+          )}
           run={activeRun}
           onSkip={(wi, di) =>
             skipDayMutation.mutate({ weekIndex: wi, dayIndex: di })
@@ -804,6 +872,7 @@ export function ProgramDetailPage() {
           onUnskip={(wi, di) =>
             unskipDayMutation.mutate({ weekIndex: wi, dayIndex: di })
           }
+          onStartWorkout={(wi, di) => handleStartWorkout(wi, di)}
         />
       ) : null}
 

@@ -17,7 +17,7 @@ import { createSession } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
-import { computeNextPlayableDay } from "../../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayProgramDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
 
 // ---------------------------------------------------------------------------
@@ -228,7 +228,7 @@ function RoutineVariant({
       return;
     }
     const { run, program } = activeState;
-    const nextDay = computeNextPlayableDay(program, run);
+    const nextDay = computeTodayProgramDay(program, run) ?? computeNextPlayableDay(program, run);
     if (!nextDay) return;
 
     const primaryEntry =

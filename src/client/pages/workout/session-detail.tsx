@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef, useContext, useCallback } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import { useNavigate, useParams, Link } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSession, useSessionLogs, useAllSessionLogs } from "../../hooks/use-sessions";
 import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
 import { SettingsContext } from "../../contexts/settings-context";
-import { formatWeight, formatDistance, convertWeight, weightToKg } from "../../lib/units";
-import { updateSessionLogFinished } from "../../db/mutations";
+import { formatWeight, formatDistance } from "../../lib/units";
+import { reopenSession } from "../../db/mutations";
+import { queryKeys } from "../../db/query-keys";
 import type { SessionSetLog } from "../../../shared";
 
 // ---------------------------------------------------------------------------
@@ -47,11 +49,12 @@ function formatSecs(totalSec: number): string {
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const { data: session, isLoading: sessionLoading } = useSession(id);
   const { data: logs } = useSessionLogs(id);
   const { data: allSessionLogs } = useAllSessionLogs();
-  const [editingLog, setEditingLog] = useState<SessionSetLog | null>(null);
+  const [reopening, setReopening] = useState(false);
 
   const exerciseNamesRef = useRef<Map<string, string>>(new Map());
   const exerciseTypesRef = useRef<Map<string, string>>(new Map());
@@ -193,15 +196,28 @@ export function SessionDetailPage() {
         </h1>
         <button
           type="button"
-          aria-label="Edit session"
-          title="Edit a set"
-          onClick={() => {
-            const firstLog = allLogs.find((l) => l.status === "logged");
-            if (firstLog) setEditingLog(firstLog);
+          aria-label="Edit workout"
+          title="Edit workout"
+          disabled={reopening}
+          onClick={async () => {
+            if (reopening || !session) return;
+            const existing = await forgeDB.sessions.where("status").equals("in_progress").first().catch(() => null);
+            if (existing) {
+              alert("Another workout is already in progress. Finish or discard it first.");
+              return;
+            }
+            setReopening(true);
+            try {
+              const reopened = await reopenSession(session.id);
+              qc.setQueryData(queryKeys.sessions.active(), reopened);
+              navigate("/workout/active", { state: { isReopenEdit: true } });
+            } finally {
+              setReopening(false);
+            }
           }}
-          className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="rounded-md p-2 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-40"
         >
-          <EditIcon />
+          {reopening ? <SpinnerIcon /> : <EditIcon />}
         </button>
       </header>
 
@@ -253,7 +269,6 @@ export function SessionDetailPage() {
               exerciseType={exerciseType}
               isSuperset={isSuperset}
               supersetNum={supersetNum}
-              onEditLog={setEditingLog}
             />
           );
         })}
@@ -279,7 +294,6 @@ export function SessionDetailPage() {
                     exerciseType={exType}
                     isSuperset={false}
                     supersetNum={null}
-                    onEditLog={setEditingLog}
                   />
                 );
               })}
@@ -311,13 +325,6 @@ export function SessionDetailPage() {
         </button>
       </div>
 
-      {/* Edit set sheet */}
-      {editingLog != null && (
-        <EditLogSheet
-          log={editingLog}
-          onClose={() => setEditingLog(null)}
-        />
-      )}
     </>
   );
 }
@@ -343,7 +350,6 @@ function ExerciseBlock({
   exerciseType,
   isSuperset,
   supersetNum,
-  onEditLog,
 }: {
   logs: SessionSetLog[];
   exerciseId: string;
@@ -351,7 +357,6 @@ function ExerciseBlock({
   exerciseType: string;
   isSuperset: boolean;
   supersetNum: number | null;
-  onEditLog: (log: SessionSetLog) => void;
 }) {
   const sorted = [...logs].sort((a, b) => a.order - b.order);
 
@@ -375,7 +380,7 @@ function ExerciseBlock({
         <p className="text-sm font-bold text-[var(--text)]">{exerciseName}</p>
         <ul className="mt-2 space-y-1">
           {sorted.map((log) => (
-            <LogRow key={log.id} log={log} exerciseType={exerciseType} onEdit={() => onEditLog(log)} />
+            <LogRow key={log.id} log={log} exerciseType={exerciseType} />
           ))}
         </ul>
       </div>
@@ -388,7 +393,6 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg
   const hasDuration = log.durationSec != null && log.durationSec > 0;
   const hasDistance = log.distanceM != null && log.distanceM > 0;
 
-  // Infer effective type: if the log has cardio metrics but exercise is "strength", treat as mixed
   const isCardioLog = hasDuration || hasDistance;
   const effectiveType = isCardioLog && exerciseType === "strength" ? "mixed" : exerciseType;
 
@@ -408,13 +412,12 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
 
-  // strength (default)
   if (hasWeight) return `${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`;
   if (log.reps != null) return `${log.reps} reps`;
   return "—";
 }
 
-function LogRow({ log, exerciseType, onEdit }: { log: SessionSetLog; exerciseType: string; onEdit: () => void }) {
+function LogRow({ log, exerciseType }: { log: SessionSetLog; exerciseType: string }) {
   const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const isSkipped = log.status === "skipped";
   const isExtra = log.status === "extra";
@@ -426,127 +429,30 @@ function LogRow({ log, exerciseType, onEdit }: { log: SessionSetLog; exerciseTyp
       ) : (
         <span className="text-[var(--accent)] w-4 text-center text-xs">✓</span>
       )}
-      <button
-        type="button"
-        onClick={onEdit}
+      <span
         className={[
-          "flex-1 text-left text-sm hover:underline focus:outline-none",
+          "flex-1 text-sm",
           isSkipped ? "text-[var(--text-subtle)] line-through" : "text-[var(--text)]",
         ].join(" ")}
       >
         {buildLogLabel(log, exerciseType, weightUnit, distanceUnit)}
-      </button>
+      </span>
       {isExtra ? (
         <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-[var(--accent)]/20 text-[var(--accent)]">
           Extra
         </span>
       ) : null}
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label="Edit set"
-        className="rounded p-1 text-[var(--text-subtle)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-      >
-        <PencilIcon />
-      </button>
     </li>
   );
 }
 
 // ---------------------------------------------------------------------------
-// EditLogSheet
+// (EditLogSheet removed — editing happens in the full workout logger)
 // ---------------------------------------------------------------------------
 
-function EditLogSheet({ log, onClose }: { log: SessionSetLog; onClose: () => void }) {
-  const { weightUnit } = useContext(SettingsContext);
-  const [saving, setSaving] = useState(false);
-  const initialWeight = log.weightKg != null ? Math.round(convertWeight(log.weightKg, weightUnit) * 100) / 100 : null;
-  const [weightStr, setWeightStr] = useState(initialWeight != null ? String(initialWeight) : "");
-  const [weightVal, setWeightVal] = useState<number | null>(initialWeight);
-  const [repsStr, setRepsStr] = useState(log.reps != null ? String(log.reps) : "");
-  const [repsVal, setRepsVal] = useState<number | null>(log.reps ?? null);
-  const [rpe, setRpe] = useState<number | null>(log.rpe ?? null);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const storedKg = weightVal != null ? weightToKg(weightVal, weightUnit) : null;
-      await updateSessionLogFinished({
-        ...log,
-        weightKg: storedKg,
-        reps: repsVal,
-        rpe,
-        enteredWeight: weightVal,
-        enteredWeightUnit: (weightVal != null ? weightUnit : null) as "kg" | "lb" | null,
-      });
-      onClose();
-    } catch {
-      setError("Failed to save. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }, [log, weightVal, repsVal, rpe, weightUnit, onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Edit set">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div
-        className="relative w-full max-w-lg rounded-t-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)] px-4 pb-8 pt-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-center mb-3">
-          <div className="h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden="true" />
-        </div>
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-bold text-[var(--text)]">Edit Set</p>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div className="flex gap-4 mb-4">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Weight {weightUnit}</p>
-            <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg)]">
-              <button type="button" onClick={() => { const n = Math.max(0, Number(((weightVal ?? 0) - 2.5).toFixed(2))); setWeightVal(n); setWeightStr(String(n)); }} className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)]">−</button>
-              <input type="text" inputMode="decimal" value={weightStr} placeholder="—" onFocus={(e) => e.target.select()} onChange={(e) => { setWeightStr(e.target.value); const v = parseFloat(e.target.value); setWeightVal(isNaN(v) ? null : Math.max(0, v)); }} className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none" />
-              <button type="button" onClick={() => { const n = Number(((weightVal ?? 0) + 2.5).toFixed(2)); setWeightVal(n); setWeightStr(String(n)); }} className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)]">+</button>
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Reps</p>
-            <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg)]">
-              <button type="button" onClick={() => { const n = Math.max(1, (repsVal ?? 1) - 1); setRepsVal(n); setRepsStr(String(n)); }} className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)]">−</button>
-              <input type="text" inputMode="numeric" value={repsStr} placeholder="—" onFocus={(e) => e.target.select()} onChange={(e) => { setRepsStr(e.target.value); const v = parseInt(e.target.value, 10); setRepsVal(isNaN(v) ? null : Math.max(0, v)); }} className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none" />
-              <button type="button" onClick={() => { const n = (repsVal ?? 0) + 1; setRepsVal(n); setRepsStr(String(n)); }} className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)]">+</button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5 mb-4" style={{ maxWidth: "160px" }}>
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">RPE</p>
-          <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg)]">
-            <button type="button" onClick={() => setRpe((r) => r != null ? Math.max(0, Math.round((r - 0.5) * 2) / 2) : null)} className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)]">−</button>
-            <span className="flex-1 text-center text-lg font-bold tabular-nums text-[var(--text)]">{rpe != null ? rpe : "—"}</span>
-            <button type="button" onClick={() => setRpe((r) => Math.min(10, Math.round(((r ?? 5) + 0.5) * 2) / 2))} className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)]">+</button>
-          </div>
-        </div>
-
-        {error && <p className="mb-3 text-xs font-semibold text-red-500">{error}</p>}
-
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-    </div>
-  );
+// Unused placeholder so the file continues cleanly
+function _unused({ log, onClose }: { log: SessionSetLog; onClose: () => void }) {
+  return null;
 }
 
 function DetailSkeleton() {
@@ -581,10 +487,11 @@ function EditIcon() {
   );
 }
 
-function PencilIcon() {
+function SpinnerIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+      <path d="M12 2a10 10 0 0 1 10 10" />
     </svg>
   );
 }
