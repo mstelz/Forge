@@ -1,8 +1,16 @@
 import { forgeDB } from "../db/forge-db";
 import type { PendingWrite } from "../../shared";
+import { APP_VERSION } from "../../shared/version";
+import { syncLog } from "./sync-logger";
 
 const API_BASE = "/api/v1";
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 32000, 60000];
+
+const vfetch = (url: string, init: RequestInit = {}): Promise<Response> =>
+  fetch(url, {
+    ...init,
+    headers: { "X-App-Version": APP_VERSION, ...(init.headers as Record<string, string> | undefined) },
+  });
 
 type FlushListener = () => void;
 const listeners = new Set<FlushListener>();
@@ -32,7 +40,7 @@ const endpointFor = (entity: PendingWrite["entity"]) => {
 const send = async (entry: PendingWrite): Promise<Response> => {
   // Settings always uses PATCH /api/v1/settings with no id in URL
   if (entry.entity === "settings") {
-    return fetch(`${API_BASE}/settings`, {
+    return vfetch(`${API_BASE}/settings`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry.payload),
@@ -42,7 +50,7 @@ const send = async (entry: PendingWrite): Promise<Response> => {
   // Session times edit: PATCH /sessions/:id/times
   if (entry.entity === "session_times") {
     const p = entry.payload as { id: string; startedAt: number; endedAt: number | null };
-    return fetch(`${API_BASE}/sessions/${p.id}/times`, {
+    return vfetch(`${API_BASE}/sessions/${p.id}/times`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startedAt: p.startedAt, endedAt: p.endedAt }),
@@ -54,13 +62,13 @@ const send = async (entry: PendingWrite): Promise<Response> => {
     const p = entry.payload as { id: string; profileId: string };
     const logsBase = `${API_BASE}/profile/${p.profileId}/weight-logs`;
     if (entry.op === "create") {
-      return fetch(logsBase, {
+      return vfetch(logsBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry.payload),
       });
     }
-    return fetch(`${logsBase}/${p.id}`, { method: "DELETE" });
+    return vfetch(`${logsBase}/${p.id}`, { method: "DELETE" });
   }
 
   // Session logs use nested URL: /sessions/:sessionId/logs[/:logId]
@@ -68,25 +76,25 @@ const send = async (entry: PendingWrite): Promise<Response> => {
     const p = entry.payload as { id: string; sessionId: string };
     const logsBase = `${API_BASE}/sessions/${p.sessionId}/logs`;
     if (entry.op === "create") {
-      return fetch(logsBase, {
+      return vfetch(logsBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry.payload),
       });
     }
     if (entry.op === "update") {
-      return fetch(`${logsBase}/${p.id}`, {
+      return vfetch(`${logsBase}/${p.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry.payload),
       });
     }
-    return fetch(`${logsBase}/${p.id}`, { method: "DELETE" });
+    return vfetch(`${logsBase}/${p.id}`, { method: "DELETE" });
   }
 
   const base = endpointFor(entry.entity);
   if (entry.op === "create") {
-    return fetch(base, {
+    return vfetch(base, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry.payload),
@@ -98,20 +106,20 @@ const send = async (entry: PendingWrite): Promise<Response> => {
     if (entry.entity === "session") {
       const payload = entry.payload as { id: string; status?: string; endedAt?: number | null };
       if (payload.status === "finished") {
-        return fetch(`${base}/${id}/finish`, {
+        return vfetch(`${base}/${id}/finish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endedAt: payload.endedAt }),
         });
       }
     }
-    return fetch(`${base}/${id}`, {
+    return vfetch(`${base}/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry.payload),
     });
   }
-  return fetch(`${base}/${id}`, { method: "DELETE" });
+  return vfetch(`${base}/${id}`, { method: "DELETE" });
 };
 
 const isSuccess = (entry: PendingWrite, status: number): boolean => {
@@ -133,25 +141,54 @@ const backoffFor = (retries: number) => {
 };
 
 const isReady = (entry: PendingWrite, now: number) => {
+  if (entry.status === "poisoned") return false;
   if (entry.retries === 0) return true;
-  return now >= entry.createdAt + backoffFor(entry.retries);
+  const ref = entry.lastAttemptAt ?? entry.createdAt;
+  return now >= ref + backoffFor(entry.retries);
 };
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+async function checkVersionMismatch(res: Response): Promise<void> {
+  const minVersion = res.headers.get("X-Min-App-Version");
+  if (!minVersion) return;
+  if (compareVersions(APP_VERSION, minVersion) < 0) {
+    const now = Date.now();
+    await forgeDB.meta.put({ key: "versionMismatch", value: minVersion, updatedAt: now });
+  }
+}
 
 const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
   let res: Response;
   try {
     res = await send(entry);
   } catch (err) {
+    const msg = (err as Error).message ?? "network_error";
+    syncLog({ level: "warn", category: "flush", message: `network error ${entry.entity} ${entry.op}`, detail: msg });
     await forgeDB.pendingWrites.update(entry.id, {
       retries: entry.retries + 1,
-      lastError: (err as Error).message ?? "network_error",
+      lastError: msg,
+      lastAttemptAt: Date.now(),
     });
     return "retry";
   }
 
+  void checkVersionMismatch(res);
+
   if (isSuccess(entry, res.status)) {
     if (entry.op === "create" && res.status === 409) {
       console.warn(`[flusher] id_conflict on create ${entry.entity} ${entry.id}`);
+      syncLog({ level: "warn", category: "flush", message: `id_conflict ${entry.entity}`, detail: entry.id });
+    } else {
+      syncLog({ level: "info", category: "flush", message: `ok ${entry.entity} ${entry.op}` });
     }
     await forgeDB.pendingWrites.delete(entry.id);
     return "done";
@@ -159,14 +196,23 @@ const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
 
   if (res.status >= 400 && res.status < 500) {
     const body = await res.text().catch(() => "");
-    console.warn(`[flusher] dropping ${entry.op} ${entry.entity} ${entry.id}: ${res.status} ${body}`);
-    await forgeDB.pendingWrites.delete(entry.id);
+    const label = res.status === 401 ? "auth_error" : `http_${res.status}`;
+    const detail = `${label}: ${body}`.trim();
+    console.warn(`[flusher] poisoning ${entry.op} ${entry.entity} ${entry.id}: ${res.status} ${body}`);
+    syncLog({ level: "error", category: "flush", message: `poisoned ${entry.entity} ${entry.op}`, detail });
+    await forgeDB.pendingWrites.update(entry.id, {
+      status: "poisoned",
+      lastError: detail,
+      lastAttemptAt: Date.now(),
+    });
     return "done";
   }
 
+  syncLog({ level: "warn", category: "flush", message: `retry ${entry.entity} ${entry.op}`, detail: `http_${res.status}` });
   await forgeDB.pendingWrites.update(entry.id, {
     retries: entry.retries + 1,
     lastError: `http_${res.status}`,
+    lastAttemptAt: Date.now(),
   });
   return "retry";
 };
@@ -211,8 +257,54 @@ async function coalesceProfile(): Promise<void> {
   }
 }
 
+// Entities the batch endpoint can handle. Others fall back to single-item flush.
+const BATCH_ENTITIES = new Set<PendingWrite["entity"]>([
+  "exercise", "equipment", "goal", "settings", "profile", "weight_log",
+  "session_log", "session", "program_run",
+]);
+
+type BatchResult = { id: string; status: "ok" | "conflict" | "error"; code?: number; detail?: string };
+
+async function tryBatchFlush(entries: PendingWrite[]): Promise<boolean> {
+  const batchable = entries.filter((e) => BATCH_ENTITIES.has(e.entity));
+  if (batchable.length === 0) return false;
+  try {
+    const res = await vfetch(`${API_BASE}/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ writes: batchable }),
+    });
+    if (res.status === 404) return false; // server doesn't have batch endpoint yet
+    void checkVersionMismatch(res);
+    if (!res.ok) return false;
+    const { results } = await res.json() as { results: BatchResult[] };
+    const now = Date.now();
+    for (const r of results) {
+      const entry = batchable.find((e) => e.id === r.id);
+      if (!entry) continue;
+      if (r.status === "ok" || r.status === "conflict") {
+        syncLog({ level: "info", category: "flush", message: `batch ok ${entry.entity} ${entry.op}` });
+        await forgeDB.pendingWrites.delete(entry.id);
+      } else if (r.detail === "not_in_batch") {
+        // Server doesn't handle this entity in batch; will be handled by single-item loop
+      } else {
+        syncLog({ level: "error", category: "flush", message: `batch error ${entry.entity}`, detail: r.detail });
+        await forgeDB.pendingWrites.update(entry.id, {
+          status: "poisoned",
+          lastError: r.detail ?? "batch_error",
+          lastAttemptAt: now,
+        });
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function flushNow(): Promise<void> {
   if (running) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   running = true;
   try {
     // Coalesce settings and profile writes before draining
@@ -221,13 +313,30 @@ export async function flushNow(): Promise<void> {
 
     const queue = await forgeDB.pendingWrites.orderBy("createdAt").toArray();
     const now = Date.now();
-    for (const entry of queue) {
-      if (!isReady(entry, now)) continue;
-      const result = await handle(entry);
-      if (result === "retry") {
-        // Stop draining this run on first retry to preserve FIFO and avoid
-        // hammering the server when offline. Triggers will re-invoke later.
-        break;
+    const ready = queue.filter((e) => isReady(e, now));
+
+    // Try batch flush first; fall back to per-item for anything it doesn't cover
+    const batchSucceeded = ready.length > 0 && await tryBatchFlush(ready);
+
+    if (batchSucceeded) {
+      // Re-fetch queue in case batch cleared some but not all (routines, programs, session_times)
+      const remaining = await forgeDB.pendingWrites.orderBy("createdAt").toArray();
+      const nowAfter = Date.now();
+      for (const entry of remaining) {
+        if (!isReady(entry, nowAfter)) continue;
+        if (BATCH_ENTITIES.has(entry.entity)) continue; // already handled
+        const result = await handle(entry);
+        if (result === "retry") break;
+      }
+    } else {
+      for (const entry of queue) {
+        if (!isReady(entry, now)) continue;
+        const result = await handle(entry);
+        if (result === "retry") {
+          // Stop draining this run on first retry to preserve FIFO and avoid
+          // hammering the server when offline. Triggers will re-invoke later.
+          break;
+        }
       }
     }
   } finally {

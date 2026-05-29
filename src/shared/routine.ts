@@ -327,6 +327,7 @@ export const RoutineSchema = z
     blocks: z.array(RoutineBlockSchema),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
+    deletedAt: z.number().int().nonnegative().nullable().optional(),
   })
   .superRefine((val, ctx) => {
     const seen = new Set<number>();

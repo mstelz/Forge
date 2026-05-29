@@ -99,6 +99,7 @@ export const ProgramSchema = z
     ...programBase,
     createdAt: timestampMs,
     updatedAt: timestampMs,
+    deletedAt: z.number().int().nonnegative().nullable().optional(),
   })
   .superRefine(refineProgramDays);
 export type Program = z.infer<typeof ProgramSchema>;

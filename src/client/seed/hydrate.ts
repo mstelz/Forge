@@ -30,6 +30,7 @@ const buildPending = (
     createdAt: now + i,
     retries: 0,
     lastError: null,
+    status: "pending" as const,
   }));
 };
 

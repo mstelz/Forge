@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, gte } from "drizzle-orm";
 import { db, sqlite } from "../../db/client";
 import { programs, programRuns, programRunDayStates } from "../../db/schema";
 import {
@@ -91,7 +91,10 @@ function insertDayStates(
 // GET /program-runs
 // ---------------------------------------------------------------------------
 programRunsRoute.get("/", async (c) => {
-  const rows = await db.select().from(programRuns).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(programRuns).where(gte(programRuns.updatedAt, since)).all()
+    : await db.select().from(programRuns).all();
   const result: ProgramRun[] = [];
   for (const row of rows) {
     const full = await loadProgramRun(row.id);

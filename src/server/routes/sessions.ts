@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lt, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { sessions, sessionSetLogs } from "../../db/schema";
 import {
@@ -46,6 +46,7 @@ function rowToSession(row: SessionRow): Session {
     pausedAt: row.pausedAt instanceof Date ? row.pausedAt.getTime() : (row.pausedAt ?? null),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt ?? null,
   };
 }
 
@@ -81,21 +82,21 @@ function rowToLog(row: SessionSetLogRow): SessionSetLog {
 
 // GET /sessions
 sessionsRoute.get("/", async (c) => {
-  const rows = await db
-    .select()
-    .from(sessions)
-    .orderBy(desc(sessions.startedAt))
-    .all();
+  const since = Number(c.req.query("since") ?? 0);
+  // Default: exclude archived sessions (historical data stays on server).
+  // With since: include archived so clients can receive the archivedAt signal.
+  const rows = since > 0
+    ? await db.select().from(sessions).where(gte(sessions.updatedAt, since)).orderBy(desc(sessions.startedAt)).all()
+    : await db.select().from(sessions).where(isNull(sessions.archivedAt)).orderBy(desc(sessions.startedAt)).all();
   return c.json({ sessions: rows.map(rowToSession) });
 });
 
 // GET /sessions/logs  — bulk fetch all logs for reconciliation
 sessionsRoute.get("/logs", async (c) => {
-  const logs = await db
-    .select()
-    .from(sessionSetLogs)
-    .orderBy(asc(sessionSetLogs.loggedAt))
-    .all();
+  const since = Number(c.req.query("since") ?? 0);
+  const logs = since > 0
+    ? await db.select().from(sessionSetLogs).where(gte(sessionSetLogs.loggedAt, new Date(since))).orderBy(asc(sessionSetLogs.loggedAt)).all()
+    : await db.select().from(sessionSetLogs).orderBy(asc(sessionSetLogs.loggedAt)).all();
   return c.json({ logs: logs.map(rowToLog) });
 });
 
@@ -471,4 +472,26 @@ sessionsRoute.delete("/:id/logs/:logId", async (c) => {
     .run();
 
   return c.body(null, 204);
+});
+
+// POST /sessions/archive — soft-archive finished sessions older than N months.
+// Returns count of newly archived sessions.
+sessionsRoute.post("/archive", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const months = Number(body.olderThanMonths ?? 12);
+  const cutoff = Date.now() - months * 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const toArchive = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(
+      eq(sessions.status, "finished"),
+      lt(sessions.updatedAt, cutoff),
+      isNull(sessions.archivedAt),
+    ))
+    .all();
+  for (const row of toArchive) {
+    await db.update(sessions).set({ archivedAt: now }).where(eq(sessions.id, row.id)).run();
+  }
+  return c.json({ archived: toArchive.length });
 });

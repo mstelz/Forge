@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, isNull } from "drizzle-orm";
 import { db, sqlite } from "../../db/client";
 import { programs, programDays } from "../../db/schema";
 import {
@@ -75,6 +75,7 @@ async function loadProgram(id: string): Promise<Program | null> {
     days: days.map(rowToDay),
     createdAt: program.createdAt,
     updatedAt: program.updatedAt,
+    deletedAt: program.deletedAt ?? null,
   };
 }
 
@@ -104,7 +105,10 @@ function insertDays(programId: string, days: ProgramCreateInput["days"]): void {
 // GET /programs
 // ---------------------------------------------------------------------------
 programsRoute.get("/", async (c) => {
-  const rows = await db.select().from(programs).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(programs).where(gte(programs.updatedAt, since)).all()
+    : await db.select().from(programs).where(isNull(programs.deletedAt)).all();
   const result: Program[] = [];
   for (const row of rows) {
     const full = await loadProgram(row.id);
@@ -216,6 +220,7 @@ programsRoute.patch("/:id", async (c) => {
 // ---------------------------------------------------------------------------
 programsRoute.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  await db.delete(programs).where(eq(programs.id, id)).run();
+  const now = Date.now();
+  await db.update(programs).set({ deletedAt: now, updatedAt: now }).where(eq(programs.id, id)).run();
   return c.body(null, 204);
 });

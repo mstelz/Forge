@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { equipment } from "../../db/schema";
 import {
@@ -25,7 +25,10 @@ const findByLowerName = async (name: string, excludeId?: string) => {
 };
 
 equipmentRoute.get("/", async (c) => {
-  const rows = await db.select().from(equipment).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(equipment).where(gte(equipment.updatedAt, since)).all()
+    : await db.select().from(equipment).where(isNull(equipment.deletedAt)).all();
   return c.json({ equipment: rows });
 });
 
@@ -89,6 +92,7 @@ equipmentRoute.patch("/:id", async (c) => {
 
 equipmentRoute.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  await db.delete(equipment).where(eq(equipment.id, id)).run();
+  const now = Date.now();
+  await db.update(equipment).set({ deletedAt: now, updatedAt: now }).where(eq(equipment.id, id)).run();
   return c.body(null, 204);
 });

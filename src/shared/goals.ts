@@ -37,6 +37,7 @@ export const GoalBaseSchema = z.object({
   completedAt: z.number().int().nullable(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
+  deletedAt: z.number().int().nonnegative().nullable().optional(),
 });
 export type GoalBase = z.infer<typeof GoalBaseSchema>;
 

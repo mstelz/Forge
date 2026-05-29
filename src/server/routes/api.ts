@@ -10,8 +10,16 @@ import { goalsRoute } from "./goals";
 import { exportRoute } from "./export";
 import { settingsRoute } from "./settings";
 import { profileRoute } from "./profile";
+import { syncRoute } from "./sync";
 
 export const api = new Hono();
+
+const MIN_CLIENT_VERSION = "0.1.0";
+
+api.use("*", async (c, next) => {
+  await next();
+  c.header("X-Min-App-Version", MIN_CLIENT_VERSION);
+});
 
 api.get("/health", (c) => c.json({ status: "ok", version: "0.1.0" }));
 
@@ -26,3 +34,4 @@ api.route("/goals", goalsRoute);
 api.route("/export", exportRoute);
 api.route("/settings", settingsRoute);
 api.route("/profile", profileRoute);
+api.route("/sync", syncRoute);

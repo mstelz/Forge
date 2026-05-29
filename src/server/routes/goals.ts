@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, gte, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { goals } from "../../db/schema";
 import { GoalCreateSchema, GoalUpdateSchema, GoalSchema, type Goal } from "../../shared/goals";
@@ -29,6 +29,7 @@ function rowToGoal(row: GoalRow): Goal {
     completedAt: row.completedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt ?? null,
   };
 }
 
@@ -50,6 +51,7 @@ function goalToRow(g: Goal): GoalRow {
     completedAt: g.completedAt ?? null,
     createdAt: g.createdAt,
     updatedAt: g.updatedAt,
+    deletedAt: g.deletedAt ?? null,
   };
 }
 
@@ -57,7 +59,10 @@ function goalToRow(g: Goal): GoalRow {
 
 // GET /goals
 goalsRoute.get("/", async (c) => {
-  const rows = await db.select().from(goals).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(goals).where(gte(goals.updatedAt, since)).all()
+    : await db.select().from(goals).where(isNull(goals.deletedAt)).all();
   return c.json({ goals: rows.map(rowToGoal) });
 });
 
@@ -137,7 +142,8 @@ goalsRoute.delete("/:id", async (c) => {
     .where(eq(goals.id, id))
     .get();
   if (!existing) return notFound(c);
-  await db.delete(goals).where(eq(goals.id, id)).run();
+  const now = Date.now();
+  await db.update(goals).set({ deletedAt: now, updatedAt: now }).where(eq(goals.id, id)).run();
   return c.body(null, 204);
 });
 

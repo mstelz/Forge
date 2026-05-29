@@ -78,6 +78,20 @@
       "when": 1748563200000,
       "tag": "0010_profile_weight_log",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1748649600000,
+      "tag": "0011_tombstones",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1748736000000,
+      "tag": "0012_session_archive",
+      "breakpoints": true
     }
   ]
 }

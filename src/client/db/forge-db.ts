@@ -140,6 +140,66 @@ export class ForgeDB extends Dexie {
       profiles: "id, name, createdAt",
       weightLogs: "id, profileId, date",
     });
+
+    this.version(10)
+      .stores({
+        exercises: "id, name, type, updatedAt",
+        equipment: "id, name",
+        pendingWrites: "id, createdAt, entity, status",
+        meta: "key",
+        routines: "id, name, updatedAt",
+        sessions: "id, status, startedAt, sourceRoutineId, sourceType",
+        sessionSetLogs: "id, sessionId, [exerciseId+loggedAt], [sessionId+performedExerciseId+order], plannedSetId",
+        programs: "id, name, updatedAt",
+        programDays: "id, programId, weekIndex, dayIndex, order",
+        programRuns: "id, programId, status, startedAt",
+        programRunDayStates: "id, programRunId, weekIndex, dayIndex",
+        goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId",
+        settings: "id",
+        profiles: "id, name, createdAt",
+        weightLogs: "id, profileId, date",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("pendingWrites").toCollection().modify((row: { status?: string }) => {
+          if (!row.status) row.status = "pending";
+        });
+      });
+
+    this.version(11).stores({
+      exercises: "id, name, type, updatedAt, deletedAt",
+      equipment: "id, name, deletedAt",
+      pendingWrites: "id, createdAt, entity, status",
+      meta: "key",
+      routines: "id, name, updatedAt, deletedAt",
+      sessions: "id, status, startedAt, sourceRoutineId, sourceType",
+      sessionSetLogs: "id, sessionId, [exerciseId+loggedAt], [sessionId+performedExerciseId+order], plannedSetId",
+      programs: "id, name, updatedAt, deletedAt",
+      programDays: "id, programId, weekIndex, dayIndex, order",
+      programRuns: "id, programId, status, startedAt",
+      programRunDayStates: "id, programRunId, weekIndex, dayIndex",
+      goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId, deletedAt",
+      settings: "id",
+      profiles: "id, name, createdAt",
+      weightLogs: "id, profileId, date",
+    });
+
+    this.version(12).stores({
+      exercises: "id, name, type, updatedAt, deletedAt",
+      equipment: "id, name, deletedAt",
+      pendingWrites: "id, createdAt, entity, status",
+      meta: "key",
+      routines: "id, name, updatedAt, deletedAt",
+      sessions: "id, status, startedAt, sourceRoutineId, sourceType, archivedAt",
+      sessionSetLogs: "id, sessionId, [exerciseId+loggedAt], [sessionId+performedExerciseId+order], plannedSetId",
+      programs: "id, name, updatedAt, deletedAt",
+      programDays: "id, programId, weekIndex, dayIndex, order",
+      programRuns: "id, programId, status, startedAt",
+      programRunDayStates: "id, programRunId, weekIndex, dayIndex",
+      goals: "id, status, category, deadline, updatedAt, linkedExerciseId, linkedProgramRunId, deletedAt",
+      settings: "id",
+      profiles: "id, name, createdAt",
+      weightLogs: "id, profileId, date",
+    });
   }
 }
 

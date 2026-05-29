@@ -50,6 +50,7 @@ export const ExerciseSchema = z.object({
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
   lastUsedAt: z.number().int().nonnegative().nullable(),
+  deletedAt: z.number().int().nonnegative().nullable().optional(),
 });
 export type Exercise = z.infer<typeof ExerciseSchema>;
 

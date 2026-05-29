@@ -7,6 +7,7 @@ import { setTheme } from "../../lib/theme";
 import { triggerExport } from "../../export/trigger";
 import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
+import { SyncStatusSheet } from "../../sync/sync-status-sheet";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Settings } from "../../../shared/settings";
 import type { Theme } from "../../lib/theme";
@@ -190,6 +191,7 @@ export function SettingsPage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
   const settings = useContext(SettingsContext);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showSyncStatus, setShowSyncStatus] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -380,6 +382,18 @@ export function SettingsPage() {
         <div className="rounded-[var(--radius-card)] overflow-hidden mx-4">
           <button
             type="button"
+            onClick={() => setShowSyncStatus(true)}
+            className="flex w-full items-center justify-between px-4 py-3 bg-[var(--surface)] border-b border-[var(--border)] hover:bg-[var(--surface-elevated)] transition-colors"
+          >
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-sm font-medium text-[var(--text)]">Sync status</span>
+              <span className="text-xs text-[var(--text-muted)]">View sync queue and recent activity</span>
+            </div>
+            <ChevronRight size={16} className="text-[var(--text-subtle)]" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => void handleExport()}
             className="flex w-full items-center justify-between px-4 py-3 bg-[var(--surface)] hover:bg-[var(--surface-elevated)] transition-colors"
           >
@@ -429,6 +443,11 @@ export function SettingsPage() {
           FORGE MKI
         </p>
       </div>
+
+      {/* ─── Sync status sheet ─── */}
+      {showSyncStatus ? (
+        <SyncStatusSheet onClose={() => setShowSyncStatus(false)} />
+      ) : null}
 
       {/* ─── Reset confirm dialog ─── */}
       {showResetConfirm ? (

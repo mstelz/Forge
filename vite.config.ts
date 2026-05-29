@@ -19,6 +19,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "prompt",
+      strategies: "injectManifest",
+      srcDir: ".",
+      filename: "sw.ts",
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Forge",
@@ -34,9 +37,8 @@ export default defineConfig({
           { src: "/icon-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-        navigateFallback: "/index.html",
       },
     }),
   ],

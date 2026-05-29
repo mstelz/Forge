@@ -6,6 +6,9 @@ export type PendingEntity = z.infer<typeof PendingEntityEnum>;
 export const PendingOpEnum = z.enum(["create", "update", "delete"]);
 export type PendingOp = z.infer<typeof PendingOpEnum>;
 
+export const PendingStatusEnum = z.enum(["pending", "poisoned"]);
+export type PendingStatus = z.infer<typeof PendingStatusEnum>;
+
 export const PendingWriteSchema = z.object({
   id: z.string().uuid(),
   entity: PendingEntityEnum,
@@ -14,5 +17,7 @@ export const PendingWriteSchema = z.object({
   createdAt: z.number().int().nonnegative(),
   retries: z.number().int().nonnegative().default(0),
   lastError: z.string().nullable().optional(),
+  lastAttemptAt: z.number().int().nonnegative().optional(),
+  status: PendingStatusEnum.default("pending"),
 });
 export type PendingWrite = z.infer<typeof PendingWriteSchema>;

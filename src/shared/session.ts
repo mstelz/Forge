@@ -74,6 +74,7 @@ export const SessionSchema = z.object({
   pausedAt: z.number().int().nullable(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
+  archivedAt: z.number().int().nonnegative().nullable().optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 

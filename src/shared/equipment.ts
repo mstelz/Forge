@@ -8,6 +8,7 @@ export const EquipmentSchema = z.object({
   name,
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
+  deletedAt: z.number().int().nonnegative().nullable().optional(),
 });
 export type Equipment = z.infer<typeof EquipmentSchema>;
 

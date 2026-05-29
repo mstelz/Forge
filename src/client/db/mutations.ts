@@ -28,6 +28,7 @@ const enqueue = (
   createdAt: Date.now(),
   retries: 0,
   lastError: null,
+  status: "pending",
 });
 
 export async function createExercise(record: Exercise): Promise<Exercise> {

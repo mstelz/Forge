@@ -67,6 +67,13 @@ void hydrateIfEmpty()
 
 void bootstrapSettings();
 
+if (navigator.storage?.persist) {
+  void navigator.storage.persist().then((granted) => {
+    void forgeDB.meta.put({ key: "storagePersisted", value: String(granted), updatedAt: Date.now() });
+    console.log("[forge] storage.persist:", granted);
+  });
+}
+
 if (import.meta.env.DEV) {
   void import("./seed/debug").then((m) => m.installDebugHelpers());
 }

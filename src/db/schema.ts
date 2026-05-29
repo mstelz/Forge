@@ -24,6 +24,7 @@ export const exercises = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     lastUsedAt: integer("last_used_at"),
+    deletedAt: integer("deleted_at"),
   },
   (t) => ({
     nameIdx: index("idx_exercises_name").on(t.name),
@@ -39,6 +40,7 @@ export const equipment = sqliteTable(
     name: text("name").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
   },
   (t) => ({
     nameLowerIdx: uniqueIndex("idx_equipment_name_lower").on(sql`lower(${t.name})`),
@@ -54,6 +56,7 @@ export const routines = sqliteTable(
     estimatedDurationMin: integer("estimated_duration_min"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
   },
   (t) => ({
     nameIdx: index("idx_routines_name").on(t.name),
@@ -174,6 +177,7 @@ export const sessions = sqliteTable(
     pausedAt: integer("paused_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    archivedAt: integer("archived_at"),
   },
   (t) => ({
     statusIdx: index("idx_sessions_status").on(t.status),
@@ -230,6 +234,7 @@ export const programs = sqliteTable(
     durationWeeks: integer("duration_weeks").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
   },
   (t) => ({
     nameIdx: index("idx_programs_name").on(t.name),
@@ -385,6 +390,7 @@ export const goals = sqliteTable(
     completedAt: integer("completed_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
   },
   (t) => ({
     statusIdx: index("idx_goals_status").on(t.status),

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, gte, isNull } from "drizzle-orm";
 import { db, sqlite } from "../../db/client";
 import { routines, routineBlocks, routineItems, routineSetTargets } from "../../db/schema";
 import {
@@ -209,7 +209,10 @@ function insertChildren(
 
 // GET /routines
 routinesRoute.get("/", async (c) => {
-  const rows = await db.select().from(routines).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(routines).where(gte(routines.updatedAt, since)).all()
+    : await db.select().from(routines).where(isNull(routines.deletedAt)).all();
   const result: Routine[] = [];
   for (const row of rows) {
     const full = await loadRoutine(row.id);
@@ -313,6 +316,7 @@ routinesRoute.patch("/:id", async (c) => {
 // DELETE /routines/:id
 routinesRoute.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  await db.delete(routines).where(eq(routines.id, id)).run();
+  const now = Date.now();
+  await db.update(routines).set({ deletedAt: now, updatedAt: now }).where(eq(routines.id, id)).run();
   return c.body(null, 204);
 });

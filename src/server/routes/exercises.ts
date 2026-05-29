@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, gte, isNull, and } from "drizzle-orm";
 import { db } from "../../db/client";
 import { exercises } from "../../db/schema";
 import {
@@ -37,6 +37,7 @@ const rowToExercise = (row: ExerciseRow): Exercise => ({
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   lastUsedAt: (row.lastUsedAt ?? null) as number | null,
+  deletedAt: row.deletedAt ?? null,
 });
 
 const exerciseToRow = (e: Exercise): ExerciseRow => ({
@@ -54,10 +55,16 @@ const exerciseToRow = (e: Exercise): ExerciseRow => ({
   createdAt: e.createdAt,
   updatedAt: e.updatedAt,
   lastUsedAt: e.lastUsedAt ?? null,
+  deletedAt: e.deletedAt ?? null,
 });
 
 exercisesRoute.get("/", async (c) => {
-  const rows = await db.select().from(exercises).all();
+  const since = Number(c.req.query("since") ?? 0);
+  // With since: include tombstoned rows so clients can apply deletions.
+  // Without since: filter out deleted rows for a clean full list.
+  const rows = since > 0
+    ? await db.select().from(exercises).where(gte(exercises.updatedAt, since)).all()
+    : await db.select().from(exercises).where(isNull(exercises.deletedAt)).all();
   return c.json({ exercises: rows.map(rowToExercise) });
 });
 
@@ -125,6 +132,7 @@ exercisesRoute.patch("/:id", async (c) => {
 
 exercisesRoute.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  await db.delete(exercises).where(eq(exercises.id, id)).run();
+  const now = Date.now();
+  await db.update(exercises).set({ deletedAt: now, updatedAt: now }).where(eq(exercises.id, id)).run();
   return c.body(null, 204);
 });

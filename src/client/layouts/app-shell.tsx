@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { OfflinePill } from "../components/offline-pill";
 import { FlusherTroubleBanner } from "../sync/flusher-banner";
+import { SWUpdateBanner } from "../sync/sw-update-banner";
 
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -11,6 +12,7 @@ export function AppShell() {
       {drawerOpen ? (
         <Drawer onClose={() => setDrawerOpen(false)} />
       ) : null}
+      <SWUpdateBanner />
       <FlusherTroubleBanner />
       <Outlet context={{ openDrawer: () => setDrawerOpen(true) }} />
     </div>

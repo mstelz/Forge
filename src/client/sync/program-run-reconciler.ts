@@ -116,6 +116,7 @@ export async function reconcileProgramRuns(): Promise<void> {
               createdAt: Date.now(),
               retries: 0,
               lastError: null,
+              status: "pending" as const,
             });
           },
         );
@@ -215,6 +216,7 @@ async function nullOrphanedSessionIds(): Promise<void> {
             createdAt: Date.now(),
             retries: 0,
             lastError: null,
+            status: "pending" as const,
           });
         },
       );

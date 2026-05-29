@@ -58,6 +58,7 @@ export async function reconcileGoals(finishedSessionId: string): Promise<void> {
         createdAt: now,
         retries: 0,
         lastError: null,
+        status: "pending" as const,
       };
       await forgeDB.pendingWrites.add(outboxEntry);
     }

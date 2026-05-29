@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, gte } from "drizzle-orm";
 import { db } from "../../db/client";
 import { profiles, weightLogs } from "../../db/schema";
 import { ProfileSchema, ProfileUpdateSchema, WeightLogSchema, type Profile, type WeightLog } from "../../shared/profile";
@@ -70,7 +70,10 @@ function weightLogToRow(w: WeightLog): WeightLogRow {
 
 // GET /profile — return all profiles (reconciler uses this)
 profileRoute.get("/", async (c) => {
-  const rows = await db.select().from(profiles).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(profiles).where(gte(profiles.updatedAt, since)).all()
+    : await db.select().from(profiles).all();
   return c.json({ profiles: rows.map(rowToProfile) });
 });
 
@@ -131,7 +134,10 @@ profileRoute.delete("/:id", async (c) => {
 
 // GET /profile/weight-logs — all logs (for reconciler)
 profileRoute.get("/weight-logs", async (c) => {
-  const rows = await db.select().from(weightLogs).all();
+  const since = Number(c.req.query("since") ?? 0);
+  const rows = since > 0
+    ? await db.select().from(weightLogs).where(gte(weightLogs.createdAt, since)).all()
+    : await db.select().from(weightLogs).all();
   return c.json({ logs: rows.map(rowToWeightLog) });
 });
 
