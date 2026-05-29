@@ -26,8 +26,11 @@ import {
   programRunDayStates,
   goals,
   settings,
+  profiles,
+  weightLogs,
 } from "../../db/schema";
 import { ExportEnvelopeSchema } from "../../shared/export";
+import { ProfileSchema, WeightLogSchema } from "../../shared/profile";
 import { APP_VERSION } from "../../shared/version";
 import type {
   Exercise,
@@ -40,6 +43,8 @@ import type {
   SessionSetLog,
   Goal,
   Settings,
+  Profile,
+  WeightLog,
 } from "../../shared";
 import type { Program, ProgramDay } from "../../shared/program";
 import type { ProgramRun, ProgramRunDayState } from "../../shared/program-run";
@@ -98,6 +103,8 @@ type ProgramRunRow = typeof programRuns.$inferSelect;
 type ProgramRunDayStateRow = typeof programRunDayStates.$inferSelect;
 type GoalRow = typeof goals.$inferSelect;
 type SettingsRow = typeof settings.$inferSelect;
+type ProfileRow = typeof profiles.$inferSelect;
+type WeightLogRow = typeof weightLogs.$inferSelect;
 
 function rowToExercise(row: ExerciseRow): Exercise {
   return {
@@ -310,6 +317,33 @@ function rowToSettings(row: SettingsRow): Settings {
     theme: row.theme as Settings["theme"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+function rowToProfile(row: ProfileRow): Profile {
+  return {
+    id: row.id,
+    name: row.name,
+    avatarDataUrl: row.avatarDataUrl ?? null,
+    heightCm: row.heightCm ?? null,
+    dateOfBirth: row.dateOfBirth ?? null,
+    sex: (row.sex as Profile["sex"]) ?? null,
+    activityLevel: (row.activityLevel as Profile["activityLevel"]) ?? null,
+    goalType: (row.goalType as Profile["goalType"]) ?? null,
+    targetWeightKg: row.targetWeightKg ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function rowToWeightLog(row: WeightLogRow): WeightLog {
+  return {
+    id: row.id,
+    profileId: row.profileId,
+    weightKg: row.weightKg,
+    date: row.date,
+    note: row.note ?? null,
+    createdAt: row.createdAt,
   };
 }
 
@@ -564,6 +598,40 @@ function handleExport(c: Context) {
         }
       }
 
+      // ── Profiles ──────────────────────────────────────────────────────────
+      const { rows: profileRows, missing: profilesMissing } = trySelect(() =>
+        db.select().from(profiles).all(),
+      );
+      const validProfiles: Profile[] = [];
+      if (!profilesMissing) {
+        for (let i = 0; i < profileRows.length; i++) {
+          const raw = rowToProfile(profileRows[i]!);
+          const parsed = ProfileSchema.safeParse(raw);
+          if (parsed.success) {
+            validProfiles.push(parsed.data);
+          } else {
+            warnings.push(`profiles[${i}]: ${parsed.error.issues.map((e) => e.message).join("; ")}`);
+          }
+        }
+      }
+
+      // ── WeightLogs ────────────────────────────────────────────────────────
+      const { rows: weightLogRows, missing: weightLogsMissing } = trySelect(() =>
+        db.select().from(weightLogs).all(),
+      );
+      const validWeightLogs: WeightLog[] = [];
+      if (!weightLogsMissing) {
+        for (let i = 0; i < weightLogRows.length; i++) {
+          const raw = rowToWeightLog(weightLogRows[i]!);
+          const parsed = WeightLogSchema.safeParse(raw);
+          if (parsed.success) {
+            validWeightLogs.push(parsed.data);
+          } else {
+            warnings.push(`weightLogs[${i}]: ${parsed.error.issues.map((e) => e.message).join("; ")}`);
+          }
+        }
+      }
+
       return {
         validExercises,
         validEquipment,
@@ -576,6 +644,8 @@ function handleExport(c: Context) {
         validProgramRunDayStates,
         validGoals,
         validSettings,
+        validProfiles,
+        validWeightLogs,
       };
     })();
 
@@ -597,6 +667,8 @@ function handleExport(c: Context) {
         sessionSetLogs: result.validLogs,
         goals: result.validGoals,
         ...(result.validSettings ? { settings: result.validSettings } : {}),
+        profiles: result.validProfiles,
+        weightLogs: result.validWeightLogs,
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
     };

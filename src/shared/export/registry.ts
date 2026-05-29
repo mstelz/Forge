@@ -25,6 +25,7 @@ import { SessionSchema } from "../session";
 import { SessionSetLogSchema } from "../session-log";
 import { GoalSchema } from "../goals";
 import { SettingsSchema } from "../settings";
+import { ProfileSchema, WeightLogSchema } from "../profile";
 
 // Drizzle tables are referenced by name here to keep this file importable on
 // the client (where drizzle/bun-sqlite is unavailable). Server-side code must
@@ -127,6 +128,20 @@ export const EXPORT_REGISTRY: readonly RegistryEntry[] = [
     optional: true,
     singleton: true,
   },
+  {
+    key: "profiles",
+    drizzleTableName: "profiles",
+    dexieStore: "profiles",
+    schema: ProfileSchema,
+    optional: true,
+  },
+  {
+    key: "weightLogs",
+    drizzleTableName: "weight_logs",
+    dexieStore: "weightLogs",
+    schema: WeightLogSchema,
+    optional: true,
+  },
 ] as const;
 
 export type ExportEntityKey =
@@ -141,4 +156,6 @@ export type ExportEntityKey =
   | "sessions"
   | "sessionSetLogs"
   | "goals"
-  | "settings";
+  | "settings"
+  | "profiles"
+  | "weightLogs";
