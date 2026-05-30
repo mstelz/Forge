@@ -16,9 +16,9 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match("/index.html").then((r) => r ?? Response.error()),
-      ),
+      fetch(event.request)
+        .then((r) => (r.ok ? r : caches.match("/index.html").then((c) => c ?? r)))
+        .catch(() => caches.match("/index.html").then((r) => r ?? Response.error())),
     );
   }
 });

@@ -66,7 +66,10 @@ if (process.env.NODE_ENV === "production") {
   });
 
   app.use("/*", serveStatic({ root: CLIENT_DIR }));
-  app.get("*", serveStatic({ path: `${CLIENT_DIR}/index.html` }));
+  app.get("*", (c) => {
+    const file = Bun.file(`${CLIENT_DIR}/index.html`);
+    return new Response(file, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  });
 }
 
 export default {
