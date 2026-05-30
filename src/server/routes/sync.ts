@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db, sqlite } from "../../db/client";
 import {
   exercises, equipment, routines, routineBlocks, routineItems, routineSetTargets,
-  sessions, sessionSetLogs, programs, programDays, programRuns, goals, settings,
+  sessions, sessionSetLogs, programs, programDays, programRuns, programRunDayStates, goals, settings,
   profiles, weightLogs,
 } from "../../db/schema";
 import { PendingWriteSchema } from "../../shared/pending-write";
@@ -342,40 +342,66 @@ function applySession(entry: { id: string; op: string; payload: Payload }): Item
     }).where(eq(sessions.id, id)).run();
     return { id: entry.id, status: "ok", code: 200 };
   }
+  if (entry.op === "delete") {
+    db.delete(sessions).where(eq(sessions.id, id)).run();
+    return { id: entry.id, status: "ok", code: 204 };
+  }
   return { id: entry.id, status: "error", detail: "unknown_op" };
+}
+
+function upsertDayStates(programRunId: string, dayStates: Payload[]): void {
+  db.delete(programRunDayStates).where(eq(programRunDayStates.programRunId, programRunId)).run();
+  for (const ds of dayStates) {
+    db.insert(programRunDayStates).values({
+      id: ds.id,
+      programRunId,
+      weekIndex: ds.weekIndex,
+      dayIndex: ds.dayIndex,
+      status: ds.status,
+      sessionId: ds.sessionId ?? null,
+      updatedAt: ds.updatedAt ?? Date.now(),
+    }).run();
+  }
 }
 
 function applyProgramRun(entry: { id: string; op: string; payload: Payload }): ItemResult {
   const id = String(entry.payload.id ?? entry.id);
   const now = Date.now();
+  const dayStates: Payload[] = Array.isArray(entry.payload.dayStates) ? entry.payload.dayStates : [];
   if (entry.op === "create") {
     const existing = db.select({ id: programRuns.id }).from(programRuns).where(eq(programRuns.id, id)).get();
     if (existing) return { id: entry.id, status: "conflict", code: 409 };
-    db.insert(programRuns).values({
-      id,
-      programId: entry.payload.programId,
-      status: entry.payload.status ?? "active",
-      startedAt: entry.payload.startedAt ?? now,
-      endedAt: entry.payload.endedAt ?? null,
-      currentWeekIndex: entry.payload.currentWeekIndex ?? 0,
-      currentDayIndex: entry.payload.currentDayIndex ?? 0,
-      weekZeroStartDate: entry.payload.weekZeroStartDate ?? null,
-      createdAt: entry.payload.createdAt ?? now,
-      updatedAt: entry.payload.updatedAt ?? now,
-    }).run();
+    sqlite.transaction(() => {
+      db.insert(programRuns).values({
+        id,
+        programId: entry.payload.programId,
+        status: entry.payload.status ?? "active",
+        startedAt: entry.payload.startedAt ?? now,
+        endedAt: entry.payload.endedAt ?? null,
+        currentWeekIndex: entry.payload.currentWeekIndex ?? 0,
+        currentDayIndex: entry.payload.currentDayIndex ?? 0,
+        weekZeroStartDate: entry.payload.weekZeroStartDate ?? null,
+        createdAt: entry.payload.createdAt ?? now,
+        updatedAt: entry.payload.updatedAt ?? now,
+      }).run();
+      upsertDayStates(id, dayStates);
+    })();
     return { id: entry.id, status: "ok", code: 201 };
   }
   if (entry.op === "update") {
     const existing = db.select().from(programRuns).where(eq(programRuns.id, id)).get();
     if (!existing) return { id: entry.id, status: "conflict", code: 404 };
-    db.update(programRuns).set({
-      status: entry.payload.status ?? existing.status,
-      currentWeekIndex: entry.payload.currentWeekIndex ?? existing.currentWeekIndex,
-      currentDayIndex: entry.payload.currentDayIndex ?? existing.currentDayIndex,
-      endedAt: entry.payload.endedAt ?? existing.endedAt,
-      weekZeroStartDate: entry.payload.weekZeroStartDate ?? existing.weekZeroStartDate,
-      updatedAt: Math.max(entry.payload.updatedAt ?? 0, now),
-    }).where(eq(programRuns.id, id)).run();
+    sqlite.transaction(() => {
+      db.update(programRuns).set({
+        status: entry.payload.status ?? existing.status,
+        currentWeekIndex: entry.payload.currentWeekIndex ?? existing.currentWeekIndex,
+        currentDayIndex: entry.payload.currentDayIndex ?? existing.currentDayIndex,
+        endedAt: entry.payload.endedAt ?? existing.endedAt,
+        weekZeroStartDate: entry.payload.weekZeroStartDate ?? existing.weekZeroStartDate,
+        updatedAt: Math.max(entry.payload.updatedAt ?? 0, now),
+      }).where(eq(programRuns.id, id)).run();
+      upsertDayStates(id, dayStates);
+    })();
     return { id: entry.id, status: "ok", code: 200 };
   }
   return { id: entry.id, status: "error", detail: "unknown_op" };
