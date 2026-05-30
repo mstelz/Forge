@@ -306,6 +306,8 @@ function applySession(entry: { id: string; op: string; payload: Payload }): Item
   if (entry.op === "create") {
     const existing = db.select({ id: sessions.id }).from(sessions).where(eq(sessions.id, id)).get();
     if (existing) return { id: entry.id, status: "conflict", code: 409 };
+    const inProgress = db.select({ id: sessions.id }).from(sessions).where(eq(sessions.status, "in_progress")).get();
+    if (inProgress) return { id: entry.id, status: "conflict", code: 409 };
     db.insert(sessions).values({
       id,
       status: "in_progress",
