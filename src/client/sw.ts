@@ -8,6 +8,10 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute((self as any).__WB_MANIFEST);
 cleanupOutdatedCaches();
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 // SPA navigation fallback — all navigations serve /index.html
 self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
