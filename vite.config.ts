@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
+import pkg from "./package.json";
 
 export default defineConfig({
   root: "src/client",
@@ -48,6 +49,9 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8080",
     },
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
     outDir: path.resolve(__dirname, "dist/client"),

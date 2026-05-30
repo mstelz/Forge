@@ -163,6 +163,8 @@ async function checkVersionMismatch(res: Response): Promise<void> {
   if (compareVersions(APP_VERSION, minVersion) < 0) {
     const now = Date.now();
     await forgeDB.meta.put({ key: "versionMismatch", value: minVersion, updatedAt: now });
+  } else {
+    await forgeDB.meta.delete("versionMismatch");
   }
 }
 
