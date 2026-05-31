@@ -1,6 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useOutletContext } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { liveQuery } from "dexie";
 import { useHistorySessions, useHistorySummary } from "../../hooks/use-history";
+import { forgeDB } from "../../db/forge-db";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { HistoryFilter } from "../../../shared/history";
 import type { SessionSummary } from "../../../shared/history";
@@ -70,6 +73,58 @@ const FILTERS: { label: string; value: RangeFilter }[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Freeform session exercise name resolution
+// ---------------------------------------------------------------------------
+
+function useFreeformExerciseNames(sessions: SessionSummary[]) {
+  const qc = useQueryClient();
+
+  const ids = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.sourceType === "freeform" && s.exerciseCount === 1 && !s.title)
+        .map((s) => s.id),
+    [sessions],
+  );
+  const key = ids.join(",");
+
+  useEffect(() => {
+    if (ids.length === 0) return;
+    const sub = liveQuery(() =>
+      forgeDB.sessionSetLogs.where("sessionId").anyOf(ids).count(),
+    ).subscribe({
+      next: () => qc.invalidateQueries({ queryKey: ["freeform-exercise-names", key] }),
+    });
+    return () => sub.unsubscribe();
+  }, [key, ids, qc]);
+
+  return useQuery({
+    queryKey: ["freeform-exercise-names", key],
+    queryFn: async () => {
+      if (ids.length === 0) return new Map<string, string>();
+      const logs = await forgeDB.sessionSetLogs
+        .where("sessionId")
+        .anyOf(ids)
+        .filter((l) => l.status === "logged")
+        .toArray();
+      const exerciseIdBySession = new Map<string, string>();
+      for (const log of logs) {
+        if (!exerciseIdBySession.has(log.sessionId))
+          exerciseIdBySession.set(log.sessionId, log.exerciseId);
+      }
+      const result = new Map<string, string>();
+      for (const [sessionId, exerciseId] of exerciseIdBySession) {
+        const ex = await forgeDB.exercises.get(exerciseId);
+        if (ex) result.set(sessionId, ex.name);
+      }
+      return result;
+    },
+    enabled: ids.length > 0,
+    placeholderData: new Map<string, string>(),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -87,6 +142,7 @@ export function HistoryListPage() {
 
   const { data: sessions, isLoading } = useHistorySessions(filters);
   const { data: summary } = useHistorySummary(filters);
+  const { data: exerciseNameMap } = useFreeformExerciseNames(sessions ?? []);
 
   const grouped = useMemo(() => groupByDay(sessions ?? []), [sessions]);
 
@@ -181,7 +237,10 @@ export function HistoryListPage() {
                 <ul className="space-y-2">
                   {group.sessions.map((s) => (
                     <li key={s.id}>
-                      <SessionRow session={s} />
+                      <SessionRow
+                        session={s}
+                        derivedTitle={s.title ?? exerciseNameMap?.get(s.id) ?? "Freeform"}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -209,11 +268,11 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SessionRow({ session }: { session: SessionSummary }) {
+function SessionRow({ session, derivedTitle }: { session: SessionSummary; derivedTitle: string }) {
   const d = new Date(session.endedAt);
   const dayNum = d.getDate();
   const microLine = [
-    `${session.exerciseCount} exercises`,
+    `${session.exerciseCount} ${session.exerciseCount === 1 ? "exercise" : "exercises"}`,
     `${session.setCount} sets`,
     `${formatMins(session.durationMs)} min`,
   ].join(" · ");
@@ -221,7 +280,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
   return (
     <Link
       to={`/workout/sessions/${session.id}`}
-      aria-label={`${session.title ?? "Freeform"}, ${microLine}`}
+      aria-label={`${derivedTitle}, ${microLine}`}
       className="flex items-center gap-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-3 py-3 hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-colors"
     >
       {/* Day number tile */}
@@ -238,7 +297,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
 
       <div className="flex-1 min-w-0">
         <p className="truncate text-sm font-bold text-[var(--text)]">
-          {session.title ?? "Freeform"}
+          {derivedTitle}
         </p>
         <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-subtle)]">
           {microLine}
