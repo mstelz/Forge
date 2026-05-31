@@ -254,13 +254,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
     const parseVal = (raw: string): number | null =>
       raw.trim() ? (isTime ? parseTimeValue(raw) : parseFloat(raw)) : null;
     const target = parseVal(state.targetValue);
-    // For auto-derived categories, startValue is optional; default to target so progress starts at 0%.
-    const start =
-      state.startValue.trim()
-        ? parseVal(state.startValue)
-        : (state.category === "strength" || state.category === "cardio") && target != null
-          ? target
-          : null;
+    const start = parseVal(state.startValue);
     const deadline = state.deadline ? new Date(state.deadline).getTime() + 86400000 - 1 : null; // end of day
 
     return {

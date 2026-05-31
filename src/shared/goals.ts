@@ -100,7 +100,6 @@ function enforceCategoryShape(
   }
 
   if (category === "strength") {
-    if (val.startValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["startValue"], message: "startValue required for strength goals" });
     if (val.targetValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targetValue"], message: "targetValue required for strength goals" });
     if (val.unit == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unit"], message: "unit required for strength goals" });
     if (val.linkedExerciseId == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedExerciseId"], message: "linkedExerciseId required for strength goals" });
@@ -109,7 +108,6 @@ function enforceCategoryShape(
   }
 
   if (category === "cardio") {
-    if (val.startValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["startValue"], message: "startValue required for cardio goals" });
     if (val.targetValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targetValue"], message: "targetValue required for cardio goals" });
     if (val.unit == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unit"], message: "unit required for cardio goals" });
     if (val.linkedExerciseId == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedExerciseId"], message: "linkedExerciseId required for cardio goals" });
