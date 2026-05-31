@@ -196,6 +196,51 @@ export function computeGoalProgress(
     };
   }
 
+  // Cardio volume category — cumulative distance since goal creation
+  if (goal.category === "cardio_volume") {
+    if (!goal.linkedExerciseId || goal.startValue == null || goal.targetValue == null) {
+      return {
+        currentValue: goal.startValue,
+        percent: 0,
+        isComplete: goal.status === "completed",
+        hasInsufficientData: true,
+      };
+    }
+
+    const eligible = setLogs.filter(
+      (l) =>
+        l.exerciseId === goal.linkedExerciseId &&
+        l.status === "logged" &&
+        l.distanceM != null &&
+        l.distanceM > 0 &&
+        l.loggedAt >= goal.createdAt,
+    );
+
+    if (eligible.length === 0) {
+      return {
+        currentValue: goal.startValue,
+        percent: 0,
+        isComplete: goal.status === "completed",
+        hasInsufficientData: true,
+      };
+    }
+
+    const totalM = eligible.reduce((sum, l) => sum + l.distanceM!, 0);
+    let totalConverted: number;
+    if (goal.unit === "km") totalConverted = totalM / 1000;
+    else if (goal.unit === "mi") totalConverted = totalM / 1609.344;
+    else totalConverted = totalM;
+
+    const currentValue = goal.startValue + totalConverted;
+    const percent = computePercent(currentValue, goal.startValue, goal.targetValue, "up");
+    return {
+      currentValue,
+      percent,
+      isComplete: percent >= 1 || goal.status === "completed",
+      hasInsufficientData: false,
+    };
+  }
+
   // Cardio category
   if (goal.category === "cardio") {
     if (!goal.linkedExerciseId || goal.startValue == null || goal.targetValue == null) {

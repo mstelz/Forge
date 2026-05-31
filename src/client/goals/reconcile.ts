@@ -21,7 +21,7 @@ export async function reconcileGoals(finishedSessionId: string): Promise<void> {
     .toArray();
 
   const derivedGoals = activeGoals.filter(
-    (g) => g.category === "strength" || g.category === "cardio" || g.category === "program",
+    (g) => g.category === "strength" || g.category === "cardio" || g.category === "cardio_volume" || g.category === "program",
   );
 
   if (derivedGoals.length === 0) return;

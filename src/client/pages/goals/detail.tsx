@@ -29,6 +29,7 @@ import type { Goal } from "../../../shared/goals";
 const CATEGORY_LABELS: Record<Goal["category"], string> = {
   strength: "STRENGTH",
   cardio: "CARDIO",
+  cardio_volume: "VOLUME",
   weight: "WEIGHT",
   measurement: "MEASUREMENT",
   program: "PROGRAM",

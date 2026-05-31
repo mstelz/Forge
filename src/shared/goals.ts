@@ -5,6 +5,7 @@ import { z } from "zod";
 export const GoalCategoryEnum = z.enum([
   "strength",
   "cardio",
+  "cardio_volume",
   "weight",
   "measurement",
   "program",
@@ -46,16 +47,18 @@ export type GoalBase = z.infer<typeof GoalBaseSchema>;
 /**
  * Category/field requirement matrix:
  *
- * | Category    | Required                                           | Forbidden                        |
- * |-------------|---------------------------------------------------|----------------------------------|
- * | strength    | startValue, targetValue, unit, linkedExerciseId   | linkedProgramRunId               |
- * |             | direction='up'                                    |                                  |
- * | cardio      | startValue, targetValue, unit, linkedExerciseId   | linkedProgramRunId               |
- * |             | direction='down'                                  |                                  |
- * | weight      | startValue, targetValue, unit, direction='down'   | linkedExerciseId, linkedProgramRunId |
- * | measurement | startValue, targetValue, unit, direction='down'   | linkedExerciseId, linkedProgramRunId |
- * | program     | linkedProgramRunId, direction='up'                | startValue, targetValue, unit, linkedExerciseId |
- * | other       | startValue, targetValue, direction (any)          | linkedExerciseId, linkedProgramRunId |
+ * | Category      | Required                                           | Forbidden                        |
+ * |---------------|---------------------------------------------------|----------------------------------|
+ * | strength      | startValue, targetValue, unit, linkedExerciseId   | linkedProgramRunId               |
+ * |               | direction='up'                                    |                                  |
+ * | cardio        | startValue, targetValue, unit, linkedExerciseId   | linkedProgramRunId               |
+ * |               | direction='down'                                  |                                  |
+ * | cardio_volume | startValue, targetValue, unit (non-time),         | linkedProgramRunId               |
+ * |               | linkedExerciseId, direction='up'                  |                                  |
+ * | weight        | startValue, targetValue, unit, direction='down'   | linkedExerciseId, linkedProgramRunId |
+ * | measurement   | startValue, targetValue, unit, direction (any)    | linkedExerciseId, linkedProgramRunId |
+ * | program       | linkedProgramRunId, direction='up'                | startValue, targetValue, unit, linkedExerciseId |
+ * | other         | startValue, targetValue, direction (any)          | linkedExerciseId, linkedProgramRunId |
  */
 function enforceCategoryShape(
   val: GoalBase,
@@ -127,9 +130,18 @@ function enforceCategoryShape(
     if (val.startValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["startValue"], message: "startValue required for measurement goals" });
     if (val.targetValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targetValue"], message: "targetValue required for measurement goals" });
     if (val.unit == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unit"], message: "unit required for measurement goals" });
-    if (val.direction !== "down") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["direction"], message: "direction must be 'down' for measurement goals" });
     if (val.linkedExerciseId != null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedExerciseId"], message: "linkedExerciseId not allowed for measurement goals" });
     if (val.linkedProgramRunId != null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedProgramRunId"], message: "linkedProgramRunId not allowed for measurement goals" });
+  }
+
+  if (category === "cardio_volume") {
+    if (val.startValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["startValue"], message: "startValue required for cardio_volume goals" });
+    if (val.targetValue == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targetValue"], message: "targetValue required for cardio_volume goals" });
+    if (val.unit == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unit"], message: "unit required for cardio_volume goals" });
+    if (val.unit != null && val.unit.includes(":")) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unit"], message: "time units not allowed for cardio_volume goals — use km, mi, or m" });
+    if (val.linkedExerciseId == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedExerciseId"], message: "linkedExerciseId required for cardio_volume goals" });
+    if (val.direction !== "up") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["direction"], message: "direction must be 'up' for cardio_volume goals" });
+    if (val.linkedProgramRunId != null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedProgramRunId"], message: "linkedProgramRunId not allowed for cardio_volume goals" });
   }
 
   if (category === "program") {

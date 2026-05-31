@@ -36,6 +36,7 @@ function sortGoals(goals: Goal[]): Goal[] {
 const CATEGORY_LABELS: Record<GoalCategory, string> = {
   strength: "STRENGTH",
   cardio: "CARDIO",
+  cardio_volume: "VOLUME",
   weight: "WEIGHT",
   measurement: "MEASUREMENT",
   program: "PROGRAM",
@@ -184,6 +185,7 @@ const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
 const CATEGORY_CHIPS: { value: GoalCategory; label: string }[] = [
   { value: "strength", label: "Strength" },
   { value: "cardio", label: "Cardio" },
+  { value: "cardio_volume", label: "Volume" },
   { value: "weight", label: "Weight" },
   { value: "measurement", label: "Measurement" },
   { value: "program", label: "Program" },

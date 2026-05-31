@@ -59,6 +59,15 @@ const CATEGORY_CONFIGS: Record<GoalCategory, CategoryConfig> = {
     showDirection: false,
     lockedDirection: "down",
   },
+  cardio_volume: {
+    showStartTarget: true,
+    showUnit: true,
+    unitOptions: ["km", "mi", "m"],
+    showLinkedExercise: true,
+    showLinkedProgram: false,
+    showDirection: false,
+    lockedDirection: "up",
+  },
   weight: {
     showStartTarget: true,
     showUnit: true,
@@ -74,8 +83,8 @@ const CATEGORY_CONFIGS: Record<GoalCategory, CategoryConfig> = {
     unitOptions: ["in", "cm"],
     showLinkedExercise: false,
     showLinkedProgram: false,
-    showDirection: false,
-    lockedDirection: "down",
+    showDirection: true,
+    lockedDirection: null,
   },
   program: {
     showStartTarget: false,
@@ -97,9 +106,20 @@ const CATEGORY_CONFIGS: Record<GoalCategory, CategoryConfig> = {
   },
 };
 
+const CATEGORY_DESCRIPTIONS: Record<GoalCategory, string> = {
+  strength: "Tracks estimated 1RM from your logged sets",
+  cardio: "Tracks your best time or distance in a single session",
+  cardio_volume: "Tracks total distance accumulated over time",
+  weight: "Manually log body weight changes",
+  measurement: "Manually log a body measurement",
+  program: "Tracks completion of a training program",
+  other: "Custom numeric goal — you define the direction",
+};
+
 const CATEGORY_TABS: { value: GoalCategory; label: string; icon: string }[] = [
   { value: "strength", label: "Strength", icon: "🏋️" },
   { value: "cardio", label: "Cardio", icon: "🏃" },
+  { value: "cardio_volume", label: "Volume", icon: "📈" },
   { value: "weight", label: "Weight", icon: "⚖️" },
   { value: "measurement", label: "Measure", icon: "📏" },
   { value: "program", label: "Program", icon: "📋" },
@@ -254,7 +274,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
 
   const linkedExercises = exercises?.filter((ex) => {
     if (state.category === "strength") return ex.type === "strength";
-    if (state.category === "cardio") return ex.type === "cardio" || ex.type === "mixed";
+    if (state.category === "cardio" || state.category === "cardio_volume") return ex.type === "cardio" || ex.type === "mixed";
     return false;
   }) ?? [];
 
@@ -263,7 +283,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
       {/* TYPE */}
       <FormCard>
         <FormLabel>Select goal type</FormLabel>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {CATEGORY_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -282,6 +302,9 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
             </button>
           ))}
         </div>
+        <p className="text-[11px] text-[var(--text-subtle)] pt-1">
+          {CATEGORY_DESCRIPTIONS[state.category]}
+        </p>
       </FormCard>
 
       {/* TITLE */}
