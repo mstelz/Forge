@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { useExerciseLogs } from "../../hooks/use-sessions";
+import { formatWeight } from "../../lib/units";
+import { useSettingsContext } from "../../contexts/settings-context";
 
 // ---------------------------------------------------------------------------
 // Epley 1RM formula
@@ -9,16 +11,13 @@ function epley(weightKg: number, reps: number): number {
   return weightKg * (1 + reps / 30);
 }
 
-function formatWeight(kg: number): string {
-  return kg % 1 === 0 ? String(kg) : kg.toFixed(1);
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
   const { data: allLogs } = useExerciseLogs(exerciseId);
+  const { weightUnit } = useSettingsContext();
 
   const computed = useMemo(() => {
     if (!allLogs || allLogs.length === 0) return null;
@@ -44,12 +43,6 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
       }
     }
 
-    // BEST SET — highest Epley log as "Xkg × Y"
-    const bestSetStr =
-      best1rmLog != null
-        ? `${formatWeight(best1rmLog.weightKg!)}kg × ${best1rmLog.reps}`
-        : null;
-
     // TOTAL SESSIONS — distinct sessionIds with ≥1 logged log
     const sessionIds = new Set(
       allLogs.filter((l) => l.status === "logged").map((l) => l.sessionId),
@@ -62,7 +55,7 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
       .sort((a, b) => b.loggedAt - a.loggedAt)
       .slice(0, 5);
 
-    return { best1rm, bestSetStr, totalSessions, logged };
+    return { best1rm, best1rmLog, totalSessions, logged };
   }, [allLogs]);
 
   if (!computed || (allLogs ?? []).length === 0) {
@@ -78,7 +71,12 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
     );
   }
 
-  const { best1rm, bestSetStr, totalSessions, logged } = computed;
+  const { best1rm, best1rmLog, totalSessions, logged } = computed;
+
+  const bestSetStr =
+    best1rmLog != null
+      ? `${formatWeight(best1rmLog.weightKg!, weightUnit)} × ${best1rmLog.reps}`
+      : null;
 
   return (
     <section className="space-y-3">
@@ -86,7 +84,7 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
       <div className="grid grid-cols-2 gap-2">
         <StatTile
           label="Est 1RM"
-          value={best1rm > 0 ? `${formatWeight(best1rm)} kg` : "—"}
+          value={best1rm > 0 ? formatWeight(best1rm, weightUnit) : "—"}
         />
         <StatTile label="Best Set" value={bestSetStr ?? "—"} />
         <StatTile label="Total Sessions" value={String(totalSessions)} />
@@ -103,7 +101,7 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
             {logged.map((log) => {
               const weightStr =
                 log.weightKg != null && log.reps != null
-                  ? `${formatWeight(log.weightKg)}kg × ${log.reps} reps`
+                  ? `${formatWeight(log.weightKg, weightUnit)} × ${log.reps} reps`
                   : log.reps != null
                   ? `${log.reps} reps`
                   : "—";
