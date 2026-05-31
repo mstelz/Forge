@@ -135,8 +135,8 @@ const CATEGORY_DESCRIPTIONS: Record<GoalCategory, string> = {
 };
 
 const CATEGORY_FIELD_LABELS: Record<GoalCategory, { section: string; start: string; target: string }> = {
-  strength:      { section: "Baseline → Target",  start: "Current best",   target: "Target" },
-  cardio:        { section: "Baseline → Target",  start: "Current best",   target: "Target" },
+  strength:      { section: "Baseline → Target",  start: "Current best (optional)",   target: "Target" },
+  cardio:        { section: "Baseline → Target",  start: "Current best (optional)",   target: "Target" },
   cardio_volume: { section: "Target Distance",    start: "Head start",     target: "Total target" },
   weight:        { section: "Current → Goal",     start: "Current weight", target: "Goal weight" },
   measurement:   { section: "Current → Goal",     start: "Current",        target: "Goal" },
@@ -236,11 +236,11 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
       category: cat,
       direction: config.lockedDirection ?? "up",
       unit: config.unitOptions ? (config.unitOptions[0] ?? "") : prev.unit,
-      // Reset category-specific fields
+      // Reset category-specific fields (never preserve values across category changes)
       linkedExerciseId: "",
       linkedProgramRunId: "",
-      startValue: cat === "cardio_volume" ? "0" : config.showStartTarget ? prev.startValue : "",
-      targetValue: config.showStartTarget ? prev.targetValue : "",
+      startValue: cat === "cardio_volume" ? "0" : "",
+      targetValue: "",
     }));
     setIsDirty(true);
   };
@@ -253,8 +253,14 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
     const isTime = state.unit === "mm:ss";
     const parseVal = (raw: string): number | null =>
       raw.trim() ? (isTime ? parseTimeValue(raw) : parseFloat(raw)) : null;
-    const start = parseVal(state.startValue);
     const target = parseVal(state.targetValue);
+    // For auto-derived categories, startValue is optional; default to target so progress starts at 0%.
+    const start =
+      state.startValue.trim()
+        ? parseVal(state.startValue)
+        : (state.category === "strength" || state.category === "cardio") && target != null
+          ? target
+          : null;
     const deadline = state.deadline ? new Date(state.deadline).getTime() + 86400000 - 1 : null; // end of day
 
     return {
@@ -313,10 +319,15 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
     if (config.showLinkedExercise && !state.linkedExerciseId) return false;
     if (config.showLinkedProgram && !state.linkedProgramRunId) return false;
     if (config.showStartTarget) {
-      if (!state.startValue.trim() || !state.targetValue.trim()) return false;
+      // startValue is optional for auto-derived categories (strength, cardio) — it's only a
+      // progress-bar baseline; the current value is computed from session logs regardless.
+      const startRequired = state.category !== "strength" && state.category !== "cardio";
+      if (startRequired && !state.startValue.trim()) return false;
+      if (!state.targetValue.trim()) return false;
       const validateVal = (raw: string) =>
         state.unit === "mm:ss" ? isValidTimeString(raw) : !isNaN(parseFloat(raw));
-      if (!validateVal(state.startValue) || !validateVal(state.targetValue)) return false;
+      if (state.startValue.trim() && !validateVal(state.startValue)) return false;
+      if (!validateVal(state.targetValue)) return false;
     }
     if (config.showUnit && !config.unitOptions && !state.unit.trim()) return false;
     return true;
