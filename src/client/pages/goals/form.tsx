@@ -3,6 +3,24 @@ import type { Goal, GoalCategory, GoalDirection } from "../../../shared/goals";
 import { GoalCreateSchema } from "../../../shared/goals";
 import { cn } from "../../lib/cn";
 import { useExercises } from "../../hooks/use-exercises";
+import { formatSeconds } from "./format";
+
+// ─── Time helpers ─────────────────────────────────────────────────────────────
+
+function parseTimeValue(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":").map(Number);
+  if (parts.length === 2 && parts.every((p) => !isNaN(p)))
+    return parts[0]! * 60 + parts[1]!;
+  if (parts.length === 3 && parts.every((p) => !isNaN(p)))
+    return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  return null;
+}
+
+function isValidTimeString(raw: string): boolean {
+  return parseTimeValue(raw) !== null;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +134,26 @@ const CATEGORY_DESCRIPTIONS: Record<GoalCategory, string> = {
   other: "Custom numeric goal — you define the direction",
 };
 
+const CATEGORY_FIELD_LABELS: Record<GoalCategory, { section: string; start: string; target: string }> = {
+  strength:      { section: "Baseline → Target",  start: "Current best",   target: "Target" },
+  cardio:        { section: "Baseline → Target",  start: "Current best",   target: "Target" },
+  cardio_volume: { section: "Target Distance",    start: "Head start",     target: "Total target" },
+  weight:        { section: "Current → Goal",     start: "Current weight", target: "Goal weight" },
+  measurement:   { section: "Current → Goal",     start: "Current",        target: "Goal" },
+  program:       { section: "",                   start: "",               target: "" },
+  other:         { section: "Start → Target",     start: "Start",          target: "Target" },
+};
+
+const TITLE_PLACEHOLDERS: Record<GoalCategory, string> = {
+  strength:      "Squat 315 lb",
+  cardio:        "Run a mile in under 7:00",
+  cardio_volume: "Run 100 mi total",
+  weight:        "Get down to 180 lb",
+  measurement:   "Grow biceps to 16 in",
+  program:       "Finish 5/3/1 program",
+  other:         "Custom goal",
+};
+
 const CATEGORY_TABS: { value: GoalCategory; label: string; icon: string }[] = [
   { value: "strength", label: "Strength", icon: "🏋️" },
   { value: "cardio", label: "Cardio", icon: "🏃" },
@@ -145,8 +183,14 @@ export const goalToFormState = (g: Goal): GoalFormState => ({
   category: g.category,
   title: g.title,
   direction: g.direction,
-  startValue: g.startValue != null ? String(g.startValue) : "",
-  targetValue: g.targetValue != null ? String(g.targetValue) : "",
+  startValue:
+    g.unit === "mm:ss" && g.startValue != null
+      ? formatSeconds(g.startValue)
+      : g.startValue != null ? String(g.startValue) : "",
+  targetValue:
+    g.unit === "mm:ss" && g.targetValue != null
+      ? formatSeconds(g.targetValue)
+      : g.targetValue != null ? String(g.targetValue) : "",
   unit: g.unit ?? "lb",
   linkedExerciseId: g.linkedExerciseId ?? "",
   linkedProgramRunId: g.linkedProgramRunId ?? "",
@@ -195,18 +239,22 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
       // Reset category-specific fields
       linkedExerciseId: "",
       linkedProgramRunId: "",
-      startValue: config.showStartTarget ? prev.startValue : "",
+      startValue: cat === "cardio_volume" ? "0" : config.showStartTarget ? prev.startValue : "",
       targetValue: config.showStartTarget ? prev.targetValue : "",
     }));
     setIsDirty(true);
   };
 
   const config = CATEGORY_CONFIGS[state.category];
+  const fieldLabels = CATEGORY_FIELD_LABELS[state.category];
 
   const buildRecord = (): Goal | null => {
     const now = Date.now();
-    const start = state.startValue.trim() ? parseFloat(state.startValue) : null;
-    const target = state.targetValue.trim() ? parseFloat(state.targetValue) : null;
+    const isTime = state.unit === "mm:ss";
+    const parseVal = (raw: string): number | null =>
+      raw.trim() ? (isTime ? parseTimeValue(raw) : parseFloat(raw)) : null;
+    const start = parseVal(state.startValue);
+    const target = parseVal(state.targetValue);
     const deadline = state.deadline ? new Date(state.deadline).getTime() + 86400000 - 1 : null; // end of day
 
     return {
@@ -266,7 +314,9 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
     if (config.showLinkedProgram && !state.linkedProgramRunId) return false;
     if (config.showStartTarget) {
       if (!state.startValue.trim() || !state.targetValue.trim()) return false;
-      if (isNaN(parseFloat(state.startValue)) || isNaN(parseFloat(state.targetValue))) return false;
+      const validateVal = (raw: string) =>
+        state.unit === "mm:ss" ? isValidTimeString(raw) : !isNaN(parseFloat(raw));
+      if (!validateVal(state.startValue) || !validateVal(state.targetValue)) return false;
     }
     if (config.showUnit && !config.unitOptions && !state.unit.trim()) return false;
     return true;
@@ -314,7 +364,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
           type="text"
           value={state.title}
           onChange={(e) => update("title", e.target.value)}
-          placeholder="Squat 315 lb"
+          placeholder={TITLE_PLACEHOLDERS[state.category]}
           maxLength={120}
           required
           className="w-full rounded-[8px] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-subtle)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
@@ -324,10 +374,10 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
       {/* START / TARGET */}
       {config.showStartTarget ? (
         <FormCard>
-          <FormLabel>Start / Target</FormLabel>
+          <FormLabel>{fieldLabels.section}</FormLabel>
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Start</p>
+              <p className="mb-1 text-[10px] text-[var(--text-muted)]">{fieldLabels.start}</p>
               {config.isTimeUnit || state.unit === "mm:ss" ? (
                 <input
                   type="text"
@@ -347,7 +397,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
               )}
             </div>
             <div className="flex-1">
-              <p className="mb-1 text-[10px] text-[var(--accent)]">Target</p>
+              <p className="mb-1 text-[10px] text-[var(--accent)]">{fieldLabels.target}</p>
               {config.isTimeUnit || state.unit === "mm:ss" ? (
                 <input
                   type="text"
