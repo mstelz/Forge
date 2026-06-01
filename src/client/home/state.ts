@@ -11,7 +11,7 @@ import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import type { RoutineItemOverride } from "../../shared/program";
 import { isVolumeLog } from "../hooks/use-history";
-import { computeNextPlayableDay, computeTodayProgramDay, computeTodayCompletedDay, computeTodayRestDay } from "../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayCompletedDay, computeTodayRestDay } from "../lib/programs/next-day";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -477,7 +477,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
 
           const nextDay = isRestDay
             ? todayRest
-            : (computeTodayProgramDay(program, run) ?? computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run));
+            : (computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run));
 
           let routine: Routine | null = null;
           const exerciseNames: Record<string, string> = {};
