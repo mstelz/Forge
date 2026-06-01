@@ -832,12 +832,6 @@ export function ProgramDetailPage() {
       <div className="fixed bottom-0 left-1/2 z-10 flex w-full max-w-md -translate-x-1/2 gap-3 border-t border-[var(--border)] bg-[var(--bg)] px-4 py-3">
         <Link
           to={`/programs/${program.id}/edit`}
-          className="flex-1 rounded-full border border-[var(--border)] py-2.5 text-center text-xs font-bold uppercase tracking-wider text-[var(--text)] hover:border-[var(--accent)]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Copy week pattern
-        </Link>
-        <Link
-          to={`/programs/${program.id}/edit`}
           className="flex-1 rounded-full bg-[var(--accent)] py-2.5 text-center text-xs font-bold uppercase tracking-wider text-[var(--accent-fg)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           Edit program
