@@ -432,6 +432,10 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       const activeRunStates: ActiveRunState[] = [];
       const scheduledWorkoutDates = new Set<string>();
       const MS_PER_DAY = 86_400_000;
+      const todayStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+      const todayFinishedSessionIds = new Set(
+        sessions.filter((s) => s.endedAt != null && s.endedAt >= todayStartMs).map((s) => s.id),
+      );
 
       try {
         const activeRuns = await forgeDB.programRuns
@@ -460,8 +464,10 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
             );
             if (ds?.status === "completed" || ds?.status === "skipped") continue;
 
-            const calMs = startMs + (pd.weekIndex * 7 + pd.dayIndex) * MS_PER_DAY;
-            const cal = new Date(calMs);
+            const originalMs = startMs + (pd.weekIndex * 7 + pd.dayIndex) * MS_PER_DAY;
+            // Float past-due workouts to today so they don't linger on old calendar dates.
+            const effectiveMs = Math.max(originalMs, todayStartMs);
+            const cal = new Date(effectiveMs);
             const key = `${cal.getFullYear()}-${cal.getMonth()}-${cal.getDate()}`;
             scheduledWorkoutDates.add(key);
           }
@@ -475,9 +481,22 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
             : false;
           const isRestDay = todayRest != null && !restDaySkipped;
 
+          // If you completed a late day's workout today, don't jump ahead to the next day.
+          const completedLateTodayDs = !isRestDay
+            ? run.dayStates.find(
+                (ds) =>
+                  ds.status === "completed" &&
+                  ds.sessionId != null &&
+                  todayFinishedSessionIds.has(ds.sessionId),
+              )
+            : undefined;
+          const completedLateToday = completedLateTodayDs
+            ? { weekIndex: completedLateTodayDs.weekIndex, dayIndex: completedLateTodayDs.dayIndex, routineId: null as string | null }
+            : null;
+
           const nextDay = isRestDay
             ? todayRest
-            : (computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run));
+            : (computeTodayCompletedDay(program, run) ?? completedLateToday ?? computeNextPlayableDay(program, run));
 
           let routine: Routine | null = null;
           const exerciseNames: Record<string, string> = {};
