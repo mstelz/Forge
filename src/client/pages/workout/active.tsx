@@ -12,6 +12,9 @@ import {
 } from "@radix-ui/react-dialog";
 import { forgeDB } from "../../db/forge-db";
 import { getActiveSession, listSessionLogs, listLogsForExercise } from "../../db/queries";
+import { useExercise } from "../../hooks/use-exercises";
+import { InstructionalCard } from "../exercises/instructional-card";
+import { Instructions } from "../exercises/instructions";
 import { queryKeys } from "../../db/query-keys";
 import {
   createSessionLog,
@@ -521,6 +524,7 @@ interface ExerciseCardProps {
   onDeleteExtraLog: (logId: string) => void;
   onSaveBlockNote: (note: string | null) => void;
   onViewHistory: (exerciseId: string, exerciseName: string) => void;
+  onViewInfo: (exerciseId: string, exerciseName: string) => void;
 }
 
 function ExerciseCard({
@@ -536,6 +540,7 @@ function ExerciseCard({
   onDeleteExtraLog,
   onSaveBlockNote,
   onViewHistory,
+  onViewInfo,
 }: ExerciseCardProps) {
   const [blockNoteOpen, setBlockNoteOpen] = useState(!!block.notes);
   const [blockNoteText, setBlockNoteText] = useState(block.notes ?? "");
@@ -616,9 +621,19 @@ function ExerciseCard({
             key={item.performedExerciseId}
             className={isSuperset && itemIdx > 0 ? "mt-5 border-t border-[var(--border)] pt-4" : ""}
           >
-            <h2 className="text-lg font-bold text-[var(--text)]">
-              {prefix}{name}
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-lg font-bold text-[var(--text)]">
+                {prefix}{name}
+              </h2>
+              <button
+                type="button"
+                onClick={() => onViewInfo(item.exerciseId, name)}
+                aria-label={`View info for ${name}`}
+                className="shrink-0 rounded-full p-1 text-[var(--text-subtle)] hover:text-[var(--text-muted)] active:text-[var(--text-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                <InfoIcon />
+              </button>
+            </div>
             <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} onViewHistory={() => onViewHistory(item.exerciseId, name)} />
 
             <div className="mt-3 space-y-1">
@@ -1606,6 +1621,67 @@ function ExerciseHistorySheet({
   );
 }
 
+// ─── Exercise Info Sheet ──────────────────────────────────────────────────────
+
+function ExerciseInfoSheet({
+  exerciseId,
+  exerciseName,
+  open,
+  onClose,
+}: {
+  exerciseId: string;
+  exerciseName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: exercise } = useExercise(exerciseId);
+
+  if (!open) return null;
+
+  const videoUrl = exercise?.videoUrls?.[0] ?? null;
+  const hasContent = videoUrl || exercise?.description || exercise?.instructions;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-label={`${exerciseName} info`}>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div
+        className="relative w-full max-w-lg rounded-t-[var(--radius-card)] bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]"
+        style={{ maxHeight: "80dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden="true" />
+        </div>
+        <div className="flex items-center justify-between px-4 pb-3 pt-1">
+          <p className="text-sm font-bold text-[var(--text)]">{exerciseName}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close exercise info"
+            className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 pb-8 space-y-3" style={{ maxHeight: "calc(80dvh - 80px)" }}>
+          {!exercise ? (
+            <p className="py-4 text-center text-sm text-[var(--text-muted)]">Loading…</p>
+          ) : !hasContent ? (
+            <p className="py-4 text-center text-sm text-[var(--text-muted)]">No description or instructions added yet.</p>
+          ) : (
+            <>
+              <InstructionalCard videoUrl={videoUrl} description={exercise.description ?? null} />
+              <Instructions instructions={exercise.instructions ?? null} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Overflow menu ────────────────────────────────────────────────────────────
 
 interface OverflowMenuProps {
@@ -1905,6 +1981,9 @@ export function ActiveWorkoutPage() {
 
   // ── Exercise history sheet ─────────────────────────────────────────────────
   const [historyTarget, setHistoryTarget] = useState<{ id: string; name: string } | null>(null);
+
+  // ── Exercise info sheet ────────────────────────────────────────────────────
+  const [infoTarget, setInfoTarget] = useState<{ id: string; name: string } | null>(null);
 
   // ── Add exercise (freeform / mid-session) ─────────────────────────────────
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -2247,6 +2326,7 @@ export function ActiveWorkoutPage() {
                 onDeleteExtraLog={handleDeleteExtraLog}
                 onSaveBlockNote={(note) => handleSaveBlockNote(blockIdx, note)}
                 onViewHistory={(id, name) => setHistoryTarget({ id, name })}
+                onViewInfo={(id, name) => setInfoTarget({ id, name })}
               />
             ))}
             <button
@@ -2362,6 +2442,16 @@ export function ActiveWorkoutPage() {
         />
       )}
 
+      {/* Exercise info sheet */}
+      {infoTarget && (
+        <ExerciseInfoSheet
+          exerciseId={infoTarget.id}
+          exerciseName={infoTarget.name}
+          open={true}
+          onClose={() => setInfoTarget(null)}
+        />
+      )}
+
       {/* Finish Workout confirm dialog */}
       <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>
         <DialogPortal>
@@ -2435,6 +2525,16 @@ export function ActiveWorkoutPage() {
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+
+function InfoIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
 
 function BackIcon() {
   return (
