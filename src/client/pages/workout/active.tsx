@@ -540,6 +540,33 @@ function ExerciseCard({
   const [blockNoteOpen, setBlockNoteOpen] = useState(!!block.notes);
   const [blockNoteText, setBlockNoteText] = useState(block.notes ?? "");
 
+  // Arm-to-confirm delete: first tap arms the button, second tap (within 2s) deletes.
+  type ArmedDelete =
+    | { type: "slot"; blockIdx: number; itemIdx: number; slotIdx: number }
+    | { type: "extra"; logId: string };
+  const [armedDelete, setArmedDelete] = useState<ArmedDelete | null>(null);
+  const armedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const armDelete = (target: ArmedDelete) => {
+    if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
+    setArmedDelete(target);
+    armedTimerRef.current = setTimeout(() => setArmedDelete(null), 2000);
+  };
+
+  const isArmed = (target: ArmedDelete): boolean => {
+    if (!armedDelete) return false;
+    if (armedDelete.type !== target.type) return false;
+    if (target.type === "slot" && armedDelete.type === "slot") {
+      return armedDelete.blockIdx === target.blockIdx && armedDelete.itemIdx === target.itemIdx && armedDelete.slotIdx === target.slotIdx;
+    }
+    if (target.type === "extra" && armedDelete.type === "extra") {
+      return armedDelete.logId === target.logId;
+    }
+    return false;
+  };
+
+  useEffect(() => () => { if (armedTimerRef.current) clearTimeout(armedTimerRef.current); }, []);
+
   // Keep local state in sync if the block note changes externally
   useEffect(() => {
     setBlockNoteText(block.notes ?? "");
@@ -622,9 +649,23 @@ function ExerciseCard({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onDeleteSlot(blockIdx, itemIdx, slotIdx)}
+                      onClick={() => {
+                        const target: ArmedDelete = { type: "slot", blockIdx, itemIdx, slotIdx };
+                        if (isArmed(target)) {
+                          if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
+                          setArmedDelete(null);
+                          onDeleteSlot(blockIdx, itemIdx, slotIdx);
+                        } else {
+                          armDelete(target);
+                        }
+                      }}
                       aria-label={`Delete set ${slotIdx + 1}`}
-                      className="shrink-0 rounded p-1.5 text-[var(--text-subtle)] opacity-40 transition-opacity hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className={[
+                        "shrink-0 rounded p-1.5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                        isArmed({ type: "slot", blockIdx, itemIdx, slotIdx })
+                          ? "opacity-100 text-red-500 scale-110"
+                          : "text-[var(--text-subtle)] opacity-40 hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500",
+                      ].join(" ")}
                     >
                       <TrashIcon />
                     </button>
@@ -657,9 +698,23 @@ function ExerciseCard({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onDeleteExtraLog(extraLog.id)}
+                      onClick={() => {
+                        const target: ArmedDelete = { type: "extra", logId: extraLog.id };
+                        if (isArmed(target)) {
+                          if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
+                          setArmedDelete(null);
+                          onDeleteExtraLog(extraLog.id);
+                        } else {
+                          armDelete(target);
+                        }
+                      }}
                       aria-label={`Delete extra set ${item.setTargets.length + extraIdx + 1}`}
-                      className="shrink-0 rounded p-1.5 text-[var(--text-subtle)] opacity-40 transition-opacity hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className={[
+                        "shrink-0 rounded p-1.5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                        isArmed({ type: "extra", logId: extraLog.id })
+                          ? "opacity-100 text-red-500 scale-110"
+                          : "text-[var(--text-subtle)] opacity-40 hover:opacity-100 hover:text-red-500 active:opacity-100 active:text-red-500",
+                      ].join(" ")}
                     >
                       <TrashIcon />
                     </button>

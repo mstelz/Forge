@@ -18,7 +18,7 @@ import { useProfiles } from "../../hooks/use-profile";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
-import { computeNextPlayableDay, computeTodayProgramDay, computeTodayCompletedDay } from "../../lib/programs/next-day";
+import { computeNextPlayableDay, computeTodayCompletedDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
 import type { RoutineItemOverride } from "../../../shared/program";
 
@@ -268,7 +268,7 @@ function RoutineVariant({
       return;
     }
     const { run, program } = activeState;
-    const nextDay = computeTodayProgramDay(program, run) ?? computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run);
+    const nextDay = computeTodayCompletedDay(program, run) ?? computeNextPlayableDay(program, run);
     if (!nextDay) return;
 
     const primaryEntry =
