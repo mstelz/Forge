@@ -135,6 +135,71 @@ export function computeTodayCompletedDay(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Cascade scheduling
+// ---------------------------------------------------------------------------
+
+export type CascadeSchedule = {
+  /** "weekIndex:dayIndex" → effective calendar date (unix ms at midnight local) */
+  slotToMs: Map<string, number>;
+  /** "year-month0-day" → first slot that lands on that date */
+  dateToSlot: Map<string, { weekIndex: number; dayIndex: number }>;
+};
+
+/**
+ * Compute a cascade schedule for a program run.
+ *
+ * Completed/skipped slots stay on their original calendar dates.
+ * Not-started slots are pushed forward so that each one falls at least one day
+ * after the previous pending slot, but never before its original scheduled date.
+ * This keeps the program sequence intact when the user falls behind.
+ *
+ * `todayStartMs` — unix ms for 00:00 local today. Past-due pending slots are
+ * clamped to no earlier than today.
+ */
+export function computeCascadeSchedule(
+  program: Program,
+  run: ProgramRun,
+  todayStartMs: number,
+): CascadeSchedule {
+  const MS_PER_DAY = 86_400_000;
+  const startMs = run.weekZeroStartDate ?? run.startedAt;
+  const slotToMs = new Map<string, number>();
+  const dateToSlot = new Map<string, { weekIndex: number; dayIndex: number }>();
+
+  // Start the cascade "one day before today" so the first pending slot lands today.
+  let prevPendingMs = todayStartMs - MS_PER_DAY;
+
+  for (let w = 0; w < program.durationWeeks; w++) {
+    for (let d = 0; d < 7; d++) {
+      const dayEntries = program.days.filter((pd) => pd.weekIndex === w && pd.dayIndex === d);
+      if (dayEntries.length === 0) continue;
+
+      const ds = run.dayStates.find((s) => s.weekIndex === w && s.dayIndex === d);
+      const originalMs = startMs + (w * 7 + d) * MS_PER_DAY;
+
+      let effectiveMs: number;
+      if (ds?.status === "completed" || ds?.status === "skipped") {
+        effectiveMs = originalMs;
+      } else {
+        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);
+        prevPendingMs = effectiveMs;
+      }
+
+      const slotKey = `${w}:${d}`;
+      slotToMs.set(slotKey, effectiveMs);
+
+      const cal = new Date(effectiveMs);
+      const dateKey = `${cal.getFullYear()}-${cal.getMonth()}-${cal.getDate()}`;
+      if (!dateToSlot.has(dateKey)) {
+        dateToSlot.set(dateKey, { weekIndex: w, dayIndex: d });
+      }
+    }
+  }
+
+  return { slotToMs, dateToSlot };
+}
+
 /**
  * Compute the next playable day for a program run.
  */

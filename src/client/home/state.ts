@@ -11,7 +11,7 @@ import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import type { RoutineItemOverride } from "../../shared/program";
 import { isVolumeLog } from "../hooks/use-history";
-import { computeNextPlayableDay, computeTodayCompletedDay, computeTodayRestDay } from "../lib/programs/next-day";
+import { computeNextPlayableDay, computeCascadeSchedule } from "../lib/programs/next-day";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -290,23 +290,23 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
   let isRestDay = false;
 
   try {
-    const MS_PER_DAY = 86_400_000;
     const activeRuns = await forgeDB.programRuns
       .where("status")
       .equals("active")
       .toArray();
 
     for (const run of activeRuns) {
-      const startMs = run.weekZeroStartDate ?? run.startedAt;
-      const dayOffset = Math.round((start - startMs) / MS_PER_DAY);
-      if (dayOffset < 0) continue;
-
-      const weekIndex = Math.floor(dayOffset / 7);
-      const dayIndex = dayOffset % 7;
-
       const program = await forgeDB.programs.get(run.programId) ?? null;
       if (!program) continue;
 
+      // Use cascade schedule so tapping a calendar date shows the workout that
+      // actually lands there after accounting for any days the user fell behind.
+      const cascade = computeCascadeSchedule(program, run, todayStart);
+      const dateKey = `${date.y}-${date.m - 1}-${date.d}`;
+      const slot = cascade.dateToSlot.get(dateKey);
+      if (!slot) continue;
+
+      const { weekIndex, dayIndex } = slot;
       const dayEntries = program.days.filter(
         (d) => d.weekIndex === weekIndex && d.dayIndex === dayIndex,
       );
@@ -433,9 +433,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       const scheduledWorkoutDates = new Set<string>();
       const MS_PER_DAY = 86_400_000;
       const todayStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
-      const todayFinishedSessionIds = new Set(
-        sessions.filter((s) => s.endedAt != null && s.endedAt >= todayStartMs).map((s) => s.id),
-      );
+      const todayDateKey = (() => { const t = new Date(todayStartMs); return `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`; })();
 
       try {
         const activeRuns = await forgeDB.programRuns
@@ -451,52 +449,50 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
           const program = await forgeDB.programs.get(run.programId) ?? null;
           if (!program) continue;
 
-          // Compute scheduled workout calendar dates for this run (for calendar dots)
-          const seenSlots = new Set<string>();
-          for (const pd of program.days) {
-            if (pd.isRestDay || !pd.routineId) continue;
-            const slotKey = `${pd.weekIndex}:${pd.dayIndex}`;
-            if (seenSlots.has(slotKey)) continue;
-            seenSlots.add(slotKey);
+          // Cascade schedule: pending slots push forward in sequence rather than
+          // staying pinned to their original calendar dates.
+          const cascade = computeCascadeSchedule(program, run, todayStartMs);
 
-            const ds = run.dayStates.find(
-              (s) => s.weekIndex === pd.weekIndex && s.dayIndex === pd.dayIndex,
-            );
+          // Calendar dots — pending workout slots at their cascaded dates
+          for (const [slotKey, effectiveMs] of cascade.slotToMs) {
+            const [wStr, dStr] = slotKey.split(":");
+            const w = parseInt(wStr!, 10);
+            const d = parseInt(dStr!, 10);
+            const dayEntries = program.days.filter((pd) => pd.weekIndex === w && pd.dayIndex === d);
+            const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
+            if (!primary || primary.isRestDay || !primary.routineId) continue;
+            const ds = run.dayStates.find((s) => s.weekIndex === w && s.dayIndex === d);
             if (ds?.status === "completed" || ds?.status === "skipped") continue;
-
-            const originalMs = startMs + (pd.weekIndex * 7 + pd.dayIndex) * MS_PER_DAY;
-            // Float past-due workouts to today so they don't linger on old calendar dates.
-            const effectiveMs = Math.max(originalMs, todayStartMs);
             const cal = new Date(effectiveMs);
             const key = `${cal.getFullYear()}-${cal.getMonth()}-${cal.getDate()}`;
             scheduledWorkoutDates.add(key);
           }
 
-          // Check if today is a rest day that hasn't been skipped yet
-          const todayRest = computeTodayRestDay(program, run);
-          const restDaySkipped = todayRest
-            ? run.dayStates.find(
-                (s) => s.weekIndex === todayRest.weekIndex && s.dayIndex === todayRest.dayIndex,
-              )?.status === "skipped"
-            : false;
-          const isRestDay = todayRest != null && !restDaySkipped;
+          // Determine today's slot from the cascade schedule
+          const todaySlot = cascade.dateToSlot.get(todayDateKey) ?? null;
+          const todaySlotEntries = todaySlot
+            ? program.days.filter((pd) => pd.weekIndex === todaySlot.weekIndex && pd.dayIndex === todaySlot.dayIndex)
+            : [];
+          const todayPrimary = todaySlotEntries.find((pd) => (pd.order ?? 0) === 0) ?? todaySlotEntries[0] ?? null;
 
-          // If you completed a late day's workout today, don't jump ahead to the next day.
-          const completedLateTodayDs = !isRestDay
-            ? run.dayStates.find(
-                (ds) =>
-                  ds.status === "completed" &&
-                  ds.sessionId != null &&
-                  todayFinishedSessionIds.has(ds.sessionId),
-              )
-            : undefined;
-          const completedLateToday = completedLateTodayDs
-            ? { weekIndex: completedLateTodayDs.weekIndex, dayIndex: completedLateTodayDs.dayIndex, routineId: null as string | null }
-            : null;
+          let isRestDay = false;
+          let nextDay: { weekIndex: number; dayIndex: number; routineId: string | null } | null = null;
 
-          const nextDay = isRestDay
-            ? todayRest
-            : (computeTodayCompletedDay(program, run) ?? completedLateToday ?? computeNextPlayableDay(program, run));
+          if (todayPrimary?.isRestDay) {
+            const ds = run.dayStates.find(
+              (s) => s.weekIndex === todaySlot!.weekIndex && s.dayIndex === todaySlot!.dayIndex,
+            );
+            if (ds?.status !== "skipped") {
+              isRestDay = true;
+              nextDay = { weekIndex: todaySlot!.weekIndex, dayIndex: todaySlot!.dayIndex, routineId: null };
+            } else {
+              nextDay = computeNextPlayableDay(program, run);
+            }
+          } else if (todaySlot) {
+            nextDay = { weekIndex: todaySlot.weekIndex, dayIndex: todaySlot.dayIndex, routineId: todayPrimary?.routineId ?? null };
+          } else {
+            nextDay = computeNextPlayableDay(program, run);
+          }
 
           let routine: Routine | null = null;
           const exerciseNames: Record<string, string> = {};
