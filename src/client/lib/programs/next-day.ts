@@ -177,9 +177,15 @@ export function computeCascadeSchedule(
 
       const ds = run.dayStates.find((s) => s.weekIndex === w && s.dayIndex === d);
       const originalMs = startMs + (w * 7 + d) * MS_PER_DAY;
+      const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
+      const isRestDay = primary?.isRestDay ?? false;
 
       let effectiveMs: number;
-      if (ds?.status === "completed" || ds?.status === "skipped") {
+      // Completed/skipped workout days pin to their original date so the calendar
+      // shows when the workout actually happened. Rest days are purely positional
+      // markers — acknowledging one doesn't fast-forward the clock, so they always
+      // cascade forward even when "completed".
+      if (!isRestDay && (ds?.status === "completed" || ds?.status === "skipped")) {
         effectiveMs = originalMs;
       } else {
         effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);
