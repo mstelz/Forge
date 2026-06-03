@@ -262,7 +262,15 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
       .toArray();
     if (sessions.length > 0) {
       const inProg = sessions.find((s) => s.status === "in_progress");
-      session = inProg ?? sessions.sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+      if (inProg) {
+        session = inProg;
+      } else {
+        // Prefer a program_day session over freeform when both exist on the same day
+        const programSession = sessions
+          .filter((s) => s.sourceType === "program_day")
+          .sort((a, b) => b.startedAt - a.startedAt)[0];
+        session = programSession ?? sessions.sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+      }
     }
   } catch {
     // sessions table may not exist yet
@@ -479,14 +487,41 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
           let nextDay: { weekIndex: number; dayIndex: number; routineId: string | null } | null = null;
 
           if (todayPrimary?.isRestDay) {
-            const ds = run.dayStates.find(
-              (s) => s.weekIndex === todaySlot!.weekIndex && s.dayIndex === todaySlot!.dayIndex,
+            // Even on a cascade rest day, if a program workout was completed today
+            // (e.g. Lower B ran late and pushed the rest day to today), show that
+            // completed day instead of the rest day card.
+            const todaySessions = sessions.filter(
+              (s) =>
+                s.startedAt >= todayStartMs &&
+                s.startedAt < todayStartMs + MS_PER_DAY &&
+                s.sourceType === "program_day" &&
+                s.sourceProgramId === program.id,
             );
-            if (ds?.status !== "skipped") {
-              isRestDay = true;
-              nextDay = { weekIndex: todaySlot!.weekIndex, dayIndex: todaySlot!.dayIndex, routineId: null };
+            const completedTodayDs =
+              todaySessions.length > 0
+                ? run.dayStates.find(
+                    (ds) =>
+                      ds.status === "completed" &&
+                      todaySessions.some(
+                        (s) =>
+                          s.sourceProgramWeekIndex === ds.weekIndex &&
+                          s.sourceProgramDayIndex === ds.dayIndex,
+                      ),
+                  ) ?? null
+                : null;
+
+            if (completedTodayDs) {
+              nextDay = { weekIndex: completedTodayDs.weekIndex, dayIndex: completedTodayDs.dayIndex, routineId: null };
             } else {
-              nextDay = computeNextPlayableDay(program, run);
+              const ds = run.dayStates.find(
+                (s) => s.weekIndex === todaySlot!.weekIndex && s.dayIndex === todaySlot!.dayIndex,
+              );
+              if (ds?.status !== "skipped") {
+                isRestDay = true;
+                nextDay = { weekIndex: todaySlot!.weekIndex, dayIndex: todaySlot!.dayIndex, routineId: null };
+              } else {
+                nextDay = computeNextPlayableDay(program, run);
+              }
             }
           } else if (todaySlot) {
             nextDay = { weekIndex: todaySlot.weekIndex, dayIndex: todaySlot.dayIndex, routineId: todayPrimary?.routineId ?? null };
