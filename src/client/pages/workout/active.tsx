@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
@@ -188,6 +188,20 @@ function formatTimer(secs: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function playBeep(ctx: AudioContext) {
+  [0, 0.35].forEach((offset) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime + offset);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.25);
+    osc.start(ctx.currentTime + offset);
+    osc.stop(ctx.currentTime + offset + 0.25);
+  });
 }
 
 function formatDaysAgo(ts: number): string {
@@ -847,6 +861,7 @@ interface BottomPanelProps {
   noteOpen: boolean;
   onToggleNote: () => void;
   onCloseNote: () => void;
+  audioCtxRef: MutableRefObject<AudioContext | null>;
 }
 
 function BottomPanel({
@@ -864,6 +879,7 @@ function BottomPanel({
   noteOpen,
   onToggleNote,
   onCloseNote,
+  audioCtxRef,
 }: BottomPanelProps) {
   const [weightDisplay, setWeightDisplay] = useState<number | null>(null);
   const [weightInputStr, setWeightInputStr] = useState<string>("");
@@ -1040,6 +1056,9 @@ function BottomPanel({
           prevLogged && prevLogged.restAfterSec == null
             ? { ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))) }
             : null;
+        // Unlock AudioContext via this user gesture so it can play at timer expiry
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+        else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
         const restSec = block.restSec ?? currentItem.restSec ?? 90;
         const updatedSession: Session = {
           ...session,
@@ -1838,6 +1857,7 @@ export function ActiveWorkoutPage() {
   // ── Exercise names + types (lazy-load from IndexedDB) ────────────────────
   const exerciseNamesRef = useRef<Map<string, string>>(new Map());
   const exerciseTypesRef = useRef<Map<string, ExerciseType>>(new Map());
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const [, forceRender] = useState(0);
 
   useEffect(() => {
@@ -1926,6 +1946,8 @@ export function ActiveWorkoutPage() {
       setTimerDisplaySecs(remaining);
       if (remaining <= 0 && session) {
         clearInterval(id);
+        navigator.vibrate?.([200, 100, 200]);
+        if (audioCtxRef.current) playBeep(audioCtxRef.current);
         const expired: RestTimerData = { ...t, status: "idle", remainingSec: 0 };
         updateSession({
           ...session,
@@ -2430,6 +2452,7 @@ export function ActiveWorkoutPage() {
         noteOpen={noteOpen}
         onToggleNote={() => setNoteOpen((o) => !o)}
         onCloseNote={() => setNoteOpen(false)}
+        audioCtxRef={audioCtxRef}
       />
 
       {/* Exercise history sheet */}
