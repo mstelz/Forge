@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams, useOutletContext } from "react-router";
 import { useGoals } from "../../hooks/use-goals";
+import { useAllSessionLogs } from "../../hooks/use-sessions";
 import { computeGoalProgress } from "../../goals/progress";
 import { formatCountdown, formatMonDD } from "./countdown";
 import { formatGoalValue } from "./format";
 import { cn } from "../../lib/cn";
 import type { Goal, GoalCategory, GoalStatus } from "../../../shared/goals";
+import type { SessionSetLog } from "../../../shared/session-log";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 
 // ─── Filter & sort helpers ────────────────────────────────────────────────────
@@ -43,9 +45,9 @@ const CATEGORY_LABELS: Record<GoalCategory, string> = {
   other: "OTHER",
 };
 
-function GoalCard({ goal }: { goal: Goal }) {
+function GoalCard({ goal, setLogs }: { goal: Goal; setLogs: SessionSetLog[] }) {
   const navigate = useNavigate();
-  const progress = computeGoalProgress(goal, { setLogs: [] });
+  const progress = computeGoalProgress(goal, { setLogs });
   const countdown = formatCountdown(goal.deadline, goal.status);
   const percent = Math.round(progress.percent * 100);
 
@@ -252,6 +254,7 @@ export function GoalListPage() {
   };
 
   const { data: goals, isLoading } = useGoals();
+  const { data: setLogs = [] } = useAllSessionLogs();
 
   const filtered = useMemo(() => {
     if (!goals) return [];
@@ -339,7 +342,7 @@ export function GoalListPage() {
           <ul className="space-y-3">
             {filtered.map((g) => (
               <li key={g.id}>
-                <GoalCard goal={g} />
+                <GoalCard goal={g} setLogs={setLogs} />
               </li>
             ))}
           </ul>

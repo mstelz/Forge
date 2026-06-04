@@ -27,6 +27,7 @@ import {
   updateSetBatch,
 } from "../../db/mutations";
 import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
+import { reconcileGoals } from "../../goals/reconcile";
 import { useContext } from "react";
 import { uuidv4 } from "../../lib/uuid";
 import { ExercisePicker } from "../../components/exercise-picker";
@@ -2074,6 +2075,7 @@ export function ActiveWorkoutPage() {
       if (session.sourceType === "program_day") {
         reconcileProgramRuns().catch(console.error);
       }
+      reconcileGoals(session.id).catch(console.error);
       navigate(`/workout/sessions/${session.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to finish workout. Please try again.";

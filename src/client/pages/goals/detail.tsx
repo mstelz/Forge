@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@radix-ui/react-dialog";
 import { useGoal } from "../../hooks/use-goals";
+import { useAllSessionLogs } from "../../hooks/use-sessions";
 import { updateGoal, deleteGoal } from "../../db/mutations";
 import { computeGoalProgress } from "../../goals/progress";
 import { formatCountdown, formatMonDD } from "./countdown";
@@ -156,6 +157,7 @@ export function GoalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: goal, isLoading } = useGoal(id);
+  const { data: setLogs = [] } = useAllSessionLogs();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
 
@@ -270,7 +272,7 @@ export function GoalDetailPage() {
     );
   }
 
-  const progress = computeGoalProgress(goal, { setLogs: [] });
+  const progress = computeGoalProgress(goal, { setLogs });
   const percent = Math.round(progress.percent * 100);
   const countdown = formatCountdown(goal.deadline, goal.status);
   const targetDisplay = formatGoalValue(goal.targetValue, goal.unit);
