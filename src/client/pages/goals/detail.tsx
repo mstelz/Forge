@@ -18,6 +18,7 @@ import {
 } from "@radix-ui/react-dialog";
 import { useGoal } from "../../hooks/use-goals";
 import { useAllSessionLogs } from "../../hooks/use-sessions";
+import { useExercise } from "../../hooks/use-exercises";
 import { updateGoal, deleteGoal } from "../../db/mutations";
 import { computeGoalProgress } from "../../goals/progress";
 import { formatCountdown, formatMonDD } from "./countdown";
@@ -158,6 +159,7 @@ export function GoalDetailPage() {
   const navigate = useNavigate();
   const { data: goal, isLoading } = useGoal(id);
   const { data: setLogs = [] } = useAllSessionLogs();
+  const { data: linkedExercise } = useExercise(goal?.linkedExerciseId ?? undefined);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
 
@@ -392,7 +394,7 @@ export function GoalDetailPage() {
             <FieldRow label="Target" value={`${targetDisplay} ${unitLabel}`} />
           )}
           {goal.linkedExerciseId && (
-            <FieldRow label="Linked exercise" value={goal.linkedExerciseId} />
+            <FieldRow label="Linked exercise" value={linkedExercise?.name ?? goal.linkedExerciseId} />
           )}
           {goal.linkedProgramRunId && (
             <FieldRow label="Linked program run" value={goal.linkedProgramRunId} />

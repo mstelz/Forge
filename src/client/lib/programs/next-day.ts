@@ -181,11 +181,13 @@ export function computeCascadeSchedule(
       const isRestDay = primary?.isRestDay ?? false;
 
       let effectiveMs: number;
-      // Completed/skipped workout days pin to their original date so the calendar
-      // shows when the workout actually happened. Rest days are purely positional
-      // markers — acknowledging one doesn't fast-forward the clock, so they always
-      // cascade forward even when "completed".
-      if (!isRestDay && (ds?.status === "completed" || ds?.status === "skipped")) {
+      // Acknowledged days (completed or skipped) pin to their original date.
+      // For workout days this shows when the workout actually happened.
+      // For rest days this prevents an acknowledged rest day from cascading
+      // forward and re-appearing as "Rest Day Complete" on a later date.
+      // Pinned days do NOT update prevPendingMs, so they don't push
+      // subsequent pending workout days further back.
+      if (ds?.status === "completed" || ds?.status === "skipped") {
         effectiveMs = originalMs;
       } else {
         effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);

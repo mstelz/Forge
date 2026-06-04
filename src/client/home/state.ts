@@ -10,8 +10,10 @@ import { liveQuery } from "dexie";
 import { forgeDB } from "../db/forge-db";
 import type { Session, SessionSetLog, Routine, Program, ProgramRun } from "../../shared";
 import type { RoutineItemOverride } from "../../shared/program";
+import type { Goal as SharedGoal } from "../../shared/goals";
 import { isVolumeLog } from "../hooks/use-history";
 import { computeNextPlayableDay, computeCascadeSchedule } from "../lib/programs/next-day";
+import { computeGoalProgress } from "../goals/progress";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,17 +72,18 @@ export type HomepageState = {
   topGoals: Goal[];
 };
 
-/** Minimal goal shape. */
+/** Minimal goal shape for homepage display. */
 export type Goal = {
   id: string;
   title: string;
   category: string;
-  currentValue: number;
-  targetValue: number;
+  currentValue: number | null;
+  targetValue: number | null;
   unit: string | null;
   deadline: number | null;
   status: string;
   updatedAt: number;
+  percent: number;
 };
 
 export type DayDetail = {
@@ -415,10 +418,11 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       const weekSessions = sessions.filter((s) => (s.endedAt ?? 0) >= weekStart);
       const weekSessionIds = new Set(weekSessions.map((s) => s.id));
 
+      let allSetLogs: SessionSetLog[] = [];
       let weekLogs: SessionSetLog[] = [];
       try {
-        const allLogs = await forgeDB.sessionSetLogs.toArray();
-        weekLogs = allLogs.filter((l) => weekSessionIds.has(l.sessionId));
+        allSetLogs = await forgeDB.sessionSetLogs.toArray();
+        weekLogs = allSetLogs.filter((l) => weekSessionIds.has(l.sessionId));
       } catch {
         // ok
       }
@@ -588,14 +592,17 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
         const goals = await forgeDB.goals
           .where("status")
           .equals("active")
-          .toArray() as Goal[];
+          .toArray() as SharedGoal[];
         goals.sort((a, b) => {
           if (a.deadline == null && b.deadline == null) return b.updatedAt - a.updatedAt;
           if (a.deadline == null) return 1;
           if (b.deadline == null) return -1;
           return a.deadline - b.deadline || b.updatedAt - a.updatedAt;
         });
-        topGoals = goals.slice(0, 2);
+        topGoals = goals.slice(0, 2).map((g) => ({
+          ...g,
+          percent: computeGoalProgress(g, { setLogs: allSetLogs }).percent,
+        }));
       } catch {
         // goals table not present yet
       }

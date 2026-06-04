@@ -930,10 +930,7 @@ function GoalsSection({ goals }: { goals: Goal[] }) {
 }
 
 function GoalCard({ goal }: { goal: Goal }) {
-  const progress =
-    goal.targetValue > 0
-      ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
-      : 0;
+  const progress = Math.round(goal.percent * 100);
 
   const countdown = (() => {
     if (!goal.deadline) return null;
@@ -958,7 +955,7 @@ function GoalCard({ goal }: { goal: Goal }) {
           <p className="mt-1 text-sm font-bold text-[var(--text)]">{goal.title}</p>
         </div>
         <p className="text-xl font-bold tabular-nums text-[var(--text)] flex-shrink-0">
-          {goal.currentValue}
+          {goal.currentValue != null ? goal.currentValue : "—"}
           {goal.unit ? <span className="text-xs font-normal text-[var(--text-muted)] ml-0.5">{goal.unit}</span> : null}
         </p>
       </div>
