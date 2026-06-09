@@ -955,7 +955,7 @@ function GoalCard({ goal }: { goal: Goal }) {
           <p className="mt-1 text-sm font-bold text-[var(--text)]">{goal.title}</p>
         </div>
         <p className="text-xl font-bold tabular-nums text-[var(--text)] flex-shrink-0">
-          {goal.currentValue != null ? goal.currentValue : "—"}
+          {goal.currentValue != null ? parseFloat(goal.currentValue.toFixed(2)) : "—"}
           {goal.unit ? <span className="text-xs font-normal text-[var(--text-muted)] ml-0.5">{goal.unit}</span> : null}
         </p>
       </div>
