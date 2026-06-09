@@ -240,15 +240,6 @@ function secsToTimeStr(secs: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-function parseTimeStr(str: string): number | null {
-  const parts = str.trim().split(":").map((p) => parseInt(p, 10));
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 1) return parts[0]!;
-  if (parts.length === 2) return parts[0]! * 60 + parts[1]!;
-  if (parts.length === 3) return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
-  return null;
-}
-
 function secondsToDigits(secs: number): number[] {
   const s = Math.max(0, Math.round(secs));
   const h = Math.floor(s / 3600);
