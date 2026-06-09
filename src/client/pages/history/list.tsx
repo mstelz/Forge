@@ -1,6 +1,9 @@
-import { useState, useMemo, useContext } from "react";
+import { useState, useMemo, useContext, useEffect } from "react";
 import { Link, useOutletContext } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { liveQuery } from "dexie";
 import { useHistorySessions, useHistorySummary } from "../../hooks/use-history";
+import { forgeDB } from "../../db/forge-db";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { HistoryFilter } from "../../../shared/history";
 import type { SessionSummary } from "../../../shared/history";
@@ -65,6 +68,62 @@ function formatMins(ms: number): string {
   return String(Math.round(ms / 60000));
 }
 
+/** Resolves the display title for a session row. */
+export function deriveSessionTitle(
+  session: Pick<SessionSummary, "title">,
+  exerciseName?: string,
+): string {
+  return session.title ?? exerciseName ?? "Freeform";
+}
+
+/** Fetches exercise names for freeform sessions that have exactly one exercise. */
+function useFreeformExerciseNames(sessions: SessionSummary[]) {
+  const qc = useQueryClient();
+  const ids = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.sourceType === "freeform" && s.exerciseCount === 1 && !s.title)
+        .map((s) => s.id),
+    [sessions],
+  );
+  const key = ids.join(",");
+
+  useEffect(() => {
+    if (ids.length === 0) return;
+    const sub = liveQuery(() =>
+      forgeDB.sessionSetLogs.where("sessionId").anyOf(ids).count(),
+    ).subscribe({
+      next: () => qc.invalidateQueries({ queryKey: ["freeform-exercise-names", key] }),
+    });
+    return () => sub.unsubscribe();
+  }, [key, ids, qc]);
+
+  return useQuery({
+    queryKey: ["freeform-exercise-names", key],
+    queryFn: async () => {
+      if (ids.length === 0) return new Map<string, string>();
+      const logs = await forgeDB.sessionSetLogs
+        .where("sessionId")
+        .anyOf(ids)
+        .filter((l) => l.status === "logged")
+        .toArray();
+      const exerciseIdBySession = new Map<string, string>();
+      for (const log of logs) {
+        if (!exerciseIdBySession.has(log.sessionId))
+          exerciseIdBySession.set(log.sessionId, log.exerciseId);
+      }
+      const result = new Map<string, string>();
+      for (const [sessionId, exerciseId] of exerciseIdBySession) {
+        const ex = await forgeDB.exercises.get(exerciseId);
+        if (ex) result.set(sessionId, ex.name);
+      }
+      return result;
+    },
+    enabled: ids.length > 0,
+    placeholderData: new Map<string, string>(),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Filter chips
 // ---------------------------------------------------------------------------
@@ -95,6 +154,7 @@ export function HistoryListPage() {
 
   const { data: sessions, isLoading } = useHistorySessions(filters);
   const { data: summary } = useHistorySummary(filters);
+  const { data: exerciseNameMap } = useFreeformExerciseNames(sessions ?? []);
 
   const grouped = useMemo(() => groupByDay(sessions ?? []), [sessions]);
 
@@ -185,7 +245,7 @@ export function HistoryListPage() {
                 <ul className="space-y-2">
                   {group.sessions.map((s) => (
                     <li key={s.id}>
-                      <SessionRow session={s} />
+                      <SessionRow session={s} exerciseName={exerciseNameMap?.get(s.id)} />
                     </li>
                   ))}
                 </ul>
@@ -213,7 +273,7 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SessionRow({ session }: { session: SessionSummary }) {
+function SessionRow({ session, exerciseName }: { session: SessionSummary; exerciseName?: string }) {
   const d = new Date(session.endedAt);
   const dayNum = d.getDate();
   const subtitle = sessionSubtitle(session);
@@ -235,7 +295,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
 
       <div className="flex-1 min-w-0">
         <p className="truncate text-sm font-bold text-[var(--text)]">
-          {session.title ?? "Freeform"}
+          {deriveSessionTitle(session, exerciseName)}
         </p>
         {subtitle ? (
           <p className="truncate text-xs text-[var(--text-muted)]">{subtitle}</p>

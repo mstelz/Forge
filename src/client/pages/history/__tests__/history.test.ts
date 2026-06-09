@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Session, SessionSetLog } from "../../../../shared";
+import type { SessionSummary } from "../../../../shared/history";
+import { deriveSessionTitle } from "../list";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,5 +220,53 @@ describe("listFinishedSessions — exercise filter", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(sessionWithEx.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveSessionTitle — freeform single-exercise naming
+// ---------------------------------------------------------------------------
+
+function makeSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    title: null,
+    sourceType: "freeform",
+    sourceRoutineId: null,
+    sourceRoutineName: null,
+    sourceProgramId: null,
+    sourceProgramName: null,
+    sourceProgramWeekIndex: null,
+    sourceProgramDayIndex: null,
+    startedAt: 1000000,
+    endedAt: 1003600,
+    exerciseCount: 1,
+    setCount: 3,
+    volumeKg: 300,
+    durationMs: 3600000,
+    hasPr: false,
+    ...overrides,
+  };
+}
+
+describe("deriveSessionTitle", () => {
+  it("returns exercise name when freeform session has no title", () => {
+    const session = makeSessionSummary({ title: null });
+    expect(deriveSessionTitle(session, "Bench Press")).toBe("Bench Press");
+  });
+
+  it("prefers session title over resolved exercise name", () => {
+    const session = makeSessionSummary({ title: "My Custom Name" });
+    expect(deriveSessionTitle(session, "Bench Press")).toBe("My Custom Name");
+  });
+
+  it("falls back to Freeform when no title and no exercise name", () => {
+    const session = makeSessionSummary({ title: null });
+    expect(deriveSessionTitle(session, undefined)).toBe("Freeform");
+  });
+
+  it("falls back to Freeform when exercise name is undefined", () => {
+    const session = makeSessionSummary({ title: null });
+    expect(deriveSessionTitle(session)).toBe("Freeform");
   });
 });
