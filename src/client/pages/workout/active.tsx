@@ -248,6 +248,40 @@ function parseTimeStr(str: string): number | null {
   return null;
 }
 
+function secondsToDigits(secs: number): number[] {
+  const s = Math.max(0, Math.round(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const full = [
+    Math.floor(h / 10), h % 10,
+    Math.floor(m / 10), m % 10,
+    Math.floor(r / 10), r % 10,
+  ];
+  // Trim leading zeros
+  let start = 0;
+  while (start < full.length - 1 && full[start] === 0) start++;
+  return full.slice(start);
+}
+
+function bufferToSeconds(digits: number[]): number {
+  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
+  const h = padded[0]! * 10 + padded[1]!;
+  const m = padded[2]! * 10 + padded[3]!;
+  const s = padded[4]! * 10 + padded[5]!;
+  return h * 3600 + m * 60 + s;
+}
+
+function formatDigits(digits: number[]): string {
+  if (digits.length === 0) return "";
+  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
+  const h = padded[0]! * 10 + padded[1]!;
+  const m = padded[2]! * 10 + padded[3]!;
+  const s = padded[4]! * 10 + padded[5]!;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function Toast({ message, type }: { message: string; type: "error" | "info" }) {
@@ -888,7 +922,7 @@ function BottomPanel({
   const [repsInputStr, setRepsInputStr] = useState<string>("");
   const [rpe, setRpe] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number | null>(null);
-  const [durationInputStr, setDurationInputStr] = useState<string>("");
+  const [durationDigits, setDurationDigits] = useState<number[]>([]);
   const [distanceDisplay, setDistanceDisplay] = useState<number | null>(null);
   const [distanceInputStr, setDistanceInputStr] = useState<string>("");
   const [setType, setSetType] = useState<LogSetType>("normal");
@@ -973,7 +1007,7 @@ function BottomPanel({
       if (existingLog.weightKg != null) setWeight(existingLog.weightKg);
       if (existingLog.reps != null) { setReps(existingLog.reps); setRepsInputStr(String(existingLog.reps)); }
       if (existingLog.rpe != null) setRpe(existingLog.rpe);
-      if (existingLog.durationSec != null) { setDurationSec(existingLog.durationSec); setDurationInputStr(secsToTimeStr(existingLog.durationSec)); }
+      if (existingLog.durationSec != null) { setDurationSec(existingLog.durationSec); setDurationDigits(secondsToDigits(existingLog.durationSec)); }
       if (existingLog.distanceM != null) setDist(existingLog.distanceM);
       setSetType((existingLog.setType as LogSetType) ?? "normal");
       // Pre-fill note from the saved log so editing can't accidentally wipe it
@@ -997,7 +1031,7 @@ function BottomPanel({
       const prev = prevLogs[0]!;
       if (prev.weightKg != null) setWeight(prev.weightKg);
       if (prev.reps != null) { setReps(prev.reps); setRepsInputStr(String(prev.reps)); }
-      if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationInputStr(secsToTimeStr(prev.durationSec)); }
+      if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationDigits(secondsToDigits(prev.durationSec)); }
       if (prev.distanceM != null) setDist(prev.distanceM);
       // Do not pre-fill RPE — it is per-set
     } else {
@@ -1333,8 +1367,8 @@ function BottomPanel({
                     aria-label="Decrease duration by 30 seconds"
                     onClick={() => {
                       const next = Math.max(0, (durationSec ?? 0) - 30);
-                      setDurationSec(next);
-                      setDurationInputStr(secsToTimeStr(next));
+                      setDurationSec(next > 0 ? next : null);
+                      setDurationDigits(next > 0 ? secondsToDigits(next) : []);
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -1342,16 +1376,38 @@ function BottomPanel({
                   </button>
                   <input
                     type="text"
-                    inputMode="text"
-                    value={durationInputStr}
+                    inputMode="numeric"
+                    value={formatDigits(durationDigits)}
                     placeholder="0:00"
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setDurationInputStr(e.target.value)}
-                    onBlur={(e) => {
-                      const parsed = parseTimeStr(e.target.value);
-                      const secs = parsed != null ? Math.max(0, parsed) : null;
-                      setDurationSec(secs);
-                      setDurationInputStr(secs != null ? secsToTimeStr(secs) : "");
+                    readOnly
+                    onKeyDown={(e) => {
+                      if (e.key >= "0" && e.key <= "9") {
+                        e.preventDefault();
+                        const next = [...durationDigits, parseInt(e.key, 10)].slice(-6);
+                        setDurationDigits(next);
+                        setDurationSec(bufferToSeconds(next));
+                      } else if (e.key === "Backspace") {
+                        e.preventDefault();
+                        const next = durationDigits.slice(0, -1);
+                        setDurationDigits(next);
+                        setDurationSec(next.length > 0 ? bufferToSeconds(next) : null);
+                      }
+                    }}
+                    onInput={(e) => {
+                      const ie = e.nativeEvent as InputEvent;
+                      if (ie.inputType === "insertText" && ie.data) {
+                        const d = parseInt(ie.data, 10);
+                        if (!isNaN(d)) {
+                          const next = [...durationDigits, d].slice(-6);
+                          setDurationDigits(next);
+                          setDurationSec(bufferToSeconds(next));
+                        }
+                      } else if (ie.inputType === "deleteContentBackward") {
+                        const next = durationDigits.slice(0, -1);
+                        setDurationDigits(next);
+                        setDurationSec(next.length > 0 ? bufferToSeconds(next) : null);
+                      }
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                   />
@@ -1361,7 +1417,7 @@ function BottomPanel({
                     onClick={() => {
                       const next = (durationSec ?? 0) + 30;
                       setDurationSec(next);
-                      setDurationInputStr(secsToTimeStr(next));
+                      setDurationDigits(secondsToDigits(next));
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
