@@ -1380,7 +1380,7 @@ function BottomPanel({
                     value={formatDigits(durationDigits)}
                     placeholder="0:00"
                     onFocus={(e) => e.target.select()}
-                    readOnly
+                    onChange={() => {}}
                     onKeyDown={(e) => {
                       if (e.key >= "0" && e.key <= "9") {
                         e.preventDefault();
