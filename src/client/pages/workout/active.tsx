@@ -315,8 +315,19 @@ interface SetRowProps {
   onClick: () => void;
 }
 
+function formatSetSummary(log: SessionSetLog, weightUnit: "kg" | "lb", distanceUnit: "m" | "km" | "mi"): string {
+  if (log.durationSec != null || log.distanceM != null) {
+    const parts: string[] = [];
+    if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
+    if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
+    return parts.join(" · ");
+  }
+  const w = log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—";
+  return `${w} × ${log.reps ?? "—"}`;
+}
+
 function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
-  const { weightUnit } = useContext(SettingsContext);
+  const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const repsTarget = formatRepsTarget(slot);
   const rpeTarget = formatRpeTarget(slot);
 
@@ -332,7 +343,7 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
           <span className="w-5 text-xs font-bold text-[var(--accent)] tabular-nums">{setNumber}</span>
           <div className="flex flex-1 items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text)]">
-              {log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—"} × {log.reps ?? "—"}
+              {formatSetSummary(log, weightUnit, distanceUnit)}
             </span>
           </div>
           <span className="text-xs text-[var(--accent)]">editing</span>
@@ -349,7 +360,7 @@ function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowPro
         <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
         <div className="flex flex-1 items-center gap-2">
           <span className="text-sm font-semibold text-[var(--text)]">
-            {log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—"} × {log.reps ?? "—"}
+            {formatSetSummary(log, weightUnit, distanceUnit)}
           </span>
           {log.rpe != null && (
             <span className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">

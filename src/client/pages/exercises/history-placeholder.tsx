@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useExerciseLogs } from "../../hooks/use-sessions";
-import { formatWeight } from "../../lib/units";
+import { formatWeight, formatDistance } from "../../lib/units";
 import { useSettingsContext } from "../../contexts/settings-context";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,15 @@ function epley(weightKg: number, reps: number): number {
 
 export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
   const { data: allLogs } = useExerciseLogs(exerciseId);
-  const { weightUnit } = useSettingsContext();
+  const { weightUnit, distanceUnit } = useSettingsContext();
+
+  function secsToStr(s: number): string {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  }
 
   const computed = useMemo(() => {
     if (!allLogs || allLogs.length === 0) return null;
@@ -99,12 +107,17 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
           </h2>
           <ul className="space-y-2">
             {logged.map((log) => {
-              const weightStr =
-                log.weightKg != null && log.reps != null
-                  ? `${formatWeight(log.weightKg, weightUnit)} × ${log.reps} reps`
-                  : log.reps != null
-                  ? `${log.reps} reps`
-                  : "—";
+              const weightStr = (() => {
+                if (log.durationSec != null || log.distanceM != null) {
+                  const parts: string[] = [];
+                  if (log.durationSec != null) parts.push(secsToStr(log.durationSec));
+                  if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
+                  return parts.join(" · ");
+                }
+                if (log.weightKg != null && log.reps != null) return `${formatWeight(log.weightKg, weightUnit)} × ${log.reps} reps`;
+                if (log.reps != null) return `${log.reps} reps`;
+                return "—";
+              })();
               const rpeStr = log.rpe != null ? ` · RPE ${log.rpe}` : "";
               const date = new Date(log.loggedAt);
               const dateStr = date.toLocaleDateString("en-US", {
