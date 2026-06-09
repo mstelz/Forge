@@ -316,14 +316,13 @@ interface SetRowProps {
 }
 
 function formatSetSummary(log: SessionSetLog, weightUnit: "kg" | "lb", distanceUnit: "m" | "km" | "mi"): string {
-  if (log.durationSec != null || log.distanceM != null) {
-    const parts: string[] = [];
-    if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
-    if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
-    return parts.join(" · ");
-  }
-  const w = log.weightKg != null ? formatWeight(log.weightKg, weightUnit) : "—";
-  return `${w} × ${log.reps ?? "—"}`;
+  const parts: string[] = [];
+  if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
+  if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
+  if (log.weightKg != null && log.reps != null) parts.push(`${formatWeight(log.weightKg, weightUnit)} × ${log.reps}`);
+  else if (log.reps != null) parts.push(`${log.reps} reps`);
+  if (parts.length === 0) return "—";
+  return parts.join(" · ");
 }
 
 function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
