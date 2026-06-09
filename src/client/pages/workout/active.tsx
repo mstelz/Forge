@@ -34,6 +34,7 @@ import { ExercisePicker } from "../../components/exercise-picker";
 import { EditStructureSheet } from "./edit-structure/index";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
+import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
 // ─── Internal types ──────────────────────────────────────────────────────────
@@ -1018,25 +1019,22 @@ function BottomPanel({
     // No existing log — clear note and pre-fill metrics from the last logged set.
     setNote("");
 
-    // No existing log — pre-fill from the last logged set for this exercise.
-    const prevLogs = logs
-      .filter(
-        (l) =>
-          l.performedExerciseId === currentItem.performedExerciseId &&
-          l.status === "logged",
-      )
-      .sort((a, b) => b.loggedAt - a.loggedAt);
-
-    if (prevLogs.length > 0) {
-      const prev = prevLogs[0]!;
-      if (prev.weightKg != null) setWeight(prev.weightKg);
-      if (prev.reps != null) { setReps(prev.reps); setRepsInputStr(String(prev.reps)); }
-      if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationDigits(secondsToDigits(prev.durationSec)); }
-      if (prev.distanceM != null) setDist(prev.distanceM);
-      // Do not pre-fill RPE — it is per-set
-    } else {
-      if (currentSlot.reps != null) { setReps(currentSlot.reps); setRepsInputStr(String(currentSlot.reps)); }
-    }
+    // No existing log — pre-fill from the last logged set for this exercise
+    // across ALL sessions (not just the current one).
+    let isCurrent = true;
+    getLastLogValuesForExercise(currentItem.exerciseId).then((prev) => {
+      if (!isCurrent) return;
+      if (prev) {
+        if (prev.weightKg != null) setWeight(prev.weightKg);
+        if (prev.reps != null) { setReps(prev.reps); setRepsInputStr(String(prev.reps)); }
+        if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationDigits(secondsToDigits(prev.durationSec)); }
+        if (prev.distanceM != null) setDist(prev.distanceM);
+        // Do not pre-fill RPE — it is per-set
+      } else {
+        if (currentSlot.reps != null) { setReps(currentSlot.reps); setRepsInputStr(String(currentSlot.reps)); }
+      }
+    });
+    return () => { isCurrent = false; };
   }, [currentItem, currentSlot, logs, weightUnit, distanceUnit]);
 
   const handleLogSet = async () => {
