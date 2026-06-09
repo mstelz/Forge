@@ -69,6 +69,7 @@ export async function reconcileProgramRuns(): Promise<void> {
           dayIndex,
           status: targetStatus,
           sessionId: session.id,
+          completedAt: targetStatus === "completed" ? Date.now() : undefined,
           updatedAt: Date.now(),
         };
         updatedRun = {
@@ -85,6 +86,8 @@ export async function reconcileProgramRuns(): Promise<void> {
             ...existing,
             status: targetStatus,
             sessionId: session.id,
+            // Preserve existing completedAt; only stamp it the first time we complete.
+            completedAt: existing.completedAt ?? (targetStatus === "completed" ? Date.now() : undefined),
             updatedAt: Date.now(),
           };
           const newDayStates = [...run.dayStates];

@@ -28,6 +28,8 @@ export const ProgramRunDayStateSchema = z.object({
   dayIndex: z.number().int().min(0).max(6),
   status: ProgramRunDayStatusEnum,
   sessionId: uuid.nullable(),
+  /** Unix ms when this slot was completed/skipped. Used by cascade to anchor the timeline. */
+  completedAt: timestampMs.optional(),
   updatedAt: timestampMs,
 });
 export type ProgramRunDayState = z.infer<typeof ProgramRunDayStateSchema>;

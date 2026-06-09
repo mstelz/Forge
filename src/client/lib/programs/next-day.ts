@@ -181,16 +181,21 @@ export function computeCascadeSchedule(
       const isRestDay = primary?.isRestDay ?? false;
 
       let effectiveMs: number;
-      // Acknowledged days (completed or skipped) pin to their original date.
-      // For workout days this shows when the workout actually happened.
-      // For rest days this prevents an acknowledged rest day from cascading
-      // forward and re-appearing as "Rest Day Complete" on a later date.
-      // Pinned days do NOT update prevPendingMs, so they don't push
-      // subsequent pending workout days further back.
       if (ds?.status === "completed" || ds?.status === "skipped") {
-        effectiveMs = originalMs;
+        // Use the midnight of the actual completion date so the cascade timeline
+        // reflects when workouts were truly done. This prevents the next pending
+        // slot from collapsing onto today after a shifted workout is completed.
+        // Falls back to originalMs for legacy records without completedAt.
+        const completedDayMs = ds.completedAt
+          ? (() => { const c = new Date(ds.completedAt); c.setHours(0, 0, 0, 0); return c.getTime(); })()
+          : originalMs;
+        effectiveMs = completedDayMs;
+        // Advance the chain so subsequent pending slots cascade from this date.
+        prevPendingMs = Math.max(prevPendingMs, effectiveMs);
       } else {
-        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);
+        // Pending slots clamp to today at minimum (explicit floor replaces the
+        // implicit guarantee that came from initialising prevPendingMs to today-1).
+        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY, todayStartMs);
         prevPendingMs = effectiveMs;
       }
 
