@@ -599,10 +599,14 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
           if (b.deadline == null) return -1;
           return a.deadline - b.deadline || b.updatedAt - a.updatedAt;
         });
-        topGoals = goals.slice(0, 2).map((g) => ({
-          ...g,
-          percent: computeGoalProgress(g, { setLogs: allSetLogs }).percent,
-        }));
+        topGoals = goals.slice(0, 2).map((g) => {
+          const progress = computeGoalProgress(g, { setLogs: allSetLogs });
+          return {
+            ...g,
+            percent: progress.percent,
+            currentValue: progress.currentValue ?? g.currentValue,
+          };
+        });
       } catch {
         // goals table not present yet
       }
