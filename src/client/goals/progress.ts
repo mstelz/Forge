@@ -62,11 +62,19 @@ function bestCardioValue(
 
   if (eligible.length === 0) return null;
 
-  // Time-based goal: find minimum durationSec
+  // Time-based goal: find best pace (sec/mile when distance known, raw sec otherwise)
   if (unit && unit.includes(":")) {
     const withDuration = eligible.filter((l) => l.durationSec != null && l.durationSec > 0);
     if (withDuration.length === 0) return null;
-    return Math.min(...withDuration.map((l) => l.durationSec!));
+    return Math.min(
+      ...withDuration.map((l) => {
+        if (l.distanceM != null && l.distanceM > 0) {
+          const miles = l.distanceM / 1609.344;
+          return l.durationSec! / miles;
+        }
+        return l.durationSec!;
+      }),
+    );
   }
 
   // Distance-based goal
