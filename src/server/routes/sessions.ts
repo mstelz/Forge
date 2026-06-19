@@ -41,9 +41,9 @@ function rowToSession(row: SessionRow): Session {
     restTimer: row.restTimer ?? null,
     title: row.title ?? null,
     notes: row.notes ?? null,
-    startedAt: row.startedAt instanceof Date ? row.startedAt.getTime() : row.startedAt,
-    endedAt: row.endedAt instanceof Date ? row.endedAt.getTime() : (row.endedAt ?? null),
-    pausedAt: row.pausedAt instanceof Date ? row.pausedAt.getTime() : (row.pausedAt ?? null),
+    startedAt: row.startedAt,
+    endedAt: row.endedAt ?? null,
+    pausedAt: row.pausedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
@@ -67,7 +67,7 @@ function rowToLog(row: SessionSetLogRow): SessionSetLog {
     notes: row.notes ?? null,
     setType: row.setType as SessionSetLog["setType"],
     status: row.status as SessionSetLog["status"],
-    loggedAt: row.loggedAt instanceof Date ? row.loggedAt.getTime() : row.loggedAt,
+    loggedAt: row.loggedAt,
     restAfterSec: row.restAfterSec ?? null,
     enteredWeight: row.enteredWeight ?? null,
     enteredWeightUnit: (row.enteredWeightUnit ?? null) as SessionSetLog["enteredWeightUnit"],
@@ -95,7 +95,7 @@ sessionsRoute.get("/", async (c) => {
 sessionsRoute.get("/logs", async (c) => {
   const since = Number(c.req.query("since") ?? 0);
   const logs = since > 0
-    ? await db.select().from(sessionSetLogs).where(gte(sessionSetLogs.loggedAt, new Date(since))).orderBy(asc(sessionSetLogs.loggedAt)).all()
+    ? await db.select().from(sessionSetLogs).where(gte(sessionSetLogs.loggedAt, since)).orderBy(asc(sessionSetLogs.loggedAt)).all()
     : await db.select().from(sessionSetLogs).orderBy(asc(sessionSetLogs.loggedAt)).all();
   return c.json({ logs: logs.map(rowToLog) });
 });
@@ -154,7 +154,7 @@ sessionsRoute.post("/", async (c) => {
       restTimer: null,
       title: input.title ?? null,
       notes: input.notes ?? null,
-      startedAt: new Date(input.startedAt),
+      startedAt: input.startedAt,
       endedAt: null,
       pausedAt: null,
       createdAt: input.createdAt ?? now,
@@ -186,8 +186,8 @@ sessionsRoute.patch("/:id/times", async (c) => {
 
   db.update(sessions)
     .set({
-      startedAt: new Date(parsed.data.startedAt),
-      endedAt: parsed.data.endedAt != null ? new Date(parsed.data.endedAt) : null,
+      startedAt: parsed.data.startedAt,
+      endedAt: parsed.data.endedAt,
       updatedAt: Date.now(),
     })
     .where(eq(sessions.id, id))
@@ -233,9 +233,9 @@ sessionsRoute.patch("/:id", async (c) => {
       restTimer: input.restTimer ?? null,
       title: input.title ?? null,
       notes: input.notes ?? null,
-      startedAt: new Date(input.startedAt),
-      endedAt: input.endedAt != null ? new Date(input.endedAt) : null,
-      pausedAt: input.pausedAt != null ? new Date(input.pausedAt) : null,
+      startedAt: input.startedAt,
+      endedAt: input.endedAt ?? null,
+      pausedAt: input.pausedAt ?? null,
       updatedAt,
     })
     .where(eq(sessions.id, id))
@@ -274,7 +274,7 @@ sessionsRoute.post("/:id/finish", async (c) => {
   db.update(sessions)
     .set({
       status: "finished",
-      endedAt: new Date(input.endedAt),
+      endedAt: input.endedAt,
       restTimer: null,
       updatedAt: now,
     })
@@ -369,7 +369,7 @@ sessionsRoute.post("/:id/logs", async (c) => {
       notes: input.notes ?? null,
       setType: input.setType,
       status: input.status,
-      loggedAt: new Date(input.loggedAt),
+      loggedAt: input.loggedAt,
       restAfterSec: input.restAfterSec ?? null,
       enteredWeight: input.enteredWeight ?? null,
       enteredWeightUnit: input.enteredWeightUnit ?? null,
@@ -431,7 +431,7 @@ sessionsRoute.patch("/:id/logs/:logId", async (c) => {
       notes: input.notes ?? null,
       setType: input.setType,
       status: input.status,
-      loggedAt: new Date(input.loggedAt),
+      loggedAt: input.loggedAt,
       restAfterSec: input.restAfterSec ?? null,
       enteredWeight: input.enteredWeight ?? null,
       enteredWeightUnit: input.enteredWeightUnit ?? null,

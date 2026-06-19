@@ -84,10 +84,10 @@ function buildSessionConditions(
   const conditions = [eq(sessions.status, "finished")];
 
   if (fromMs !== null) {
-    conditions.push(gte(sessions.endedAt, new Date(fromMs)));
+    conditions.push(gte(sessions.endedAt, fromMs));
   }
   if (toMs !== null) {
-    conditions.push(lte(sessions.endedAt, new Date(toMs)));
+    conditions.push(lte(sessions.endedAt, toMs));
   }
   if (filter.routine) {
     conditions.push(eq(sessions.sourceRoutineId, filter.routine));
@@ -276,10 +276,8 @@ historyRoute.get("/sessions", async (c) => {
       volumeKg: 0,
     };
 
-    const startedAtMs =
-      row.startedAt instanceof Date ? row.startedAt.getTime() : row.startedAt;
-    const endedAtMs =
-      row.endedAt instanceof Date ? row.endedAt.getTime() : (row.endedAt ?? startedAtMs);
+    const startedAtMs = row.startedAt;
+    const endedAtMs = row.endedAt ?? startedAtMs;
 
     return {
       id: row.id,
@@ -306,8 +304,7 @@ historyRoute.get("/sessions", async (c) => {
   if (hasMore && page.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const last = page[page.length - 1]!;
-    const lastEndedAt =
-      last.endedAt instanceof Date ? last.endedAt.getTime() : (last.endedAt ?? 0);
+    const lastEndedAt = last.endedAt ?? 0;
     nextCursor = encodeCursor(lastEndedAt, last.id);
   }
 
@@ -381,10 +378,8 @@ historyRoute.get("/summary", async (c) => {
       setCount: 0,
       volumeKg: 0,
     };
-    const startedAtMs =
-      row.startedAt instanceof Date ? row.startedAt.getTime() : row.startedAt;
-    const endedAtMs =
-      row.endedAt instanceof Date ? row.endedAt.getTime() : (row.endedAt ?? startedAtMs);
+    const startedAtMs = row.startedAt;
+    const endedAtMs = row.endedAt ?? startedAtMs;
 
     totalVolumeKg += agg.volumeKg;
     totalSets += agg.setCount;

@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const exercises = sqliteTable(
@@ -172,9 +172,9 @@ export const sessions = sqliteTable(
     restTimer: text("rest_timer"), // JSON: rest timer state
     title: text("title"),
     notes: text("notes"),
-    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
-    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
-    pausedAt: integer("paused_at", { mode: "timestamp_ms" }),
+    startedAt: integer("started_at").notNull(),
+    endedAt: integer("ended_at"),
+    pausedAt: integer("paused_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     archivedAt: integer("archived_at"),
@@ -206,7 +206,7 @@ export const sessionSetLogs = sqliteTable(
     notes: text("notes"),
     setType: text("set_type").notNull(), // 'normal' | 'warmup' | 'drop' | 'failure' | 'amrap' | 'rest_pause'
     status: text("status").notNull(), // 'logged' | 'skipped' | 'extra'
-    loggedAt: integer("logged_at", { mode: "timestamp_ms" }).notNull(),
+    loggedAt: integer("logged_at").notNull(),
     restAfterSec: integer("rest_after_sec"),
     enteredWeight: real("entered_weight"),
     enteredWeightUnit: text("entered_weight_unit"), // 'kg' | 'lb'

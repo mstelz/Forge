@@ -8,7 +8,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 - [ ] [03 — Remove migration self-healing hacks](03-migration-self-healing-hacks.md)
 
 ## P2 — Medium
-- [ ] [04 — Normalize timestamp storage modes](04-normalize-timestamp-modes.md)
+- [x] [04 — Normalize timestamp storage modes](04-normalize-timestamp-modes.md)
 - [ ] [05 — React error boundary + global error handler](05-error-boundary.md)
 - [ ] [06 — Type the sync payload boundary](06-type-sync-payload.md)
 - [ ] [07 — Sync drain robustness](07-sync-drain-robustness.md)
