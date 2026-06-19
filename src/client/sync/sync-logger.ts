@@ -1,5 +1,5 @@
 export type SyncLogLevel = "info" | "warn" | "error";
-export type SyncLogCategory = "flush" | "reconcile" | "sw";
+export type SyncLogCategory = "flush" | "reconcile" | "sw" | "app";
 
 export type SyncLogEntry = {
   at: number;
