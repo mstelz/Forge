@@ -13,7 +13,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 - [x] [06 — Type the sync payload boundary](06-type-sync-payload.md)
 - [x] [07 — Sync drain robustness](07-sync-drain-robustness.md)
 - [x] [08 — Fix/remove drifted pendingWrites schema mirror](08-pendingwrites-schema-mirror.md) — code mirror removed; physical table drop folded into issue 03
-- [ ] [09 — Decompose oversized modules](09-decompose-oversized-modules.md)
+- [x] [09 — Decompose oversized modules](09-decompose-oversized-modules.md) — home/index.tsx day-detail family + export.ts row-mappers extracted; remaining stateful React god-components deferred to human-reviewed follow-up (see issue note)
 
 ## P3 — Low
 - [ ] [10 — Unify logging strategy](10-unify-logging.md)
