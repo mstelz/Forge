@@ -7,10 +7,12 @@ import { initTheme } from "./lib/theme";
 import { hydrateIfEmpty } from "./seed/hydrate";
 import { installFlusherTriggers } from "./sync/triggers";
 import { installReconciliation } from "./sync/reconcile";
+import { installGlobalErrorHandler } from "./sync/global-error-handler";
 import { SettingsProvider } from "./contexts/settings-context";
 import { forgeDB } from "./db/forge-db";
 import { SettingsSchema, SETTINGS_ID } from "../shared/settings";
 
+installGlobalErrorHandler();
 initTheme();
 
 const queryClient = new QueryClient({

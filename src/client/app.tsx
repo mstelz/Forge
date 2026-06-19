@@ -1,4 +1,5 @@
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router";
+import { ErrorBoundary } from "./components/error-boundary";
 import { AppShell } from "./layouts/app-shell";
 import { ExerciseListPage } from "./pages/exercises/list";
 import { ExerciseDetailPage } from "./pages/exercises/detail";
@@ -59,5 +60,9 @@ const router = createBrowserRouter([
 ]);
 
 export function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  );
 }
