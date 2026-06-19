@@ -188,7 +188,6 @@ const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
 
   if (isSuccess(entry, res.status)) {
     if (entry.op === "create" && res.status === 409) {
-      console.warn(`[flusher] id_conflict on create ${entry.entity} ${entry.id}`);
       syncLog({ level: "warn", category: "flush", message: `id_conflict ${entry.entity}`, detail: entry.id });
     } else {
       syncLog({ level: "info", category: "flush", message: `ok ${entry.entity} ${entry.op}` });
@@ -201,7 +200,6 @@ const handle = async (entry: PendingWrite): Promise<"done" | "retry"> => {
     const body = await res.text().catch(() => "");
     const label = res.status === 401 ? "auth_error" : `http_${res.status}`;
     const detail = `${label}: ${body}`.trim();
-    console.warn(`[flusher] poisoning ${entry.op} ${entry.entity} ${entry.id}: ${res.status} ${body}`);
     syncLog({ level: "error", category: "flush", message: `poisoned ${entry.entity} ${entry.op}`, detail });
     await forgeDB.pendingWrites.update(entry.id, {
       status: "poisoned",

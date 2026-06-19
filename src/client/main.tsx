@@ -8,6 +8,7 @@ import { hydrateIfEmpty } from "./seed/hydrate";
 import { installFlusherTriggers } from "./sync/triggers";
 import { installReconciliation } from "./sync/reconcile";
 import { installGlobalErrorHandler } from "./sync/global-error-handler";
+import { syncLog } from "./sync/sync-logger";
 import { SettingsProvider } from "./contexts/settings-context";
 import { forgeDB } from "./db/forge-db";
 import { SettingsSchema, SETTINGS_ID } from "../shared/settings";
@@ -56,12 +57,12 @@ async function bootstrapSettings(): Promise<void> {
     });
     await forgeDB.settings.put(defaults);
   } catch (err) {
-    console.error("[forge] settings bootstrap failed", err);
+    syncLog({ level: "error", category: "app", message: "settings bootstrap failed", detail: String(err) });
   }
 }
 
 void hydrateIfEmpty()
-  .catch((err) => console.error("[forge] hydration failed", err))
+  .catch((err) => syncLog({ level: "error", category: "app", message: "hydration failed", detail: String(err) }))
   .finally(() => {
     installFlusherTriggers();
     installReconciliation();
@@ -72,7 +73,7 @@ void bootstrapSettings();
 if (navigator.storage?.persist) {
   void navigator.storage.persist().then((granted) => {
     void forgeDB.meta.put({ key: "storagePersisted", value: String(granted), updatedAt: Date.now() });
-    console.log("[forge] storage.persist:", granted);
+    syncLog({ level: "info", category: "app", message: "storage.persist", detail: String(granted) });
   });
 }
 

@@ -1,5 +1,6 @@
 import { forgeDB } from "../db/forge-db";
 import { hydrateIfEmpty } from "./hydrate";
+import { syncLog } from "../sync/sync-logger";
 
 declare global {
   interface Window {
@@ -28,7 +29,7 @@ export async function wipeAndRehydrate(): Promise<void> {
     },
   );
   await hydrateIfEmpty();
-  console.info("[forge] Dexie wiped and re-hydrated from seed");
+  syncLog({ level: "info", category: "app", message: "Dexie wiped and re-hydrated from seed" });
 }
 
 export async function installDebugHelpers(): Promise<void> {

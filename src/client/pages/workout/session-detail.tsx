@@ -10,6 +10,7 @@ import { formatDurationMs, formatMmSs } from "../../lib/time";
 import { reopenSession, updateSessionTimes, deleteSession } from "../../db/mutations";
 import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { queryKeys } from "../../db/query-keys";
+import { syncLog } from "../../sync/sync-logger";
 import type { SessionSetLog } from "../../../shared";
 
 // ---------------------------------------------------------------------------
@@ -445,7 +446,7 @@ export function SessionDetailPage() {
                   try {
                     await deleteSession(session.id);
                     if (session.sourceType === "program_day") {
-                      reconcileProgramRuns().catch(console.error);
+                      reconcileProgramRuns().catch((err) => syncLog({ level: "error", category: "reconcile", message: "program-run reconcile after delete failed", detail: String(err) }));
                     }
                     qc.invalidateQueries({ queryKey: queryKeys.sessions.list() });
                     navigate("/history", { replace: true });

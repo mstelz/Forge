@@ -12,6 +12,7 @@ import { AddBar } from "./add-bar";
 import { useDiscardGuard, DiscardDialog } from "./discard-guard";
 
 import { uuidv4 } from "../../../lib/uuid";
+import { syncLog } from "../../../sync/sync-logger";
 
 type Mode = "create" | "edit";
 
@@ -157,7 +158,7 @@ function BuilderInner({ mode, existing, exerciseMap, navigate }: InnerProps) {
       }
       navigate("/routines");
     } catch (err) {
-      console.error("[builder] save failed", err);
+      syncLog({ level: "error", category: "app", message: "routine-builder save failed", detail: String(err) });
       savedRef.current = false;
       setSaving(false);
     }

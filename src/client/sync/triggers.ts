@@ -1,5 +1,6 @@
 import { flushNow } from "./flusher";
 import { forgeDB } from "../db/forge-db";
+import { syncLog } from "./sync-logger";
 
 const INTERVAL_MS = 30_000;
 let installed = false;
@@ -7,7 +8,7 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 
 const safeFlush = () => {
   void flushNow().catch((err) => {
-    console.error("[flusher] flushNow threw", err);
+    syncLog({ level: "error", category: "flush", message: "flushNow threw", detail: String(err) });
   });
 };
 
