@@ -12,6 +12,21 @@ Part of the codebase-health roadmap.
 
 **Priority:** P1. Independent.
 
+## Status
+- ✅ Fixed the copy-paste log bug in `recordIfDropped` (was logging the
+  "orphaned" message for the dropped-column case).
+- ✅ Wrote **ADR 0008** (`docs/decisions/0008-migration-baseline-recovery.md`)
+  documenting the drift, the going-forward process, and a per-database
+  baseline-reset runbook (squash to baseline, fix the snapshot collision, drop
+  `pending_writes`, clear/re-record `__drizzle_migrations`, delete the shims).
+- ⏭️ **Shim deletion + baseline squash intentionally NOT done from the repo.**
+  The shims are load-bearing for live databases and can mis-record on fresh
+  ones; deleting them safely requires rewriting each database's
+  `__drizzle_migrations` ledger, which must be executed by a maintainer against
+  the real databases (it can't be verified from a dev checkout). Captured as the
+  ADR 0008 runbook. `drizzle-kit generate` is also blocked by a pre-existing
+  snapshot collision that the runbook resolves.
+
 ## Carried-in from issue 08
 The drifted `pending_writes` Drizzle mirror was removed from `src/db/schema.ts`
 (it was server-unused). The legacy physical `pending_writes` table — created by

@@ -15,6 +15,15 @@ const MIGRATIONS_DIR = process.env.FORGE_MIGRATIONS_DIR ?? "./src/db/migrations"
 // Ensure the drizzle migrations table exists (idempotent — migrate() also does this).
 sqlite.exec(`CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)`);
 
+// ⚠️ Migration self-healing shims — see docs/decisions/0008-migration-baseline-recovery.md
+//
+// These reconcile drizzle's `__drizzle_migrations` ledger with databases whose
+// schema was changed out-of-band, so `migrate()` below doesn't crash on a
+// "duplicate column" / "no such column". They are FRAGILE and load-bearing:
+// removing them is only safe AFTER the one-time baseline reset described in
+// ADR 0008 has been executed against each live database. Do not delete in
+// isolation — the ADR runbook removes them as a coordinated step.
+
 // If a column was added outside of drizzle (manually or by a partial run that was
 // later rolled back at the record level), record the migration so drizzle doesn't
 // try to re-run it and crash with "duplicate column name".
@@ -25,7 +34,7 @@ function recordIfOrphaned(table: string, column: string, tag: string, when: numb
   const hash = createHash("sha256").update(content).digest("hex");
   const exists = sqlite.prepare("SELECT 1 FROM __drizzle_migrations WHERE hash = ?").get(hash);
   if (!exists) {
-    console.log(`[migrations] recording orphaned migration ${tag}`);
+    console.log(`[migrations] recording orphaned (added-column) migration ${tag}`);
     sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)").run(hash, when);
   }
 }
@@ -39,7 +48,7 @@ function recordIfDropped(table: string, column: string, tag: string, when: numbe
   const hash = createHash("sha256").update(content).digest("hex");
   const exists = sqlite.prepare("SELECT 1 FROM __drizzle_migrations WHERE hash = ?").get(hash);
   if (!exists) {
-    console.log(`[migrations] recording orphaned migration ${tag}`);
+    console.log(`[migrations] recording dropped-column migration ${tag}`);
     sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)").run(hash, when);
   }
 }
