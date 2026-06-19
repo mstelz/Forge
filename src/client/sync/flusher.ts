@@ -1,5 +1,6 @@
 import { forgeDB } from "../db/forge-db";
 import type { PendingWrite } from "../../shared";
+import { BatchResponseSchema } from "../../shared/pending-write";
 import { APP_VERSION } from "../../shared/version";
 import { syncLog } from "./sync-logger";
 
@@ -49,7 +50,7 @@ const send = async (entry: PendingWrite): Promise<Response> => {
 
   // Session times edit: PATCH /sessions/:id/times
   if (entry.entity === "session_times") {
-    const p = entry.payload as { id: string; startedAt: number; endedAt: number | null };
+    const p = entry.payload;
     return vfetch(`${API_BASE}/sessions/${p.id}/times`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -59,7 +60,7 @@ const send = async (entry: PendingWrite): Promise<Response> => {
 
   // Weight logs use nested URL: /profile/:profileId/weight-logs[/:logId]
   if (entry.entity === "weight_log") {
-    const p = entry.payload as { id: string; profileId: string };
+    const p = entry.payload;
     const logsBase = `${API_BASE}/profile/${p.profileId}/weight-logs`;
     if (entry.op === "create") {
       return vfetch(logsBase, {
@@ -73,7 +74,7 @@ const send = async (entry: PendingWrite): Promise<Response> => {
 
   // Session logs use nested URL: /sessions/:sessionId/logs[/:logId]
   if (entry.entity === "session_log") {
-    const p = entry.payload as { id: string; sessionId: string };
+    const p = entry.payload;
     const logsBase = `${API_BASE}/sessions/${p.sessionId}/logs`;
     if (entry.op === "create") {
       return vfetch(logsBase, {
@@ -100,11 +101,11 @@ const send = async (entry: PendingWrite): Promise<Response> => {
       body: JSON.stringify(entry.payload),
     });
   }
-  const id = (entry.payload as { id: string }).id;
+  const id = entry.payload.id;
   if (entry.op === "update") {
     // Finished-session updates route to /finish, not PATCH
     if (entry.entity === "session") {
-      const payload = entry.payload as { id: string; status?: string; endedAt?: number | null };
+      const payload = entry.payload;
       if (payload.status === "finished") {
         return vfetch(`${base}/${id}/finish`, {
           method: "POST",
@@ -126,7 +127,7 @@ const isSuccess = (entry: PendingWrite, status: number): boolean => {
   if (
     entry.entity === "session" &&
     entry.op === "update" &&
-    (entry.payload as { status?: string }).status === "finished"
+    entry.payload.status === "finished"
   ) {
     return status === 200 || status === 409 || status === 404;
   }
@@ -248,7 +249,7 @@ async function coalesceProfile(): Promise<void> {
   const updatesByProfileId = new Map<string, typeof allProfileWrites>();
   for (const w of allProfileWrites) {
     if (w.op !== "update") continue;
-    const id = (w.payload as { id?: string }).id ?? "";
+    const id = w.payload.id;
     if (!updatesByProfileId.has(id)) updatesByProfileId.set(id, []);
     updatesByProfileId.get(id)!.push(w);
   }
@@ -265,8 +266,6 @@ const BATCH_ENTITIES = new Set<PendingWrite["entity"]>([
   "session_log", "session", "program_run",
 ]);
 
-type BatchResult = { id: string; status: "ok" | "conflict" | "error"; code?: number; detail?: string };
-
 async function tryBatchFlush(entries: PendingWrite[]): Promise<boolean> {
   const batchable = entries.filter((e) => BATCH_ENTITIES.has(e.entity));
   if (batchable.length === 0) return false;
@@ -279,7 +278,12 @@ async function tryBatchFlush(entries: PendingWrite[]): Promise<boolean> {
     if (res.status === 404) return false; // server doesn't have batch endpoint yet
     void checkVersionMismatch(res);
     if (!res.ok) return false;
-    const { results } = await res.json() as { results: BatchResult[] };
+    const parsed = BatchResponseSchema.safeParse(await res.json());
+    if (!parsed.success) {
+      syncLog({ level: "error", category: "flush", message: "batch response failed validation", detail: parsed.error.message });
+      return false;
+    }
+    const { results } = parsed.data;
     const now = Date.now();
     for (const r of results) {
       const entry = batchable.find((e) => e.id === r.id);

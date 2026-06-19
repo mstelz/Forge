@@ -26,7 +26,7 @@ const indexPending = (rows: PendingWrite[], entity: PendingWrite["entity"]) => {
   const map = new Map<string, PendingWrite["op"]>();
   for (const r of rows) {
     if (r.entity !== entity) continue;
-    const id = (r.payload as { id?: string }).id;
+    const id = r.payload.id;
     if (id) map.set(id, r.op);
   }
   return map;
@@ -68,12 +68,10 @@ async function reconcileSessions(serverRows: Session[], pending: PendingWrite[])
   const pendingSessionIds = new Set<string>();
   for (const r of pending) {
     if (r.entity === "session") {
-      const id = (r.payload as { id?: string }).id;
-      if (id) pendingSessionIds.add(id);
+      if (r.payload.id) pendingSessionIds.add(r.payload.id);
     }
     if (r.entity === "session_log") {
-      const sessionId = (r.payload as { sessionId?: string }).sessionId;
-      if (sessionId) pendingSessionIds.add(sessionId);
+      if (r.payload.sessionId) pendingSessionIds.add(r.payload.sessionId);
     }
   }
   await forgeDB.transaction("rw", forgeDB.sessions, async () => {

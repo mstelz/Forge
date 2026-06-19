@@ -10,7 +10,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 ## P2 — Medium
 - [x] [04 — Normalize timestamp storage modes](04-normalize-timestamp-modes.md)
 - [ ] [05 — React error boundary + global error handler](05-error-boundary.md)
-- [ ] [06 — Type the sync payload boundary](06-type-sync-payload.md)
+- [x] [06 — Type the sync payload boundary](06-type-sync-payload.md)
 - [ ] [07 — Sync drain robustness](07-sync-drain-robustness.md)
 - [ ] [08 — Fix/remove drifted pendingWrites schema mirror](08-pendingwrites-schema-mirror.md)
 - [ ] [09 — Decompose oversized modules](09-decompose-oversized-modules.md)

@@ -17,6 +17,8 @@ async function guardNotFinished(sessionId: string): Promise<void> {
   if (session?.status === "finished") throw new SessionFinishedError();
 }
 
+// Single sanctioned construction point for the outbox union. Callers pass a
+// payload already validated by their typed mutation; the cast is contained here.
 const enqueue = (
   entity: PendingWrite["entity"],
   op: PendingWrite["op"],
@@ -30,7 +32,7 @@ const enqueue = (
   retries: 0,
   lastError: null,
   status: "pending",
-});
+} as PendingWrite);
 
 /**
  * Factory for the standard offline-outbox CRUD triple: write the record to its
