@@ -130,7 +130,6 @@ export async function reconcileNow(): Promise<void> {
     await forgeDB.meta.put({ key: "lastReconcileAt", value: String(now), updatedAt: now });
     syncLog({ level: "info", category: "reconcile", message: "cycle done", detail: `${now - startedAt}ms` });
   } catch (err) {
-    console.warn("[reconcile] failed", err);
     syncLog({ level: "error", category: "reconcile", message: "cycle failed", detail: String(err) });
   } finally {
     running = false;

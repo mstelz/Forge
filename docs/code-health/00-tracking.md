@@ -16,7 +16,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 - [x] [09 — Decompose oversized modules](09-decompose-oversized-modules.md) — home/index.tsx day-detail family + export.ts row-mappers extracted; remaining stateful React god-components deferred to human-reviewed follow-up (see issue note)
 
 ## P3 — Low
-- [ ] [10 — Unify logging strategy](10-unify-logging.md)
+- [x] [10 — Unify logging strategy](10-unify-logging.md) — syncLog now mirrors to console + all stray client console.* routed through it (3 duplicates removed, 13 converted)
 - [x] [11 — Consolidate time-formatting helpers](11-consolidate-time-formatters.md)
 
 ## P4 — Hygiene

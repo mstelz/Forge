@@ -17,6 +17,7 @@ import {
 } from "./state";
 import { OverridesSheet } from "./overrides-sheet";
 import { useDiscardGuard, DiscardDialog } from "../../routines/builder/discard-guard";
+import { syncLog } from "../../../sync/sync-logger";
 
 type Mode = "create" | "edit";
 
@@ -748,7 +749,7 @@ function BuilderInner({ mode, existing, routines, navigate, hasActiveRun }: Buil
       }
       navigate("/programs");
     } catch (err) {
-      console.error("[program-builder] save failed", err);
+      syncLog({ level: "error", category: "app", message: "program-builder save failed", detail: String(err) });
       savedRef.current = false;
       setSaving(false);
     }

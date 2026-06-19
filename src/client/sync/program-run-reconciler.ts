@@ -12,6 +12,7 @@
 import { forgeDB } from "../db/forge-db";
 import { endProgramRun, updateProgramRun } from "../db/mutations";
 import { uuidv4 as uuid } from "../lib/uuid";
+import { syncLog } from "./sync-logger";
 import type { Program, ProgramRun, ProgramRunDayState } from "../../shared";
 
 /**
@@ -132,7 +133,7 @@ export async function reconcileProgramRuns(): Promise<void> {
     // Also null-out sessionIds for deleted sessions
     await nullOrphanedSessionIds();
   } catch (err) {
-    console.warn("[program-run-reconciler] error", err);
+    syncLog({ level: "error", category: "reconcile", message: "program-run reconcile error", detail: String(err) });
   }
 }
 

@@ -36,6 +36,7 @@ import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
+import { syncLog } from "../../sync/sync-logger";
 import {
   ChevronRightIcon, InfoIcon, BackIcon, CheckIcon, PlusSmIcon,
   NoteIcon, KebabIcon, PauseIcon, PlayIcon, TrashIcon,
@@ -1948,7 +1949,7 @@ export function ActiveWorkoutPage() {
           ...session,
           restTimer: JSON.stringify(expired),
           updatedAt: Date.now(),
-        }).catch(console.error);
+        }).catch((err) => syncLog({ level: "error", category: "app", message: "rest timer expiry update failed", detail: String(err) }));
       }
     }, 1000);
     return () => clearInterval(id);
@@ -2067,9 +2068,9 @@ export function ActiveWorkoutPage() {
       await finishSession(finished);
       // Update program run day state locally so home page reflects completion immediately
       if (session.sourceType === "program_day") {
-        reconcileProgramRuns().catch(console.error);
+        reconcileProgramRuns().catch((err) => syncLog({ level: "error", category: "reconcile", message: "program-run reconcile after finish failed", detail: String(err) }));
       }
-      reconcileGoals(session.id).catch(console.error);
+      reconcileGoals(session.id).catch((err) => syncLog({ level: "error", category: "reconcile", message: "goal reconcile after finish failed", detail: String(err) }));
       navigate(`/workout/sessions/${session.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to finish workout. Please try again.";
@@ -2291,7 +2292,7 @@ export function ActiveWorkoutPage() {
                 endedAt: originalEndedAt != null ? originalEndedAt : Date.now(),
                 updatedAt: Date.now(),
               };
-              await finishSession(finished).catch(console.error);
+              await finishSession(finished).catch((err) => syncLog({ level: "error", category: "app", message: "reopen-edit finish failed", detail: String(err) }));
               navigate(`/workout/sessions/${session.id}`, { replace: true });
             } else {
               navigate(-1);
