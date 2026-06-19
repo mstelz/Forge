@@ -36,6 +36,10 @@ import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
+import {
+  ChevronRightIcon, InfoIcon, BackIcon, CheckIcon, PlusSmIcon,
+  NoteIcon, KebabIcon, PauseIcon, PlayIcon, TrashIcon,
+} from "./icons";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
 // ─── Internal types ──────────────────────────────────────────────────────────
@@ -477,14 +481,6 @@ function LastTimeLine({
       <span>{summary}</span>
       <ChevronRightIcon />
     </button>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-      <path d="M9 18l6-6-6-6" />
-    </svg>
   );
 }
 
@@ -1027,6 +1023,41 @@ function BottomPanel({
     const hasStrengthMetric = (reps != null && reps > 0) || (weightDisplay != null && weightDisplay > 0);
     const hasCardioMetric = (durationSec != null && durationSec > 0) || (distanceDisplay != null && distanceDisplay > 0);
 
+    // ── Shared between the extra-set and planned-slot branches ────────────────
+    const validateMetrics = (): string | null => {
+      if (showWeightReps && !showDurationDistance && !hasStrengthMetric) return "Enter reps or weight before logging.";
+      if (!showWeightReps && showDurationDistance && !hasCardioMetric) return "Enter duration or distance before logging.";
+      if (showWeightReps && showDurationDistance && !hasStrengthMetric && !hasCardioMetric) return "Enter at least one metric before logging.";
+      return null;
+    };
+    const metricFields = (now: number) => ({
+      reps,
+      weightKg: storedKg,
+      rpe,
+      durationSec: showDurationDistance ? (durationSec ?? null) : null,
+      distanceM: showDurationDistance ? storedM : null,
+      notes: note.trim() || null,
+      setType,
+      loggedAt: now,
+      enteredWeight: weightDisplay,
+      enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
+    });
+    // Back-fill restAfterSec on the most recent logged set when a new set starts the rest clock.
+    const computeRestBackfill = (now: number): SessionSetLog | null => {
+      const prevLogged = logs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt)[0];
+      return prevLogged && prevLogged.restAfterSec == null
+        ? { ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))) }
+        : null;
+    };
+    const startRestTimer = (now: number): Session => {
+      const restSec = block.restSec ?? currentItem.restSec ?? 90;
+      return {
+        ...session,
+        restTimer: JSON.stringify({ status: "running", startedAt: now, durationSec: restSec, pausedAt: null, remainingSec: restSec } satisfies RestTimerData),
+        updatedAt: now,
+      };
+    };
+
     // ── Extra set branch (ADD SET button) ────────────────────────────────────
     if (cursor.isExtra) {
       const extraLog = [...logs]
@@ -1034,49 +1065,18 @@ function BottomPanel({
         .sort((a, b) => b.loggedAt - a.loggedAt)[0];
       if (!extraLog) return;
 
-      if (showWeightReps && !showDurationDistance && !hasStrengthMetric) {
-        setValidationError("Enter reps or weight before logging.");
-        return;
-      }
-      if (!showWeightReps && showDurationDistance && !hasCardioMetric) {
-        setValidationError("Enter duration or distance before logging.");
-        return;
-      }
-      if (showWeightReps && showDurationDistance && !hasStrengthMetric && !hasCardioMetric) {
-        setValidationError("Enter at least one metric before logging.");
-        return;
-      }
+      const invalid = validateMetrics();
+      if (invalid) { setValidationError(invalid); return; }
       setValidationError(null);
       setLogging(true);
       try {
         const now = Date.now();
-        const updatedExtraLog = {
-          ...extraLog,
-          reps,
-          weightKg: storedKg,
-          rpe,
-          durationSec: showDurationDistance ? (durationSec ?? null) : null,
-          distanceM: showDurationDistance ? storedM : null,
-          notes: note.trim() || null,
-          setType,
-          loggedAt: now,
-          enteredWeight: weightDisplay,
-          enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
-        };
-        const prevLogged = logs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt)[0];
-        const prevLogUpdate =
-          prevLogged && prevLogged.restAfterSec == null
-            ? { ...prevLogged, restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))) }
-            : null;
+        const updatedExtraLog = { ...extraLog, ...metricFields(now) };
+        const prevLogUpdate = computeRestBackfill(now);
         // Unlock AudioContext via this user gesture so it can play at timer expiry
         if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
         else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
-        const restSec = block.restSec ?? currentItem.restSec ?? 90;
-        const updatedSession: Session = {
-          ...session,
-          restTimer: JSON.stringify({ status: "running", startedAt: now, durationSec: restSec, pausedAt: null, remainingSec: restSec } satisfies RestTimerData),
-          updatedAt: now,
-        };
+        const updatedSession = startRestTimer(now);
         await updateSetBatch(updatedExtraLog, updatedSession, prevLogUpdate);
         setNote(""); onCloseNote(); setRpe(null);
         prevSlotKey.current = null;
@@ -1091,17 +1091,9 @@ function BottomPanel({
     // ── Normal / edit planned-slot branch ────────────────────────────────────
     if (!currentSlot) return;
 
-    // Validate
-    if (showWeightReps && !showDurationDistance && !hasStrengthMetric) {
-      setValidationError("Enter reps or weight before logging.");
-      return;
-    }
-    if (!showWeightReps && showDurationDistance && !hasCardioMetric) {
-      setValidationError("Enter duration or distance before logging.");
-      return;
-    }
-    if (showWeightReps && showDurationDistance && !hasStrengthMetric && !hasCardioMetric) {
-      setValidationError("Enter at least one metric before logging.");
+    const invalid = validateMetrics();
+    if (invalid) {
+      setValidationError(invalid);
       return;
     }
     setValidationError(null);
@@ -1118,18 +1110,7 @@ function BottomPanel({
           l.status === "logged",
       );
 
-      const updatedFields = {
-        reps,
-        weightKg: storedKg,
-        rpe,
-        durationSec: showDurationDistance ? (durationSec ?? null) : null,
-        distanceM: showDurationDistance ? storedM : null,
-        notes: note.trim() || null,
-        setType,
-        loggedAt: now,
-        enteredWeight: weightDisplay,
-        enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
-      };
+      const updatedFields = metricFields(now);
 
       if (existingLog) {
         // Update in place — don't advance rest timer or backfill restAfterSec
@@ -1138,16 +1119,7 @@ function BottomPanel({
         onEditSaved();
       } else {
         // New log: build all writes and commit in one transaction
-        const prevLogged = logs
-          .filter((l) => l.status === "logged")
-          .sort((a, b) => b.loggedAt - a.loggedAt)[0];
-        const prevLogUpdate =
-          prevLogged && prevLogged.restAfterSec == null
-            ? {
-                ...prevLogged,
-                restAfterSec: Math.min(3600, Math.max(0, Math.round((now - prevLogged.loggedAt) / 1000))),
-              }
-            : null;
+        const prevLogUpdate = computeRestBackfill(now);
 
         const order = logs.filter((l) => l.status === "logged").length;
         const record: SessionSetLog = {
@@ -1165,18 +1137,7 @@ function BottomPanel({
           ...updatedFields,
         };
 
-        const restSec = block.restSec ?? currentItem.restSec ?? 90;
-        const updatedSession: Session = {
-          ...session,
-          restTimer: JSON.stringify({
-            status: "running",
-            startedAt: now,
-            durationSec: restSec,
-            pausedAt: null,
-            remainingSec: restSec,
-          } satisfies RestTimerData),
-          updatedAt: now,
-        };
+        const updatedSession = startRestTimer(now);
 
         await logSetBatch(record, updatedSession, prevLogUpdate);
       }
@@ -2579,89 +2540,6 @@ export function ActiveWorkoutPage() {
       {/* Page-level toast (for finish/discard errors) */}
       {pageToast && <Toast message={pageToast.message} type={pageToast.type} />}
     </div>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function InfoIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12.01" y2="8" />
-    </svg>
-  );
-}
-
-function BackIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
-  );
-}
-
-function PlusSmIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function NoteIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </svg>
-  );
-}
-
-function KebabIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="12" cy="5" r="1.5" />
-      <circle cx="12" cy="12" r="1.5" />
-      <circle cx="12" cy="19" r="1.5" />
-    </svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="6" y="4" width="4" height="16" rx="1" />
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <polygon points="5 3 19 12 5 21 5 3" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-    </svg>
   );
 }
 

@@ -3,7 +3,7 @@
 Tracking issue for the codebase-health review. Sub-issues are ordered so they can be tackled one at a time.
 
 ## P1 — High
-- [ ] [01 — Refactor active.tsx god-component](01-active-tsx-god-component.md)
+- [x] [01 — Refactor active.tsx god-component](01-active-tsx-god-component.md) — `handleLogSet` duplication factored into shared helpers + icons extracted to sibling file; BottomPanel reducer / large stateful-component moves intentionally deferred (see issue note)
 - [x] [02 — DRY the data/sync layer](02-dry-data-sync-layer.md) — client factories done; server-route dedup intentionally descoped (see issue note)
 - [x] [03 — Remove migration self-healing hacks](03-migration-self-healing-hacks.md) — log bug fixed + ADR 0008 runbook; destructive baseline reset is a documented manual prod step
 

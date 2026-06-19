@@ -11,3 +11,26 @@ Part of the codebase-health roadmap.
 - Factor one shared `validateMetrics()` and one `buildLogWrites()` used by both branches of `handleLogSet`.
 
 **Priority:** P1. Independent; do the BottomPanel reducer extraction first.
+
+## Resolution (2026-06-19)
+
+Done in this pass:
+- **`handleLogSet` deduplication** (the concrete bug the issue flags). Both the extra-set
+  branch and the planned-slot branch now share four local helpers — `validateMetrics()`,
+  `metricFields(now)`, `computeRestBackfill(now)`, and `startRestTimer(now)` — instead of
+  the two copies of the validation block, the `updatedFields` object, the `prevLogUpdate`
+  computation, and the rest-timer JSON. Behavior is byte-for-byte identical; guarded by the
+  existing logger tests (`pages/workout/logger/__tests__`).
+- **Pure icons extracted** to a sibling `src/client/pages/workout/icons.tsx` (10 zero-state
+  SVG components). active.tsx dropped from 2,691 → 2,547 LOC.
+
+Intentionally **deferred** (not done here):
+- `BottomPanel` form-state → `useReducer`/hook extraction.
+- Moving `SetRow`, `ExerciseCard`, `RestTimerStrip`, `Toast` into sibling files.
+
+Why deferred: these are large stateful moves in the single most-churned file in git history,
+each closing over many `useState`/props. The autonomous code-health workflow runs without a
+per-issue human review checkpoint, and the test suite is node-env only (no DOM/render tests),
+so a reducer rewrite or component relocation here carries regression risk that can't be caught
+by the green gate. They're worth doing behind a human review checkpoint as a follow-up; the
+duplication bug — the part with a real correctness/maintenance cost — is resolved.
