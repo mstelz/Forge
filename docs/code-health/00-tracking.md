@@ -5,7 +5,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 ## P1 — High
 - [ ] [01 — Refactor active.tsx god-component](01-active-tsx-god-component.md)
 - [x] [02 — DRY the data/sync layer](02-dry-data-sync-layer.md) — client factories done; server-route dedup intentionally descoped (see issue note)
-- [ ] [03 — Remove migration self-healing hacks](03-migration-self-healing-hacks.md)
+- [x] [03 — Remove migration self-healing hacks](03-migration-self-healing-hacks.md) — log bug fixed + ADR 0008 runbook; destructive baseline reset is a documented manual prod step
 
 ## P2 — Medium
 - [x] [04 — Normalize timestamp storage modes](04-normalize-timestamp-modes.md)
