@@ -4,7 +4,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 
 ## P1 — High
 - [ ] [01 — Refactor active.tsx god-component](01-active-tsx-god-component.md)
-- [ ] [02 — DRY the data/sync layer](02-dry-data-sync-layer.md)
+- [x] [02 — DRY the data/sync layer](02-dry-data-sync-layer.md) — client factories done; server-route dedup intentionally descoped (see issue note)
 - [ ] [03 — Remove migration self-healing hacks](03-migration-self-healing-hacks.md)
 
 ## P2 — Medium

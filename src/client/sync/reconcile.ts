@@ -1,3 +1,4 @@
+import { type Table } from "dexie";
 import { forgeDB } from "../db/forge-db";
 import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Profile, WeightLog } from "../../shared";
 import type { Goal } from "../../shared/goals";
@@ -33,40 +34,36 @@ const indexPending = (rows: PendingWrite[], entity: PendingWrite["entity"]) => {
 
 // Merge-only: upsert server rows that aren't blocked by a pending local write.
 // Never deletes local rows — a reset/empty server should not wipe local data.
-
-async function reconcileExercises(serverRows: Exercise[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "exercise");
-  await forgeDB.transaction("rw", forgeDB.exercises, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      if (s.deletedAt) { await forgeDB.exercises.delete(s.id); continue; }
-      await forgeDB.exercises.put(s);
-    }
-  });
+// `softDelete` tables additionally honor a server-side `deletedAt` tombstone.
+function makeReconciler<T extends { id: string; deletedAt?: number | null }>(
+  table: Table<T, string>,
+  entity: PendingWrite["entity"],
+  opts: { softDelete: boolean },
+) {
+  return async (serverRows: T[], pending: PendingWrite[]) => {
+    const pendingMap = indexPending(pending, entity);
+    await forgeDB.transaction("rw", table, async () => {
+      for (const s of serverRows) {
+        if (pendingMap.has(s.id)) continue;
+        if (opts.softDelete && s.deletedAt) { await table.delete(s.id); continue; }
+        await table.put(s);
+      }
+    });
+  };
 }
 
-async function reconcileEquipment(serverRows: Equipment[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "equipment");
-  await forgeDB.transaction("rw", forgeDB.equipment, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      if (s.deletedAt) { await forgeDB.equipment.delete(s.id); continue; }
-      await forgeDB.equipment.put(s);
-    }
-  });
-}
+const reconcileExercises = makeReconciler(forgeDB.exercises, "exercise", { softDelete: true });
+const reconcileEquipment = makeReconciler(forgeDB.equipment, "equipment", { softDelete: true });
+const reconcileRoutines = makeReconciler(forgeDB.routines, "routine", { softDelete: true });
+const reconcilePrograms = makeReconciler(forgeDB.programs, "program", { softDelete: true });
+const reconcileGoals = makeReconciler(forgeDB.goals, "goal", { softDelete: true });
+const reconcileSessionLogs = makeReconciler(forgeDB.sessionSetLogs, "session_log", { softDelete: false });
+const reconcileProgramRuns = makeReconciler(forgeDB.programRuns, "program_run", { softDelete: false });
+const reconcileProfiles = makeReconciler(forgeDB.profiles, "profile", { softDelete: false });
+const reconcileWeightLogs = makeReconciler(forgeDB.weightLogs, "weight_log", { softDelete: false });
 
-async function reconcileRoutines(serverRows: Routine[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "routine");
-  await forgeDB.transaction("rw", forgeDB.routines, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      if (s.deletedAt) { await forgeDB.routines.delete(s.id); continue; }
-      await forgeDB.routines.put(s);
-    }
-  });
-}
-
+// Sessions reconcile is bespoke: a pending session_log write also pins its
+// parent session, so the pending set spans two entities.
 async function reconcileSessions(serverRows: Session[], pending: PendingWrite[]) {
   const pendingSessionIds = new Set<string>();
   for (const r of pending) {
@@ -83,74 +80,6 @@ async function reconcileSessions(serverRows: Session[], pending: PendingWrite[])
     for (const s of serverRows) {
       if (pendingSessionIds.has(s.id)) continue;
       await forgeDB.sessions.put(s);
-    }
-  });
-}
-
-async function reconcileSessionLogs(serverLogs: SessionSetLog[], pending: PendingWrite[]) {
-  const pendingLogIds = new Set<string>();
-  for (const r of pending) {
-    if (r.entity === "session_log") {
-      const id = (r.payload as { id?: string }).id;
-      if (id) pendingLogIds.add(id);
-    }
-  }
-  await forgeDB.transaction("rw", forgeDB.sessionSetLogs, async () => {
-    for (const log of serverLogs) {
-      if (pendingLogIds.has(log.id)) continue;
-      await forgeDB.sessionSetLogs.put(log);
-    }
-  });
-}
-
-async function reconcilePrograms(serverRows: Program[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "program");
-  await forgeDB.transaction("rw", forgeDB.programs, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      if (s.deletedAt) { await forgeDB.programs.delete(s.id); continue; }
-      await forgeDB.programs.put(s);
-    }
-  });
-}
-
-async function reconcileGoals(serverRows: Goal[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "goal");
-  await forgeDB.transaction("rw", forgeDB.goals, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      if (s.deletedAt) { await forgeDB.goals.delete(s.id); continue; }
-      await forgeDB.goals.put(s);
-    }
-  });
-}
-
-async function reconcileProgramRuns(serverRows: ProgramRun[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "program_run");
-  await forgeDB.transaction("rw", forgeDB.programRuns, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      await forgeDB.programRuns.put(s);
-    }
-  });
-}
-
-async function reconcileProfiles(serverRows: Profile[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "profile");
-  await forgeDB.transaction("rw", forgeDB.profiles, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      await forgeDB.profiles.put(s);
-    }
-  });
-}
-
-async function reconcileWeightLogs(serverRows: WeightLog[], pending: PendingWrite[]) {
-  const pendingMap = indexPending(pending, "weight_log");
-  await forgeDB.transaction("rw", forgeDB.weightLogs, async () => {
-    for (const s of serverRows) {
-      if (pendingMap.has(s.id)) continue;
-      await forgeDB.weightLogs.put(s);
     }
   });
 }
