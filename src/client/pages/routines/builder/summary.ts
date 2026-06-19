@@ -1,5 +1,5 @@
 import type { DraftItem } from "./state";
-import { formatMmSs } from "./mmss";
+import { formatMmSs } from "../../../lib/time";
 
 export function repsSummary(item: DraftItem): string {
   if (item.repMode === "per_set") return "varies";

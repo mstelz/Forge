@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatMmSs, parseMmSs } from "../mmss";
+import { formatMmSs, parseMmSs } from "../../../../lib/time";
 
 type Props = {
   durationSec: number | undefined;
