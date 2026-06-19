@@ -260,6 +260,38 @@ async function coalesceProfile(): Promise<void> {
   }
 }
 
+/**
+ * Causal drain group for an entity. Writes within a group must be sent in FIFO
+ * order (a `session_log` needs its parent `session` on the server first, etc.),
+ * so a retry blocks only its own group. Every other entity is independent, so
+ * one poisoned/​retrying write no longer starves unrelated writes behind it.
+ */
+export const drainGroupFor = (entity: PendingWrite["entity"]): string =>
+  entity === "session" || entity === "session_log" || entity === "session_times"
+    ? "session"
+    : entity;
+
+/**
+ * Send ready writes, preserving FIFO order within each causal group but draining
+ * groups independently: when a write returns "retry", we stop that group for
+ * this pass and move on to other groups instead of aborting the whole drain.
+ */
+async function drainPerGroup(
+  entries: PendingWrite[],
+  now: number,
+  skipBatchEntities: boolean,
+): Promise<void> {
+  const blockedGroups = new Set<string>();
+  for (const entry of entries) {
+    if (!isReady(entry, now)) continue;
+    if (skipBatchEntities && BATCH_ENTITIES.has(entry.entity)) continue;
+    const group = drainGroupFor(entry.entity);
+    if (blockedGroups.has(group)) continue;
+    const result = await handle(entry);
+    if (result === "retry") blockedGroups.add(group);
+  }
+}
+
 // Entities the batch endpoint can handle. Others fall back to single-item flush.
 const BATCH_ENTITIES = new Set<PendingWrite["entity"]>([
   "exercise", "equipment", "goal", "settings", "profile", "weight_log",
@@ -327,23 +359,12 @@ export async function flushNow(): Promise<void> {
     if (batchSucceeded) {
       // Re-fetch queue in case batch cleared some but not all (routines, programs, session_times)
       const remaining = await forgeDB.pendingWrites.orderBy("createdAt").toArray();
-      const nowAfter = Date.now();
-      for (const entry of remaining) {
-        if (!isReady(entry, nowAfter)) continue;
-        if (BATCH_ENTITIES.has(entry.entity)) continue; // already handled
-        const result = await handle(entry);
-        if (result === "retry") break;
-      }
+      await drainPerGroup(remaining, Date.now(), true);
     } else {
-      for (const entry of queue) {
-        if (!isReady(entry, now)) continue;
-        const result = await handle(entry);
-        if (result === "retry") {
-          // Stop draining this run on first retry to preserve FIFO and avoid
-          // hammering the server when offline. Triggers will re-invoke later.
-          break;
-        }
-      }
+      // Drain per causal group: a retry blocks only its own group (preserving
+      // FIFO there) so independent writes behind a poisoned one still flush.
+      // The navigator.onLine guard above already short-circuits the offline case.
+      await drainPerGroup(queue, now, false);
     }
   } finally {
     running = false;
