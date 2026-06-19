@@ -25,3 +25,9 @@ design/.stitch-project.json
 .claude/projects/
 .playwright-mcp/
 .claude/worktrees/
+.superpowers/
+
+# Screenshot / gif artifacts in repo root (canonical home is design/screenshots/)
+/*.png
+/*.gif
+/gif-frames/
