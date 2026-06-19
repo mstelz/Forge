@@ -6,6 +6,7 @@ import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance } from "../../lib/units";
+import { formatDurationMs, formatMmSs } from "../../lib/time";
 import { reopenSession, updateSessionTimes, deleteSession } from "../../db/mutations";
 import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { queryKeys } from "../../db/query-keys";
@@ -14,14 +15,6 @@ import type { SessionSetLog } from "../../../shared";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatDuration(ms: number): string {
-  const totalMin = Math.floor(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -45,12 +38,6 @@ function fromDatetimeLocal(s: string): number {
 function formatVolume(kg: number): string {
   if (kg >= 1000) return `${(kg / 1000).toFixed(1)}k`;
   return kg % 1 === 0 ? String(kg) : kg.toFixed(1);
-}
-
-function formatSecs(totalSec: number): string {
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +320,7 @@ export function SessionDetailPage() {
             >
               <span>
                 {formatDate(session.startedAt)}
-                {session.endedAt != null ? ` · ${formatDuration(durationMs)}` : ""}
+                {session.endedAt != null ? ` · ${formatDurationMs(durationMs)}` : ""}
               </span>
               <ClockEditIcon />
             </button>
@@ -568,7 +555,7 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg
 
   if (effectiveType === "cardio") {
     const parts: string[] = [];
-    if (hasDuration) parts.push(formatSecs(log.durationSec!));
+    if (hasDuration) parts.push(formatMmSs(log.durationSec!));
     if (hasDistance) parts.push(formatDistance(log.distanceM!, distanceUnit));
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
@@ -577,7 +564,7 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg
     const parts: string[] = [];
     if (hasWeight) parts.push(`${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`);
     else if (log.reps != null) parts.push(`${log.reps} reps`);
-    if (hasDuration) parts.push(formatSecs(log.durationSec!));
+    if (hasDuration) parts.push(formatMmSs(log.durationSec!));
     if (hasDistance) parts.push(formatDistance(log.distanceM!, distanceUnit));
     return parts.length > 0 ? parts.join(" · ") : "—";
   }

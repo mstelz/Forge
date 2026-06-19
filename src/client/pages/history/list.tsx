@@ -8,6 +8,7 @@ import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { HistoryFilter } from "../../../shared/history";
 import type { SessionSummary } from "../../../shared/history";
 import { SettingsContext } from "../../contexts/settings-context";
+import { formatDurationMs } from "../../lib/time";
 import { formatWeight } from "../../lib/units";
 
 // ---------------------------------------------------------------------------
@@ -15,14 +16,6 @@ import { formatWeight } from "../../lib/units";
 // ---------------------------------------------------------------------------
 
 type RangeFilter = HistoryFilter["range"];
-
-function formatDurationMs(ms: number): string {
-  const totalMin = Math.floor(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
 
 function formatVolume(kg: number): string {
   if (kg >= 1000) return `${(kg / 1000).toFixed(1)}k`;

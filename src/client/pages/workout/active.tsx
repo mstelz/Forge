@@ -34,6 +34,7 @@ import { ExercisePicker } from "../../components/exercise-picker";
 import { EditStructureSheet } from "./edit-structure/index";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
+import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
@@ -185,13 +186,6 @@ function countDoneSlots(
   return count;
 }
 
-function formatTimer(secs: number): string {
-  const s = Math.max(0, Math.round(secs));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r.toString().padStart(2, "0")}`;
-}
-
 function playBeep(ctx: AudioContext) {
   [0, 0.35].forEach((offset) => {
     const osc = ctx.createOscillator();
@@ -222,22 +216,6 @@ function formatRepsTarget(slot: PlannedSlot): string {
 function formatRpeTarget(slot: PlannedSlot): string {
   if (slot.rpe != null) return `RPE ${slot.rpe}`;
   return "";
-}
-
-function formatDuration(secs: number): string {
-  const s = Math.max(0, secs);
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r.toString().padStart(2, "0")}`;
-}
-
-function secsToTimeStr(secs: number): string {
-  const s = Math.max(0, Math.round(secs));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
-  return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
 function secondsToDigits(secs: number): number[] {
@@ -308,7 +286,7 @@ interface SetRowProps {
 
 function formatSetSummary(log: SessionSetLog, weightUnit: "kg" | "lb", distanceUnit: "m" | "km" | "mi"): string {
   const parts: string[] = [];
-  if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
+  if (log.durationSec != null) parts.push(formatHms(log.durationSec));
   if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
   if (log.weightKg != null && log.reps != null) parts.push(`${formatWeight(log.weightKg, weightUnit)} × ${log.reps}`);
   else if (log.reps != null) parts.push(`${log.reps} reps`);
@@ -873,7 +851,7 @@ function RestTimerStrip({ timer, displaySecs, onToggle }: RestTimerStripProps) {
             Rest
           </p>
           <p className="text-2xl font-bold tabular-nums text-[var(--text)]">
-            {formatTimer(displaySecs)}
+            {formatMmSs(displaySecs)}
           </p>
         </div>
       </div>
@@ -1672,7 +1650,7 @@ function ExerciseHistorySheet({
                     const parts: string[] = [];
                     if (log.weightKg != null) parts.push(formatWeight(log.weightKg, weightUnit));
                     if (log.reps != null) parts.push(`${log.reps} reps`);
-                    if (log.durationSec != null) parts.push(secsToTimeStr(log.durationSec));
+                    if (log.durationSec != null) parts.push(formatHms(log.durationSec));
                     if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
                     return (
                       <div key={log.id} className="flex items-center gap-3">

@@ -17,7 +17,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 
 ## P3 — Low
 - [ ] [10 — Unify logging strategy](10-unify-logging.md)
-- [ ] [11 — Consolidate time-formatting helpers](11-consolidate-time-formatters.md)
+- [x] [11 — Consolidate time-formatting helpers](11-consolidate-time-formatters.md)
 
 ## P4 — Hygiene
 - [x] [12 — Repo hygiene cleanup](12-repo-hygiene.md)
