@@ -1,3 +1,4 @@
+import { type Table } from "dexie";
 import { forgeDB } from "./forge-db";
 import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings, ProgramRunDayStatus } from "../../shared";
 import { SETTINGS_ID } from "../../shared/settings";
@@ -31,82 +32,57 @@ const enqueue = (
   status: "pending",
 });
 
-export async function createExercise(record: Exercise): Promise<Exercise> {
-  await forgeDB.transaction("rw", forgeDB.exercises, forgeDB.pendingWrites, async () => {
-    await forgeDB.exercises.add(record);
-    await forgeDB.pendingWrites.add(enqueue("exercise", "create", record));
-  });
-  return record;
+/**
+ * Factory for the standard offline-outbox CRUD triple: write the record to its
+ * Dexie table and enqueue a matching pendingWrite, in one transaction. Entities
+ * with extra guards or non-`{ id }` delete payloads (sessions, session logs,
+ * settings, profiles, weight logs) are written by hand below.
+ */
+function crudMutations<T extends { id: string }>(
+  table: Table<T, string>,
+  entity: PendingWrite["entity"],
+) {
+  return {
+    create: async (record: T): Promise<T> => {
+      await forgeDB.transaction("rw", table, forgeDB.pendingWrites, async () => {
+        await table.add(record);
+        await forgeDB.pendingWrites.add(enqueue(entity, "create", record));
+      });
+      return record;
+    },
+    update: async (record: T): Promise<T> => {
+      await forgeDB.transaction("rw", table, forgeDB.pendingWrites, async () => {
+        await table.put(record);
+        await forgeDB.pendingWrites.add(enqueue(entity, "update", record));
+      });
+      return record;
+    },
+    remove: async (id: string): Promise<void> => {
+      await forgeDB.transaction("rw", table, forgeDB.pendingWrites, async () => {
+        await table.delete(id);
+        await forgeDB.pendingWrites.add(enqueue(entity, "delete", { id }));
+      });
+    },
+  };
 }
 
-export async function updateExercise(record: Exercise): Promise<Exercise> {
-  await forgeDB.transaction("rw", forgeDB.exercises, forgeDB.pendingWrites, async () => {
-    await forgeDB.exercises.put(record);
-    await forgeDB.pendingWrites.add(enqueue("exercise", "update", record));
-  });
-  return record;
-}
+const exerciseMutations = crudMutations(forgeDB.exercises, "exercise");
+export const createExercise = exerciseMutations.create;
+export const updateExercise = exerciseMutations.update;
+export const deleteExercise = exerciseMutations.remove;
 
-export async function deleteExercise(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.exercises, forgeDB.pendingWrites, async () => {
-    await forgeDB.exercises.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("exercise", "delete", { id }));
-  });
-}
+const equipmentMutations = crudMutations(forgeDB.equipment, "equipment");
+export const createEquipment = equipmentMutations.create;
+export const updateEquipment = equipmentMutations.update;
+export const deleteEquipment = equipmentMutations.remove;
 
-export async function createEquipment(record: Equipment): Promise<Equipment> {
-  await forgeDB.transaction("rw", forgeDB.equipment, forgeDB.pendingWrites, async () => {
-    await forgeDB.equipment.add(record);
-    await forgeDB.pendingWrites.add(enqueue("equipment", "create", record));
-  });
-  return record;
-}
+const routineMutations = crudMutations(forgeDB.routines, "routine");
+export const createRoutine = routineMutations.create;
+export const updateRoutine = routineMutations.update;
+export const deleteRoutine = routineMutations.remove;
 
-export async function updateEquipment(record: Equipment): Promise<Equipment> {
-  await forgeDB.transaction("rw", forgeDB.equipment, forgeDB.pendingWrites, async () => {
-    await forgeDB.equipment.put(record);
-    await forgeDB.pendingWrites.add(enqueue("equipment", "update", record));
-  });
-  return record;
-}
-
-export async function deleteEquipment(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.equipment, forgeDB.pendingWrites, async () => {
-    await forgeDB.equipment.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("equipment", "delete", { id }));
-  });
-}
-
-export async function createRoutine(record: Routine): Promise<Routine> {
-  await forgeDB.transaction("rw", forgeDB.routines, forgeDB.pendingWrites, async () => {
-    await forgeDB.routines.add(record);
-    await forgeDB.pendingWrites.add(enqueue("routine", "create", record));
-  });
-  return record;
-}
-
-export async function updateRoutine(record: Routine): Promise<Routine> {
-  await forgeDB.transaction("rw", forgeDB.routines, forgeDB.pendingWrites, async () => {
-    await forgeDB.routines.put(record);
-    await forgeDB.pendingWrites.add(enqueue("routine", "update", record));
-  });
-  return record;
-}
-
-export async function deleteRoutine(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.routines, forgeDB.pendingWrites, async () => {
-    await forgeDB.routines.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("routine", "delete", { id }));
-  });
-}
-
-export async function createSession(record: Session): Promise<Session> {
-  await forgeDB.transaction("rw", forgeDB.sessions, forgeDB.pendingWrites, async () => {
-    await forgeDB.sessions.add(record);
-    await forgeDB.pendingWrites.add(enqueue("session", "create", record));
-  });
-  return record;
-}
+const sessionMutations = crudMutations(forgeDB.sessions, "session");
+export const createSession = sessionMutations.create;
 
 export async function updateSession(record: Session): Promise<Session> {
   await guardNotFinished(record.id);
@@ -299,40 +275,18 @@ async function guardRunOpen(runId: string): Promise<void> {
   }
 }
 
-export async function createProgram(record: Program): Promise<Program> {
-  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
-    await forgeDB.programs.add(record);
-    await forgeDB.pendingWrites.add(enqueue("program", "create", record));
-  });
-  return record;
-}
-
-export async function updateProgram(record: Program): Promise<Program> {
-  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
-    await forgeDB.programs.put(record);
-    await forgeDB.pendingWrites.add(enqueue("program", "update", record));
-  });
-  return record;
-}
-
-export async function deleteProgram(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.programs, forgeDB.pendingWrites, async () => {
-    await forgeDB.programs.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("program", "delete", { id }));
-  });
-}
+const programMutations = crudMutations(forgeDB.programs, "program");
+export const createProgram = programMutations.create;
+export const updateProgram = programMutations.update;
+export const deleteProgram = programMutations.remove;
 
 // ---------------------------------------------------------------------------
 // ProgramRun mutations
 // ---------------------------------------------------------------------------
 
-export async function createProgramRun(record: ProgramRun): Promise<ProgramRun> {
-  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
-    await forgeDB.programRuns.add(record);
-    await forgeDB.pendingWrites.add(enqueue("program_run", "create", record));
-  });
-  return record;
-}
+const programRunMutations = crudMutations(forgeDB.programRuns, "program_run");
+export const createProgramRun = programRunMutations.create;
+export const deleteProgramRun = programRunMutations.remove;
 
 export async function updateProgramRun(record: ProgramRun): Promise<ProgramRun> {
   await guardRunOpen(record.id);
@@ -341,13 +295,6 @@ export async function updateProgramRun(record: ProgramRun): Promise<ProgramRun> 
     await forgeDB.pendingWrites.add(enqueue("program_run", "update", record));
   });
   return record;
-}
-
-export async function deleteProgramRun(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
-    await forgeDB.programRuns.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("program_run", "delete", { id }));
-  });
 }
 
 export async function endProgramRun(
@@ -401,28 +348,10 @@ export async function setProgramRunDayState(
 // Goal mutations
 // ---------------------------------------------------------------------------
 
-export async function createGoal(record: Goal): Promise<Goal> {
-  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
-    await forgeDB.goals.add(record);
-    await forgeDB.pendingWrites.add(enqueue("goal", "create", record));
-  });
-  return record;
-}
-
-export async function updateGoal(record: Goal): Promise<Goal> {
-  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
-    await forgeDB.goals.put(record);
-    await forgeDB.pendingWrites.add(enqueue("goal", "update", record));
-  });
-  return record;
-}
-
-export async function deleteGoal(id: string): Promise<void> {
-  await forgeDB.transaction("rw", forgeDB.goals, forgeDB.pendingWrites, async () => {
-    await forgeDB.goals.delete(id);
-    await forgeDB.pendingWrites.add(enqueue("goal", "delete", { id }));
-  });
-}
+const goalMutations = crudMutations(forgeDB.goals, "goal");
+export const createGoal = goalMutations.create;
+export const updateGoal = goalMutations.update;
+export const deleteGoal = goalMutations.remove;
 
 // ---------------------------------------------------------------------------
 // Settings mutations
