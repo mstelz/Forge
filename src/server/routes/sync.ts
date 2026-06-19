@@ -265,7 +265,7 @@ function applySessionLog(entry: { id: string; op: string; payload: Payload }): I
       notes: entry.payload.notes ?? null,
       setType: entry.payload.setType,
       status: entry.payload.status,
-      loggedAt: new Date(entry.payload.loggedAt ?? now),
+      loggedAt: entry.payload.loggedAt ?? now,
       restAfterSec: entry.payload.restAfterSec ?? null,
       enteredWeight: entry.payload.enteredWeight ?? null,
       enteredWeightUnit: entry.payload.enteredWeightUnit ?? null,
@@ -321,7 +321,7 @@ function applySession(entry: { id: string; op: string; payload: Payload }): Item
       restTimer: entry.payload.restTimer ?? null,
       title: entry.payload.title ?? null,
       notes: entry.payload.notes ?? null,
-      startedAt: new Date(entry.payload.startedAt ?? now),
+      startedAt: entry.payload.startedAt ?? now,
       endedAt: null,
       pausedAt: null,
       createdAt: entry.payload.createdAt ?? now,
@@ -339,7 +339,7 @@ function applySession(entry: { id: string; op: string; payload: Payload }): Item
       restTimer: entry.payload.restTimer ?? existing.restTimer,
       title: entry.payload.title ?? existing.title,
       notes: entry.payload.notes ?? existing.notes,
-      endedAt: isFinish ? new Date(entry.payload.endedAt ?? now) : existing.endedAt,
+      endedAt: isFinish ? (entry.payload.endedAt ?? now) : existing.endedAt,
       updatedAt: Math.max(entry.payload.updatedAt ?? 0, now),
     }).where(eq(sessions.id, id)).run();
     return { id: entry.id, status: "ok", code: 200 };
