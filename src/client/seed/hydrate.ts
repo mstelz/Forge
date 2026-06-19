@@ -17,6 +17,9 @@ const META_KEY = "seedHydratedAt";
 const parseSeed = <T>(raw: unknown[], schema: { parse: (v: unknown) => T }): T[] =>
   raw.map((r) => schema.parse(r));
 
+// Sanctioned construction point for seed-create writes (mirrors `enqueue` in
+// mutations.ts): payloads are full domain records typed loosely as `{ id }`, so
+// the union cast is contained here.
 const buildPending = (
   entity: PendingWrite["entity"],
   payloads: { id: string }[],
@@ -31,7 +34,7 @@ const buildPending = (
     retries: 0,
     lastError: null,
     status: "pending" as const,
-  }));
+  } as PendingWrite));
 };
 
 export async function hydrateIfEmpty(): Promise<void> {
