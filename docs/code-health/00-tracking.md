@@ -12,7 +12,7 @@ Tracking issue for the codebase-health review. Sub-issues are ordered so they ca
 - [ ] [05 — React error boundary + global error handler](05-error-boundary.md)
 - [x] [06 — Type the sync payload boundary](06-type-sync-payload.md)
 - [x] [07 — Sync drain robustness](07-sync-drain-robustness.md)
-- [ ] [08 — Fix/remove drifted pendingWrites schema mirror](08-pendingwrites-schema-mirror.md)
+- [x] [08 — Fix/remove drifted pendingWrites schema mirror](08-pendingwrites-schema-mirror.md) — code mirror removed; physical table drop folded into issue 03
 - [ ] [09 — Decompose oversized modules](09-decompose-oversized-modules.md)
 
 ## P3 — Low

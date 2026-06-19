@@ -11,3 +11,11 @@ Part of the codebase-health roadmap.
 - Document the recovery and going-forward migration process in an ADR.
 
 **Priority:** P1. Independent.
+
+## Carried-in from issue 08
+The drifted `pending_writes` Drizzle mirror was removed from `src/db/schema.ts`
+(it was server-unused). The legacy physical `pending_writes` table — created by
+migration 0000 and never touched by the server — should be **dropped** as part
+of this migration-baseline reset. It was not dropped in issue 08 because
+`drizzle-kit generate` currently fails on snapshot collisions
+(`meta/0002–0004_snapshot.json`), which this issue fixes.

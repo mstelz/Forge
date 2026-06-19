@@ -136,26 +136,19 @@ export const routineSetTargets = sqliteTable(
   }),
 );
 
-/**
- * Mirror of the client outbox so the schema is reviewable in one place.
- * Server routes never write to this table in v1.
- */
-export const pendingWrites = sqliteTable(
-  "pending_writes",
-  {
-    id: text("id").primaryKey(),
-    entity: text("entity").notNull(),
-    op: text("op").notNull(),
-    payload: text("payload").notNull(),
-    createdAt: integer("created_at").notNull(),
-    retries: integer("retries").notNull().default(0),
-    lastError: text("last_error"),
-  },
-  (t) => ({
-    createdAtIdx: index("idx_pending_writes_created_at").on(t.createdAt),
-    entityOpIdx: index("idx_pending_writes_entity_op").on(t.entity, t.op),
-  }),
-);
+// NOTE: there is intentionally no server-side `pending_writes` table here. The
+// outbox lives only in the client's IndexedDB; the server applies writes via
+// POST /sync straight to the entity tables and never persists the queue. The
+// single source of truth for the outbox shape is the client `PendingWrite` type
+// / `PendingWriteSchema` in `src/shared/pending-write.ts`.
+//
+// A drifted Drizzle mirror of this table previously lived here "for
+// reviewability"; it was server-unused and had fallen out of sync with the
+// client type (missing `status` / `lastAttemptAt`), so it was removed — a wrong
+// mirror is worse than none. A legacy physical `pending_writes` table still
+// exists in older databases (created by migration 0000); dropping it is folded
+// into the migration-baseline cleanup tracked by issue 03, since the migration
+// snapshots can't currently be regenerated independently.
 
 export const sessions = sqliteTable(
   "sessions",
