@@ -7,6 +7,13 @@ import { syncLog } from "./sync-logger";
 
 const API_BASE = "/api/v1";
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
+// Re-fetch a window of already-seen server changes on each `since` query. The
+// server filters by `updatedAt >= since`, and writes that landed in the same
+// millisecond as our last cursor — or arrived slightly out of order relative to
+// clock skew between server and client — could otherwise be skipped forever.
+// Overlapping the window by 30s trades a little redundant work for not missing
+// rows at the boundary (merge is idempotent, so re-applying a row is harmless).
+const RECONCILE_OVERLAP_MS = 30_000;
 
 let running = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -90,7 +97,7 @@ export async function reconcileNow(): Promise<void> {
   syncLog({ level: "info", category: "reconcile", message: "cycle start" });
   try {
     const since = await getSince();
-    const sinceParam = since > 0 ? `?since=${since - 30_000}` : "";
+    const sinceParam = since > 0 ? `?since=${since - RECONCILE_OVERLAP_MS}` : "";
 
     const [exResp, eqResp, rtResp, sessResp, logsResp, progResp, runsResp, goalsResp, profileResp, wlResp, pending] = await Promise.all([
       fetchSafe<{ exercises: Exercise[] }>(`${API_BASE}/exercises${sinceParam}`),
