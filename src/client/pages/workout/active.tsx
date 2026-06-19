@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type MutableRefObject } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
@@ -36,6 +36,10 @@ import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
+import {
+  logFormReducer, initialLogFormState, formatDigits,
+  type LogFormPrefill,
+} from "../../lib/session/log-form";
 import { syncLog } from "../../sync/sync-logger";
 import {
   ChevronRightIcon, InfoIcon, BackIcon, CheckIcon, PlusSmIcon,
@@ -221,40 +225,6 @@ function formatRepsTarget(slot: PlannedSlot): string {
 function formatRpeTarget(slot: PlannedSlot): string {
   if (slot.rpe != null) return `RPE ${slot.rpe}`;
   return "";
-}
-
-function secondsToDigits(secs: number): number[] {
-  const s = Math.max(0, Math.round(secs));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  const full = [
-    Math.floor(h / 10), h % 10,
-    Math.floor(m / 10), m % 10,
-    Math.floor(r / 10), r % 10,
-  ];
-  // Trim leading zeros
-  let start = 0;
-  while (start < full.length - 1 && full[start] === 0) start++;
-  return full.slice(start);
-}
-
-function bufferToSeconds(digits: number[]): number {
-  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
-  const h = padded[0]! * 10 + padded[1]!;
-  const m = padded[2]! * 10 + padded[3]!;
-  const s = padded[4]! * 10 + padded[5]!;
-  return h * 3600 + m * 60 + s;
-}
-
-function formatDigits(digits: number[]): string {
-  if (digits.length === 0) return "";
-  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
-  const h = padded[0]! * 10 + padded[1]!;
-  const m = padded[2]! * 10 + padded[3]!;
-  const s = padded[4]! * 10 + padded[5]!;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -893,17 +863,14 @@ function BottomPanel({
   onCloseNote,
   audioCtxRef,
 }: BottomPanelProps) {
-  const [weightDisplay, setWeightDisplay] = useState<number | null>(null);
-  const [weightInputStr, setWeightInputStr] = useState<string>("");
-  const [reps, setReps] = useState<number | null>(null);
-  const [repsInputStr, setRepsInputStr] = useState<string>("");
-  const [rpe, setRpe] = useState<number | null>(null);
-  const [durationSec, setDurationSec] = useState<number | null>(null);
-  const [durationDigits, setDurationDigits] = useState<number[]>([]);
-  const [distanceDisplay, setDistanceDisplay] = useState<number | null>(null);
-  const [distanceInputStr, setDistanceInputStr] = useState<string>("");
-  const [setType, setSetType] = useState<LogSetType>("normal");
-  const [note, setNote] = useState("");
+  // All metric form fields live in one reducer so paired display/input values stay in
+  // lock-step; see lib/session/log-form.ts. UI status (logging/validation/toast) is
+  // orthogonal and stays as plain state.
+  const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
+  const {
+    weightDisplay, weightInputStr, reps, repsInputStr, rpe,
+    durationSec, durationDigits, distanceDisplay, distanceInputStr, setType, note,
+  } = form;
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
@@ -969,45 +936,42 @@ function BottomPanel({
         l.status === "logged",
     );
 
-    const setWeight = (kg: number) => {
-      const val = Math.round(convertWeight(kg, weightUnit) * 100) / 100;
-      setWeightDisplay(val);
-      setWeightInputStr(String(val));
-    };
-    const setDist = (m: number) => {
-      const val = Math.round(convertDistance(m, distanceUnit) * 1000) / 1000;
-      setDistanceDisplay(val);
-      setDistanceInputStr(String(val));
-    };
+    const toWeightDisplay = (kg: number) => Math.round(convertWeight(kg, weightUnit) * 100) / 100;
+    const toDistanceDisplay = (m: number) => Math.round(convertDistance(m, distanceUnit) * 1000) / 1000;
 
     if (existingLog) {
-      if (existingLog.weightKg != null) setWeight(existingLog.weightKg);
-      if (existingLog.reps != null) { setReps(existingLog.reps); setRepsInputStr(String(existingLog.reps)); }
-      if (existingLog.rpe != null) setRpe(existingLog.rpe);
-      if (existingLog.durationSec != null) { setDurationSec(existingLog.durationSec); setDurationDigits(secondsToDigits(existingLog.durationSec)); }
-      if (existingLog.distanceM != null) setDist(existingLog.distanceM);
-      setSetType((existingLog.setType as LogSetType) ?? "normal");
-      // Pre-fill note from the saved log so editing can't accidentally wipe it
-      setNote(existingLog.notes ?? "");
+      const values: LogFormPrefill = {
+        setType: (existingLog.setType as LogSetType) ?? "normal",
+        // Pre-fill note from the saved log so editing can't accidentally wipe it
+        note: existingLog.notes ?? "",
+      };
+      if (existingLog.weightKg != null) values.weightDisplay = toWeightDisplay(existingLog.weightKg);
+      if (existingLog.reps != null) values.reps = existingLog.reps;
+      if (existingLog.rpe != null) values.rpe = existingLog.rpe;
+      if (existingLog.durationSec != null) values.durationSec = existingLog.durationSec;
+      if (existingLog.distanceM != null) values.distanceDisplay = toDistanceDisplay(existingLog.distanceM);
+      dispatch({ type: "prefill", values });
       return;
     }
 
     // No existing log — clear note and pre-fill metrics from the last logged set.
-    setNote("");
+    dispatch({ type: "prefill", values: { note: "" } });
 
-    // No existing log — pre-fill from the last logged set for this exercise
-    // across ALL sessions (not just the current one).
+    // Pre-fill from the last logged set for this exercise across ALL sessions
+    // (not just the current one).
     let isCurrent = true;
     getLastLogValuesForExercise(currentItem.exerciseId).then((prev) => {
       if (!isCurrent) return;
       if (prev) {
-        if (prev.weightKg != null) setWeight(prev.weightKg);
-        if (prev.reps != null) { setReps(prev.reps); setRepsInputStr(String(prev.reps)); }
-        if (prev.durationSec != null) { setDurationSec(prev.durationSec); setDurationDigits(secondsToDigits(prev.durationSec)); }
-        if (prev.distanceM != null) setDist(prev.distanceM);
+        const values: LogFormPrefill = {};
+        if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
+        if (prev.reps != null) values.reps = prev.reps;
+        if (prev.durationSec != null) values.durationSec = prev.durationSec;
+        if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
         // Do not pre-fill RPE — it is per-set
-      } else {
-        if (currentSlot.reps != null) { setReps(currentSlot.reps); setRepsInputStr(String(currentSlot.reps)); }
+        dispatch({ type: "prefill", values });
+      } else if (currentSlot.reps != null) {
+        dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
       }
     });
     return () => { isCurrent = false; };
@@ -1079,7 +1043,7 @@ function BottomPanel({
         else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
         const updatedSession = startRestTimer(now);
         await updateSetBatch(updatedExtraLog, updatedSession, prevLogUpdate);
-        setNote(""); onCloseNote(); setRpe(null);
+        dispatch({ type: "resetAfterLog" }); onCloseNote();
         prevSlotKey.current = null;
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Failed to save. Please try again.");
@@ -1143,7 +1107,7 @@ function BottomPanel({
         await logSetBatch(record, updatedSession, prevLogUpdate);
       }
 
-      setNote(""); onCloseNote(); setRpe(null);
+      dispatch({ type: "resetAfterLog" }); onCloseNote();
       // Reset slot tracking so the next cursor position pre-fills fresh
       prevSlotKey.current = null;
     } catch (err) {
@@ -1207,9 +1171,7 @@ function BottomPanel({
                     aria-label={`Decrease weight by 2.5 ${weightUnit}`}
                     onClick={() => {
                       setValidationError(null);
-                      const next = Math.max(0, Number(((weightDisplay ?? 0) - 2.5).toFixed(2)));
-                      setWeightDisplay(next);
-                      setWeightInputStr(String(next));
+                      dispatch({ type: "adjustWeight", delta: -2.5 });
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -1223,9 +1185,7 @@ function BottomPanel({
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       setValidationError(null);
-                      setWeightInputStr(e.target.value);
-                      const v = parseFloat(e.target.value);
-                      setWeightDisplay(isNaN(v) ? null : Math.max(0, v));
+                      dispatch({ type: "weightInput", value: e.target.value });
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                   />
@@ -1234,9 +1194,7 @@ function BottomPanel({
                     aria-label={`Increase weight by 2.5 ${weightUnit}`}
                     onClick={() => {
                       setValidationError(null);
-                      const next = Number(((weightDisplay ?? 0) + 2.5).toFixed(2));
-                      setWeightDisplay(next);
-                      setWeightInputStr(String(next));
+                      dispatch({ type: "adjustWeight", delta: 2.5 });
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -1255,9 +1213,7 @@ function BottomPanel({
                     aria-label="Decrease reps by 1"
                     onClick={() => {
                       setValidationError(null);
-                      const next = Math.max(1, (reps ?? 1) - 1);
-                      setReps(next);
-                      setRepsInputStr(String(next));
+                      dispatch({ type: "decrementReps" });
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -1271,9 +1227,7 @@ function BottomPanel({
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       setValidationError(null);
-                      setRepsInputStr(e.target.value);
-                      const v = parseInt(e.target.value, 10);
-                      setReps(isNaN(v) ? null : Math.max(0, v));
+                      dispatch({ type: "repsInput", value: e.target.value });
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                   />
@@ -1282,9 +1236,7 @@ function BottomPanel({
                     aria-label="Increase reps by 1"
                     onClick={() => {
                       setValidationError(null);
-                      const next = (reps ?? 0) + 1;
-                      setReps(next);
-                      setRepsInputStr(String(next));
+                      dispatch({ type: "incrementReps" });
                     }}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
@@ -1304,11 +1256,7 @@ function BottomPanel({
                   <button
                     type="button"
                     aria-label="Decrease duration by 30 seconds"
-                    onClick={() => {
-                      const next = Math.max(0, (durationSec ?? 0) - 30);
-                      setDurationSec(next > 0 ? next : null);
-                      setDurationDigits(next > 0 ? secondsToDigits(next) : []);
-                    }}
+                    onClick={() => dispatch({ type: "decrementDuration" })}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     −
@@ -1323,29 +1271,19 @@ function BottomPanel({
                     onKeyDown={(e) => {
                       if (e.key >= "0" && e.key <= "9") {
                         e.preventDefault();
-                        const next = [...durationDigits, parseInt(e.key, 10)].slice(-6);
-                        setDurationDigits(next);
-                        setDurationSec(bufferToSeconds(next));
+                        dispatch({ type: "pushDurationDigit", digit: parseInt(e.key, 10) });
                       } else if (e.key === "Backspace") {
                         e.preventDefault();
-                        const next = durationDigits.slice(0, -1);
-                        setDurationDigits(next);
-                        setDurationSec(next.length > 0 ? bufferToSeconds(next) : null);
+                        dispatch({ type: "popDurationDigit" });
                       }
                     }}
                     onInput={(e) => {
                       const ie = e.nativeEvent as InputEvent;
                       if (ie.inputType === "insertText" && ie.data) {
                         const d = parseInt(ie.data, 10);
-                        if (!isNaN(d)) {
-                          const next = [...durationDigits, d].slice(-6);
-                          setDurationDigits(next);
-                          setDurationSec(bufferToSeconds(next));
-                        }
+                        if (!isNaN(d)) dispatch({ type: "pushDurationDigit", digit: d });
                       } else if (ie.inputType === "deleteContentBackward") {
-                        const next = durationDigits.slice(0, -1);
-                        setDurationDigits(next);
-                        setDurationSec(next.length > 0 ? bufferToSeconds(next) : null);
+                        dispatch({ type: "popDurationDigit" });
                       }
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
@@ -1353,11 +1291,7 @@ function BottomPanel({
                   <button
                     type="button"
                     aria-label="Increase duration by 30 seconds"
-                    onClick={() => {
-                      const next = (durationSec ?? 0) + 30;
-                      setDurationSec(next);
-                      setDurationDigits(secondsToDigits(next));
-                    }}
+                    onClick={() => dispatch({ type: "incrementDuration" })}
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                   >
                     +
@@ -1377,11 +1311,7 @@ function BottomPanel({
                         <button
                           type="button"
                           aria-label={`Decrease distance by ${distanceStep} ${distanceUnit}`}
-                          onClick={() => {
-                            const next = Math.max(0, Math.round(((distanceDisplay ?? 0) - distanceStep) * 1000) / 1000);
-                            setDistanceDisplay(next);
-                            setDistanceInputStr(String(next));
-                          }}
+                          onClick={() => dispatch({ type: "adjustDistance", delta: -distanceStep })}
                           className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                         >
                           −
@@ -1392,21 +1322,13 @@ function BottomPanel({
                           value={distanceInputStr}
                           placeholder="—"
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
-                            setDistanceInputStr(e.target.value);
-                            const v = parseFloat(e.target.value);
-                            setDistanceDisplay(isNaN(v) ? null : Math.max(0, v));
-                          }}
+                          onChange={(e) => dispatch({ type: "distanceInput", value: e.target.value })}
                           className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                         />
                         <button
                           type="button"
                           aria-label={`Increase distance by ${distanceStep} ${distanceUnit}`}
-                          onClick={() => {
-                            const next = Math.round(((distanceDisplay ?? 0) + distanceStep) * 1000) / 1000;
-                            setDistanceDisplay(next);
-                            setDistanceInputStr(String(next));
-                          }}
+                          onClick={() => dispatch({ type: "adjustDistance", delta: distanceStep })}
                           className="flex h-11 w-11 flex-shrink-0 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
                         >
                           +
@@ -1430,7 +1352,7 @@ function BottomPanel({
             <button
               type="button"
               aria-label="Decrease RPE by 0.5"
-              onClick={() => setRpe((r) => r != null ? Math.max(0, Math.round((r - 0.5) * 2) / 2) : null)}
+              onClick={() => dispatch({ type: "decrementRpe" })}
               className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
             >
               −
@@ -1441,7 +1363,7 @@ function BottomPanel({
             <button
               type="button"
               aria-label="Increase RPE by 0.5"
-              onClick={() => setRpe((r) => Math.min(10, Math.round(((r ?? 5) + 0.5) * 2) / 2))}
+              onClick={() => dispatch({ type: "incrementRpe" })}
               className="flex h-11 w-11 items-center justify-center text-xl text-[var(--text-muted)] hover:text-[var(--text)]"
             >
               +
@@ -1456,7 +1378,7 @@ function BottomPanel({
             <button
               key={key}
               type="button"
-              onClick={() => setSetType(key)}
+              onClick={() => dispatch({ type: "setSetType", setType: key })}
               className={[
                 "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                 setType === key
@@ -1486,7 +1408,7 @@ function BottomPanel({
         {noteOpen && (
           <textarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => dispatch({ type: "setNote", note: e.target.value })}
             placeholder="Add a note…"
             rows={2}
             autoFocus
