@@ -127,7 +127,7 @@ export function useLastLogForExercise(exerciseId: string | undefined) {
 export function useAllSessionLogs() {
   const qc = useQueryClient();
   useEffect(() => {
-    const sub = liveQuery(() => forgeDB.sessionSetLogs.count()).subscribe({
+    const sub = liveQuery(() => forgeDB.sessionSetLogs.toArray()).subscribe({
       next: () => qc.invalidateQueries({ queryKey: queryKeys.sessions.allLogs() }),
     });
     return () => sub.unsubscribe();

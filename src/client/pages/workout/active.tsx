@@ -1996,7 +1996,7 @@ export function ActiveWorkoutPage() {
       if (session.sourceType === "program_day") {
         reconcileProgramRuns().catch((err) => syncLog({ level: "error", category: "reconcile", message: "program-run reconcile after finish failed", detail: String(err) }));
       }
-      reconcileGoals(session.id).catch((err) => syncLog({ level: "error", category: "reconcile", message: "goal reconcile after finish failed", detail: String(err) }));
+      await reconcileGoals(session.id).catch((err) => syncLog({ level: "error", category: "reconcile", message: "goal reconcile after finish failed", detail: String(err) }));
       navigate(`/workout/sessions/${session.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to finish workout. Please try again.";

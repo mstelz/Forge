@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Goal } from "../../../shared/goals";
 import type { SessionSetLog } from "../../../shared/session-log";
-import { computeGoalProgress } from "../progress";
+import { computeGoalProgress, getGoalEffectiveStatus } from "../progress";
 
 const createdAt = 1_000;
 const exerciseId = "00000000-0000-0000-0000-000000000001";
@@ -63,6 +63,10 @@ describe("computeGoalProgress", () => {
     expect(progress.percent).toBe(1);
     expect(progress.isComplete).toBe(true);
     expect(progress.hasInsufficientData).toBe(false);
+  });
+
+  it("treats completed derived cardio goals as completed before status is persisted", () => {
+    expect(getGoalEffectiveStatus(makeGoal(), { setLogs: [makeLog()] })).toBe("completed");
   });
 
   it("computes strength goals even when baseline is blank", () => {

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight } from "../../lib/units";
 import { formatGoalValue } from "../goals/format";
+import { reconcileGoals } from "../../goals/reconcile";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import {
   useHomepageState,
@@ -720,6 +721,11 @@ export function HomePage() {
   const [dayDetail, setDayDetail] = useState<DayDetail | null>(null);
   const [dayDetailLoading, setDayDetailLoading] = useState(false);
   const anchorRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    reconcileGoals("home").catch(() => undefined);
+  }, [isLoading, data]);
 
   const handleDayTap = useCallback(async (dot: HomepageCalendarDot) => {
     setSelectedDot(dot);

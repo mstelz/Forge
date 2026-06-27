@@ -8,7 +8,7 @@ import { queryKeys } from "../db/query-keys";
 export function useGoals() {
   const qc = useQueryClient();
   useEffect(() => {
-    const sub = liveQuery(() => forgeDB.goals.count()).subscribe({
+    const sub = liveQuery(() => forgeDB.goals.toArray()).subscribe({
       next: () => qc.invalidateQueries({ queryKey: queryKeys.goals.all }),
     });
     return () => sub.unsubscribe();

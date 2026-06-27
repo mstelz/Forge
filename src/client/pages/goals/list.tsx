@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate, useSearchParams, useOutletContext } from "react-router";
 import { useGoals } from "../../hooks/use-goals";
 import { useAllSessionLogs } from "../../hooks/use-sessions";
-import { computeGoalProgress } from "../../goals/progress";
+import { computeGoalProgress, getGoalEffectiveStatus } from "../../goals/progress";
+import { reconcileGoals } from "../../goals/reconcile";
 import { formatCountdown, formatMonDD } from "./countdown";
 import { formatGoalValue } from "./format";
 import { cn } from "../../lib/cn";
@@ -48,7 +49,8 @@ const CATEGORY_LABELS: Record<GoalCategory, string> = {
 function GoalCard({ goal, setLogs }: { goal: Goal; setLogs: SessionSetLog[] }) {
   const navigate = useNavigate();
   const progress = computeGoalProgress(goal, { setLogs });
-  const countdown = formatCountdown(goal.deadline, goal.status);
+  const effectiveStatus = progress.isComplete && goal.status === "active" ? "completed" : goal.status;
+  const countdown = formatCountdown(goal.deadline, effectiveStatus);
   const percent = Math.round(progress.percent * 100);
 
   const currentDisplay = formatGoalValue(
@@ -256,13 +258,20 @@ export function GoalListPage() {
   const { data: goals, isLoading } = useGoals();
   const { data: setLogs = [] } = useAllSessionLogs();
 
+  useEffect(() => {
+    if (!goals) return;
+    if (!goals.some((g) => g.status === "active")) return;
+
+    reconcileGoals("goals-list").catch(() => undefined);
+  }, [goals, setLogs]);
+
   const filtered = useMemo(() => {
     if (!goals) return [];
     let result = goals;
 
     // Status filter
     if (statusParam !== "all") {
-      result = result.filter((g) => g.status === statusParam);
+      result = result.filter((g) => getGoalEffectiveStatus(g, { setLogs }) === statusParam);
     }
 
     // Category filter
@@ -271,7 +280,7 @@ export function GoalListPage() {
     }
 
     return sortGoals(result);
-  }, [goals, statusParam, categoryParam]);
+  }, [goals, setLogs, statusParam, categoryParam]);
 
   const totalCount = goals?.length ?? 0;
 

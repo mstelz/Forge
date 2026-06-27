@@ -13,7 +13,7 @@ import type { RoutineItemOverride } from "../../shared/program";
 import type { Goal as SharedGoal } from "../../shared/goals";
 import { isVolumeLog } from "../hooks/use-history";
 import { computeNextPlayableDay, computeCascadeSchedule } from "../lib/programs/next-day";
-import { computeGoalProgress } from "../goals/progress";
+import { computeGoalProgress, getGoalEffectiveStatus } from "../goals/progress";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -635,10 +635,9 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       // Top goals
       let topGoals: Goal[] = [];
       try {
-        const goals = await forgeDB.goals
-          .where("status")
-          .equals("active")
-          .toArray() as SharedGoal[];
+        const goals = (await forgeDB.goals.toArray() as SharedGoal[]).filter(
+          (g) => getGoalEffectiveStatus(g, { setLogs: allSetLogs }) === "active",
+        );
         goals.sort((a, b) => {
           if (a.deadline == null && b.deadline == null) return b.updatedAt - a.updatedAt;
           if (a.deadline == null) return 1;

@@ -12,13 +12,15 @@ export type ProgramRun = {
   id: string;
   totalWeeks?: number;
   totalDays?: number;
+  dayStates?: ProgramRunDayState[];
   [key: string]: unknown;
 };
 
 /** Minimal shape for program run day state */
 export type ProgramRunDayState = {
-  programRunId: string;
-  state: string;
+  programRunId?: string;
+  state?: string;
+  status?: string;
   [key: string]: unknown;
 };
 
@@ -303,7 +305,7 @@ export function computeGoalProgress(
 
   // Program category
   if (goal.category === "program") {
-    if (!programRun || !programDayStates) {
+    if (!programRun) {
       return {
         currentValue: null,
         percent: 0,
@@ -312,13 +314,14 @@ export function computeGoalProgress(
       };
     }
 
-    const completedDays = programDayStates.filter(
-      (s) => s.programRunId === goal.linkedProgramRunId && s.state === "completed",
+    const statesForRun = (programDayStates ?? programRun.dayStates ?? []).filter(
+      (s) => s.programRunId == null || s.programRunId === goal.linkedProgramRunId,
+    );
+    const completedDays = statesForRun.filter(
+      (s) => (s.state ?? s.status) === "completed",
     ).length;
 
-    const totalDays = programRun.totalDays ?? programDayStates.filter(
-      (s) => s.programRunId === goal.linkedProgramRunId,
-    ).length;
+    const totalDays = programRun.totalDays ?? statesForRun.length;
 
     if (totalDays === 0) {
       return {
@@ -345,4 +348,12 @@ export function computeGoalProgress(
     isComplete: goal.status === "completed",
     hasInsufficientData: true,
   };
+}
+
+export function getGoalEffectiveStatus(
+  goal: Goal,
+  ctx: GoalProgressContext,
+): Goal["status"] {
+  if (goal.status !== "active") return goal.status;
+  return computeGoalProgress(goal, ctx).isComplete ? "completed" : "active";
 }
