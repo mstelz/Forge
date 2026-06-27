@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import type { Session, SessionSetLog } from "../../../../shared";
+import type { ProgramRun, Session, SessionSetLog } from "../../../../shared";
 import {
   getMondayWeekStart,
   computeStreakWeeks,
   computeWeeklyVolumeKg,
   calendarWeekDays,
   toYMD,
+  findCompletedProgramDayForDate,
 } from "../../../home/state";
 import { isVolumeLog } from "../../../hooks/use-history";
 
@@ -59,6 +60,22 @@ function makeLog(overrides: Partial<SessionSetLog> = {}): SessionSetLog {
     enteredWeightUnit: null,
     enteredDistance: null,
     enteredDistanceUnit: null,
+    ...overrides,
+  };
+}
+
+function makeRun(overrides: Partial<ProgramRun> = {}): ProgramRun {
+  return {
+    id: "00000000-0000-0000-0000-000000000010",
+    programId: "00000000-0000-0000-0000-000000000011",
+    status: "active",
+    startedAt: 1000000,
+    endedAt: null,
+    currentWeekIndex: 0,
+    currentDayIndex: 0,
+    dayStates: [],
+    createdAt: 1000000,
+    updatedAt: 1000000,
     ...overrides,
   };
 }
@@ -188,6 +205,83 @@ describe("computeWeeklyVolumeKg", () => {
       makeLog({ id: "2", reps: 5, weightKg: 100, status: "skipped" }),
     ];
     expect(computeWeeklyVolumeKg(logs)).toBe(500);
+  });
+});
+
+describe("findCompletedProgramDayForDate", () => {
+  it("returns a completed program day from a finished session today", () => {
+    const dayStart = new Date(2026, 5, 27).getTime();
+    const programId = "00000000-0000-0000-0000-000000000011";
+    const sessionId = "00000000-0000-0000-0000-000000000012";
+    const run = makeRun({
+      programId,
+      dayStates: [
+        {
+          id: "00000000-0000-0000-0000-000000000013",
+          weekIndex: 0,
+          dayIndex: 2,
+          status: "completed",
+          sessionId,
+          completedAt: dayStart + 60_000,
+          updatedAt: dayStart + 60_000,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000014",
+          weekIndex: 0,
+          dayIndex: 3,
+          status: "not_started",
+          sessionId: null,
+          updatedAt: dayStart + 60_000,
+        },
+      ],
+    });
+    const session = makeSession({
+      id: sessionId,
+      status: "finished",
+      sourceType: "program_day",
+      sourceProgramId: programId,
+      sourceProgramWeekIndex: 0,
+      sourceProgramDayIndex: 2,
+      startedAt: dayStart + 30_000,
+      endedAt: dayStart + 60_000,
+    });
+
+    expect(findCompletedProgramDayForDate([session], run, programId, dayStart)).toEqual({
+      weekIndex: 0,
+      dayIndex: 2,
+    });
+  });
+
+  it("ignores completed program sessions from another date", () => {
+    const dayStart = new Date(2026, 5, 27).getTime();
+    const programId = "00000000-0000-0000-0000-000000000011";
+    const sessionId = "00000000-0000-0000-0000-000000000012";
+    const run = makeRun({
+      programId,
+      dayStates: [
+        {
+          id: "00000000-0000-0000-0000-000000000013",
+          weekIndex: 0,
+          dayIndex: 2,
+          status: "completed",
+          sessionId,
+          completedAt: dayStart - 60_000,
+          updatedAt: dayStart - 60_000,
+        },
+      ],
+    });
+    const session = makeSession({
+      id: sessionId,
+      status: "finished",
+      sourceType: "program_day",
+      sourceProgramId: programId,
+      sourceProgramWeekIndex: 0,
+      sourceProgramDayIndex: 2,
+      startedAt: dayStart - 120_000,
+      endedAt: dayStart - 60_000,
+    });
+
+    expect(findCompletedProgramDayForDate([session], run, programId, dayStart)).toBeNull();
   });
 });
 

@@ -103,6 +103,8 @@ export type DayDetail = {
   isFutureDay: boolean;
 };
 
+type ProgramDaySlot = { weekIndex: number; dayIndex: number };
+
 // ---------------------------------------------------------------------------
 // Date helpers
 // ---------------------------------------------------------------------------
@@ -246,6 +248,39 @@ function buildCalendarDots(
   });
 }
 
+export function findCompletedProgramDayForDate(
+  sessions: Session[],
+  run: ProgramRun,
+  programId: string,
+  dayStartMs: number,
+): ProgramDaySlot | null {
+  const MS_PER_DAY = 86_400_000;
+  const completedTodaySessions = sessions
+    .filter(
+      (s) =>
+        s.status === "finished" &&
+        s.sourceType === "program_day" &&
+        s.sourceProgramId === programId &&
+        s.startedAt >= dayStartMs &&
+        s.startedAt < dayStartMs + MS_PER_DAY &&
+        s.sourceProgramWeekIndex != null &&
+        s.sourceProgramDayIndex != null,
+    )
+    .sort((a, b) => (b.endedAt ?? b.updatedAt) - (a.endedAt ?? a.updatedAt));
+
+  for (const session of completedTodaySessions) {
+    const ds = run.dayStates.find(
+      (state) =>
+        state.weekIndex === session.sourceProgramWeekIndex &&
+        state.dayIndex === session.sourceProgramDayIndex &&
+        state.status === "completed",
+    );
+    if (ds) return { weekIndex: ds.weekIndex, dayIndex: ds.dayIndex };
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // getDayDetail helper — pure read from Dexie
 // ---------------------------------------------------------------------------
@@ -370,13 +405,13 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
 
   useEffect(() => {
     const subs = [
-      liveQuery(() => forgeDB.sessions.count()).subscribe({
+      liveQuery(() => forgeDB.sessions.toArray()).subscribe({
         next: () => qc.invalidateQueries({ queryKey: HOMEPAGE_KEY }),
       }),
-      liveQuery(() => forgeDB.sessionSetLogs.count()).subscribe({
+      liveQuery(() => forgeDB.sessionSetLogs.toArray()).subscribe({
         next: () => qc.invalidateQueries({ queryKey: HOMEPAGE_KEY }),
       }),
-      liveQuery(() => forgeDB.programRuns.count()).subscribe({
+      liveQuery(() => forgeDB.programRuns.toArray()).subscribe({
         next: () => qc.invalidateQueries({ queryKey: HOMEPAGE_KEY }),
       }),
     ];
@@ -489,8 +524,16 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
 
           let isRestDay = false;
           let nextDay: { weekIndex: number; dayIndex: number; routineId: string | null } | null = null;
+          const completedProgramDayToday = findCompletedProgramDayForDate(
+            sessions,
+            run,
+            program.id,
+            todayStartMs,
+          );
 
-          if (todayPrimary?.isRestDay) {
+          if (completedProgramDayToday) {
+            nextDay = { ...completedProgramDayToday, routineId: null };
+          } else if (todayPrimary?.isRestDay) {
             // Even on a cascade rest day, if a program workout was completed today
             // (e.g. Lower B ran late and pushed the rest day to today), show that
             // completed day instead of the rest day card.
