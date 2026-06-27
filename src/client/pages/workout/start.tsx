@@ -77,10 +77,15 @@ export function buildLiveStructure(routine: Routine, overrides?: RoutineItemOver
         setTargets,
       };
     });
+
+    const effectiveRoundCount = block.type === "superset"
+      ? Math.max(0, ...items.map((item) => item.setTargets.length))
+      : undefined;
+
     return {
       id: uuidv4(),
       type: block.type,
-      roundCount: block.roundCount ?? undefined,
+      roundCount: effectiveRoundCount,
       restSec: block.restSec ?? undefined,
       items,
     };

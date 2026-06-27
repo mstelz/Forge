@@ -128,7 +128,7 @@ function deriveCursor(
   const doneIds = new Set<string>();
   for (const log of logs) {
     if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
-      doneIds.add(log.plannedSetId);
+      doneIds.add(`${log.performedExerciseId}:${log.plannedSetId}`);
     }
   }
 
@@ -140,20 +140,20 @@ function deriveCursor(
       if (!item) continue;
       for (let slotIdx = 0; slotIdx < item.setTargets.length; slotIdx++) {
         const slot = item.setTargets[slotIdx]!;
-        if (!doneIds.has(slot.id)) {
+        if (!doneIds.has(`${item.performedExerciseId}:${slot.id}`)) {
           return { blockIdx, itemIdx: 0, slotIdx };
         }
       }
     } else {
       // superset: walk by round
-      const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+      const roundCount = supersetRoundCount(block);
       for (let round = 0; round < roundCount; round++) {
         for (let itemIdx = 0; itemIdx < block.items.length; itemIdx++) {
           const item = block.items[itemIdx];
           if (!item) continue;
           const slot = item.setTargets[round];
           if (!slot) continue;
-          if (!doneIds.has(slot.id)) {
+          if (!doneIds.has(`${item.performedExerciseId}:${slot.id}`)) {
             return { blockIdx, itemIdx, slotIdx: round };
           }
         }
@@ -162,6 +162,10 @@ function deriveCursor(
   }
 
   return null;
+}
+
+function supersetRoundCount(block: LiveBlock): number {
+  return Math.max(0, ...block.items.map((item) => item.setTargets.length));
 }
 
 function totalSlotCount(liveStructure: LiveStructure): number {
@@ -181,14 +185,14 @@ function countDoneSlots(
   const doneIds = new Set<string>();
   for (const log of logs) {
     if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
-      doneIds.add(log.plannedSetId);
+      doneIds.add(`${log.performedExerciseId}:${log.plannedSetId}`);
     }
   }
   let count = 0;
   for (const block of liveStructure.blocks) {
     for (const item of block.items) {
       for (const slot of item.setTargets) {
-        if (doneIds.has(slot.id)) count++;
+        if (doneIds.has(`${item.performedExerciseId}:${slot.id}`)) count++;
       }
     }
   }
@@ -473,7 +477,7 @@ function SupersetRoundPips({
   const doneIds = new Set<string>();
   for (const log of logs) {
     if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
-      doneIds.add(log.plannedSetId);
+      doneIds.add(`${log.performedExerciseId}:${log.plannedSetId}`);
     }
   }
 
@@ -482,7 +486,7 @@ function SupersetRoundPips({
       {Array.from({ length: roundCount }).map((_, round) => {
         const allDoneInRound = block.items.every((item) => {
           const slot = item.setTargets[round];
-          return slot ? doneIds.has(slot.id) : false;
+          return slot ? doneIds.has(`${item.performedExerciseId}:${slot.id}`) : false;
         });
         const isCurrentRound =
           cursor?.blockIdx === blockIdx && cursor?.slotIdx === round;
@@ -575,7 +579,7 @@ function ExerciseCard({
   }, [block.notes]);
   const isSuperset = block.type === "superset";
   const supersetLabel = `SUPERSET ${String.fromCharCode(65 + blockIdx)}`;
-  const roundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+  const roundCount = isSuperset ? supersetRoundCount(block) : 0;
 
   return (
     <div className="rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-4">

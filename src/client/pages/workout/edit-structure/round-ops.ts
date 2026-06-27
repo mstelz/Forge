@@ -9,7 +9,7 @@ export function addRoundToSuperset(structure: LiveStructure, blockIndex: number)
   const block = structure.blocks[blockIndex];
   if (!block || block.type !== "superset") return structure;
 
-  const currentRoundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+  const currentRoundCount = Math.max(0, ...block.items.map((item) => item.setTargets.length));
   const newRoundIndex = currentRoundCount;
 
   const blocks = structure.blocks.map((b, bIdx) => {
@@ -58,7 +58,7 @@ export function removeRoundFromSuperset(
     return { newStructure: structure, orphanedPlannedSetIds: [] };
   }
 
-  const currentRoundCount = block.roundCount ?? (block.items[0]?.setTargets.length ?? 0);
+  const currentRoundCount = Math.max(0, ...block.items.map((item) => item.setTargets.length));
   if (currentRoundCount <= 1) {
     // Cannot remove the only round
     return { newStructure: structure, orphanedPlannedSetIds: [] };
