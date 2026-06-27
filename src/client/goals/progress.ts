@@ -115,6 +115,26 @@ function computePercent(
   }
 }
 
+function computeDerivedPercent(
+  current: number,
+  start: number | null,
+  target: number,
+  direction: "up" | "down",
+): number {
+  if (start != null) return computePercent(current, start, target, direction);
+
+  // Baseline is optional for auto-derived goals. Without it, still show useful
+  // current progress and treat threshold-crossing as complete.
+  if (direction === "up") {
+    if (target <= 0) return current >= target ? 1 : 0;
+    return clamp(current / target, 0, 1);
+  }
+
+  if (current <= target) return 1;
+  if (current <= 0 || target <= 0) return 0;
+  return clamp(target / current, 0, 1);
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function computeGoalProgress(
@@ -153,7 +173,7 @@ export function computeGoalProgress(
 
   // Strength category
   if (goal.category === "strength") {
-    if (!goal.linkedExerciseId || goal.startValue == null || goal.targetValue == null) {
+    if (!goal.linkedExerciseId || goal.targetValue == null) {
       return {
         currentValue: goal.startValue,
         percent: 0,
@@ -195,7 +215,7 @@ export function computeGoalProgress(
     // Use inline conversion to avoid circular import issues with the unit string type
     const current = goal.unit === "lb" ? currentKg * 2.20462 : currentKg;
 
-    const percent = computePercent(current, goal.startValue, goal.targetValue, "up");
+    const percent = computeDerivedPercent(current, goal.startValue, goal.targetValue, "up");
     return {
       currentValue: current,
       percent,
@@ -251,7 +271,7 @@ export function computeGoalProgress(
 
   // Cardio category
   if (goal.category === "cardio") {
-    if (!goal.linkedExerciseId || goal.startValue == null || goal.targetValue == null) {
+    if (!goal.linkedExerciseId || goal.targetValue == null) {
       return {
         currentValue: goal.startValue,
         percent: 0,
@@ -272,7 +292,7 @@ export function computeGoalProgress(
     }
 
     // Cardio direction is always "down" (lower time = better)
-    const percent = computePercent(current, goal.startValue, goal.targetValue, "down");
+    const percent = computeDerivedPercent(current, goal.startValue, goal.targetValue, "down");
     return {
       currentValue: current,
       percent,

@@ -414,6 +414,9 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       liveQuery(() => forgeDB.programRuns.toArray()).subscribe({
         next: () => qc.invalidateQueries({ queryKey: HOMEPAGE_KEY }),
       }),
+      liveQuery(() => forgeDB.goals.toArray()).subscribe({
+        next: () => qc.invalidateQueries({ queryKey: HOMEPAGE_KEY }),
+      }),
     ];
     return () => subs.forEach((s) => s.unsubscribe());
   }, [qc]);
@@ -647,7 +650,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
           return {
             ...g,
             percent: progress.percent,
-            currentValue: progress.currentValue ?? g.currentValue,
+            currentValue: progress.currentValue ?? g.startValue ?? g.currentValue,
           };
         });
       } catch {

@@ -3,6 +3,7 @@ import { Link, useOutletContext, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight } from "../../lib/units";
+import { formatGoalValue } from "../goals/format";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import {
   useHomepageState,
@@ -571,6 +572,9 @@ function GoalsSection({ goals }: { goals: Goal[] }) {
 
 function GoalCard({ goal }: { goal: Goal }) {
   const progress = Math.round(goal.percent * 100);
+  const currentDisplay = formatGoalValue(goal.currentValue, goal.unit);
+  const targetDisplay = formatGoalValue(goal.targetValue, goal.unit);
+  const unitLabel = goal.unit && goal.unit !== "mm:ss" ? goal.unit : null;
 
   const countdown = (() => {
     if (!goal.deadline) return null;
@@ -595,8 +599,11 @@ function GoalCard({ goal }: { goal: Goal }) {
           <p className="mt-1 text-sm font-bold text-[var(--text)]">{goal.title}</p>
         </div>
         <p className="text-xl font-bold tabular-nums text-[var(--text)] flex-shrink-0">
-          {goal.currentValue != null ? parseFloat(goal.currentValue.toFixed(2)) : "—"}
-          {goal.unit ? <span className="text-xs font-normal text-[var(--text-muted)] ml-0.5">{goal.unit}</span> : null}
+          {currentDisplay}
+          {goal.targetValue != null ? (
+            <span className="text-sm font-semibold text-[var(--text-muted)]"> / {targetDisplay}</span>
+          ) : null}
+          {unitLabel ? <span className="text-xs font-normal text-[var(--text-muted)] ml-0.5">{unitLabel}</span> : null}
         </p>
       </div>
 
@@ -835,4 +842,3 @@ function PlayIcon() {
     </svg>
   );
 }
-
