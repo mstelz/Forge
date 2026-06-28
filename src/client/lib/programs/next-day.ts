@@ -192,6 +192,11 @@ export function computeCascadeSchedule(
         effectiveMs = completedDayMs;
         // Advance the chain so subsequent pending slots cascade from this date.
         prevPendingMs = Math.max(prevPendingMs, effectiveMs);
+      } else if (isRestDay) {
+        // Rest days are calendar anchors, not playable work. They should remain
+        // visible on their original date, but should not push the next workout
+        // further out when the run is catching up from overdue sessions.
+        effectiveMs = originalMs;
       } else {
         // Pending slots clamp to today at minimum (explicit floor replaces the
         // implicit guarantee that came from initialising prevPendingMs to today-1).
@@ -204,7 +209,21 @@ export function computeCascadeSchedule(
 
       const cal = new Date(effectiveMs);
       const dateKey = `${cal.getFullYear()}-${cal.getMonth()}-${cal.getDate()}`;
-      if (!dateToSlot.has(dateKey)) {
+      const existingSlot = dateToSlot.get(dateKey);
+      const existingPrimary = existingSlot
+        ? program.days.find(
+            (pd) =>
+              pd.weekIndex === existingSlot.weekIndex &&
+              pd.dayIndex === existingSlot.dayIndex &&
+              (pd.order ?? 0) === 0,
+          ) ??
+          program.days.find(
+            (pd) =>
+              pd.weekIndex === existingSlot.weekIndex &&
+              pd.dayIndex === existingSlot.dayIndex,
+          )
+        : null;
+      if (!existingSlot || (existingPrimary?.isRestDay && !isRestDay)) {
         dateToSlot.set(dateKey, { weekIndex: w, dayIndex: d });
       }
     }

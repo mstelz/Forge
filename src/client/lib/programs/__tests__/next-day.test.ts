@@ -75,6 +75,46 @@ function makeProgram(startAtMs: number): Program {
   };
 }
 
+/** One-week program: Upper A, rest, Lower A */
+function makeProgramWithRestBetweenWorkouts(startAtMs: number): Program {
+  return {
+    id: "prog-1",
+    name: "Test Program",
+    durationWeeks: 1,
+    days: [
+      {
+        id: "pd-0-0",
+        weekIndex: 0,
+        dayIndex: 0,
+        routineId: "routine-upper-a",
+        isRestDay: false,
+        order: 0,
+        overrides: null,
+      },
+      {
+        id: "pd-0-1",
+        weekIndex: 0,
+        dayIndex: 1,
+        routineId: null,
+        isRestDay: true,
+        order: 0,
+        overrides: null,
+      },
+      {
+        id: "pd-0-2",
+        weekIndex: 0,
+        dayIndex: 2,
+        routineId: "routine-lower-a",
+        isRestDay: false,
+        order: 0,
+        overrides: null,
+      },
+    ],
+    createdAt: startAtMs,
+    updatedAt: startAtMs,
+  };
+}
+
 function makeRun(startAtMs: number, dayStates: ProgramRunDayState[] = []): ProgramRun {
   return {
     id: "run-1",
@@ -180,5 +220,24 @@ describe("computeCascadeSchedule — completedAt behavior", () => {
 
     // Lower B (originally tomorrow) should still cascade to tomorrow
     expect(cascade.slotToMs.get("0:1")).toBe(today(1));
+  });
+
+  it("does not let an overdue rest day displace the next playable workout", () => {
+    // Program is overdue: Upper A, Rest, Lower A all started before today.
+    // Upper A was completed today, so Lower A should be tomorrow.
+    const startMs = today(-5);
+    const program = makeProgramWithRestBetweenWorkouts(startMs);
+    const run = makeRun(startMs, [
+      makeDayState(0, 0, "completed", { completedAt: today() }),
+    ]);
+
+    const cascade = computeCascadeSchedule(program, run, today());
+
+    expect(cascade.dateToSlot.get(dateKey(today(1)))).toEqual({
+      weekIndex: 0,
+      dayIndex: 2,
+    });
+    expect(cascade.slotToMs.get("0:1")).toBe(startMs + MS_PER_DAY);
+    expect(cascade.slotToMs.get("0:2")).toBe(today(1));
   });
 });
