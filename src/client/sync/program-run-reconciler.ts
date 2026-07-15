@@ -42,6 +42,9 @@ export async function reconcileProgramRuns(): Promise<void> {
 
       if (!run) continue;
 
+      // Prevent sessions from an abandoned run from auto-completing days in a new run.
+      if (session.startedAt < run.startedAt) continue;
+
       // Determine what status the day-state should be
       let targetStatus: ProgramRunDayState["status"];
       if (session.status === "finished") {

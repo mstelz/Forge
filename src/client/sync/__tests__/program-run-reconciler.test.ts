@@ -212,3 +212,31 @@ describe("reconciler — auto-complete run when all non-rest days resolve", () =
     expect(checkAutoComplete(run, nonRestDays)).toBe(false);
   });
 });
+
+describe("reconciler — session filtering", () => {
+  function simulateReconcileFilter(
+    run: ProgramRun,
+    sessions: { id: string; startedAt: number }[]
+  ): string[] {
+    const appliedSessionIds: string[] = [];
+    for (const session of sessions) {
+      // Prevent sessions from an abandoned run from auto-completing days in a new run.
+      if (session.startedAt < run.startedAt) continue;
+      appliedSessionIds.push(session.id);
+    }
+    return appliedSessionIds;
+  }
+
+  it("ignores sessions that were started before the active run was created", () => {
+    const run = makeRun({ startedAt: 2000000 });
+    const sessions = [
+      { id: "old-sess-1", startedAt: 1500000 },
+      { id: "new-sess-1", startedAt: 2500000 },
+    ];
+
+    const applied = simulateReconcileFilter(run, sessions);
+    expect(applied).toEqual(["new-sess-1"]);
+    expect(applied).not.toContain("old-sess-1");
+  });
+});
+

@@ -15,29 +15,39 @@ export function InstructionalCard({ videoUrl, description }: Props) {
   if (!videoUrl && !description) return null;
   const host = videoUrl ? safeHostname(videoUrl) : null;
 
+  const isImage = videoUrl?.match(/\.(gif|jpe?g|png|webp|svg)$/i);
+
   return (
     <section className="space-y-3 rounded-[var(--radius-card)] bg-[var(--surface)] p-4">
       {videoUrl ? (
-        <a
-          href={videoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Watch form guide${host ? ` on ${host}` : ""} (opens in new tab)`}
-          className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <div className="relative aspect-video overflow-hidden rounded-[10px] bg-[var(--surface-elevated)]">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-fg)]">
-                <PlayIcon />
-              </span>
+        isImage ? (
+          <img
+            src={videoUrl}
+            alt="Exercise demonstration"
+            className="w-full rounded-[10px] bg-[var(--surface-elevated)] object-cover"
+          />
+        ) : (
+          <a
+            href={videoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Watch form guide${host ? ` on ${host}` : ""} (opens in new tab)`}
+            className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <div className="relative aspect-video overflow-hidden rounded-[10px] bg-[var(--surface-elevated)]">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-fg)]">
+                  <PlayIcon />
+                </span>
+              </div>
             </div>
-          </div>
-          {host ? (
-            <p className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
-              Watch: {host}
-            </p>
-          ) : null}
-        </a>
+            {host ? (
+              <p className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                Watch: {host}
+              </p>
+            ) : null}
+          </a>
+        )
       ) : null}
       {description ? (
         <p className="text-sm leading-relaxed text-[var(--text-muted)]">{description}</p>
