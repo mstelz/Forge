@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@radix-ui/react-dialog";
 import { forgeDB } from "../../db/forge-db";
+import { EditTimeModal } from "./edit-time-modal";
 import { getActiveSession, listSessionLogs, listLogsForExercise } from "../../db/queries";
 import { useExercise } from "../../hooks/use-exercises";
 import { InstructionalCard } from "../exercises/instructional-card";
@@ -1629,11 +1630,12 @@ interface OverflowMenuProps {
   onFinish: () => void;
   onDiscard: () => void;
   onEditStructure: () => void;
+  onEditTime?: () => void;
   onPauseAndLeave: () => void;
   isReopenEdit?: boolean;
 }
 
-function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave, isReopenEdit }: OverflowMenuProps) {
+function OverflowMenu({ onFinish, onDiscard, onEditStructure, onEditTime, onPauseAndLeave, isReopenEdit }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -1668,6 +1670,16 @@ function OverflowMenu({ onFinish, onDiscard, onEditStructure, onPauseAndLeave, i
             >
               Edit workout
             </button>
+            {isReopenEdit && onEditTime && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onEditTime(); }}
+                className="flex w-full items-center px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-elevated)]"
+              >
+                Edit time
+              </button>
+            )}
             {!isReopenEdit && (
               <button
                 type="button"
@@ -1725,8 +1737,12 @@ export function ActiveWorkoutPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isReopenEdit = !!(location.state as { isReopenEdit?: boolean } | null)?.isReopenEdit;
-  const originalEndedAt = (location.state as { originalEndedAt?: number } | null)?.originalEndedAt ?? null;
+  const [originalEndedAt, setOriginalEndedAt] = useState<number | null>(
+    (location.state as { originalEndedAt?: number } | null)?.originalEndedAt ?? null
+  );
   const qc = useQueryClient();
+
+  const [editTimeOpen, setEditTimeOpen] = useState(false);
 
   // ── Reactive live-query invalidation ──────────────────────────────────────
   useEffect(() => {
@@ -2234,6 +2250,7 @@ export function ActiveWorkoutPage() {
           onFinish={() => setFinishConfirmOpen(true)}
           onDiscard={handleDiscard}
           onEditStructure={() => setStructureOpen(true)}
+          onEditTime={() => setEditTimeOpen(true)}
           onPauseAndLeave={handlePauseAndLeave}
           isReopenEdit={isReopenEdit}
         />
@@ -2466,6 +2483,19 @@ export function ActiveWorkoutPage() {
 
       {/* Page-level toast (for finish/discard errors) */}
       {pageToast && <Toast message={pageToast.message} type={pageToast.type} />}
+
+      {session && (
+        <EditTimeModal
+          isOpen={editTimeOpen}
+          onClose={() => setEditTimeOpen(false)}
+          sessionId={session.id}
+          initialStartedAt={session.startedAt}
+          initialEndedAt={originalEndedAt}
+          onSuccess={(newEndedAt) => {
+            if (newEndedAt != null) setOriginalEndedAt(newEndedAt);
+          }}
+        />
+      )}
     </div>
   );
 }
