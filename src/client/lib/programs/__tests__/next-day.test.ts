@@ -115,6 +115,40 @@ function makeProgramWithRestBetweenWorkouts(startAtMs: number): Program {
   };
 }
 
+/**
+ * Realistic two-week program with the common 4-on / 3-off shape:
+ * d0 Upper A, d1 Lower A, d2 REST, d3 Upper B, d4 Lower B, d5 REST, d6 REST.
+ */
+function makeFourOnThreeOffProgram(startAtMs: number): Program {
+  const week = [
+    { routineId: "routine-upper-a", isRestDay: false },
+    { routineId: "routine-lower-a", isRestDay: false },
+    { routineId: null, isRestDay: true },
+    { routineId: "routine-upper-b", isRestDay: false },
+    { routineId: "routine-lower-b", isRestDay: false },
+    { routineId: null, isRestDay: true },
+    { routineId: null, isRestDay: true },
+  ];
+  return {
+    id: "prog-1",
+    name: "Test Program",
+    durationWeeks: 2,
+    days: [0, 1].flatMap((weekIndex) =>
+      week.map((day, dayIndex) => ({
+        id: `pd-${weekIndex}-${dayIndex}`,
+        weekIndex,
+        dayIndex,
+        routineId: day.routineId,
+        isRestDay: day.isRestDay,
+        order: 0,
+        overrides: null,
+      })),
+    ) as Program["days"],
+    createdAt: startAtMs,
+    updatedAt: startAtMs,
+  };
+}
+
 function makeRun(startAtMs: number, dayStates: ProgramRunDayState[] = []): ProgramRun {
   return {
     id: "run-1",
@@ -239,5 +273,60 @@ describe("computeCascadeSchedule — completedAt behavior", () => {
     });
     expect(cascade.slotToMs.get("0:1")).toBe(startMs + MS_PER_DAY);
     expect(cascade.slotToMs.get("0:2")).toBe(today(1));
+  });
+});
+
+describe("computeCascadeSchedule — rest days in the forward schedule", () => {
+  // Mirrors the real-world report: a 4-on/3-off run abandoned for two months.
+  // The catch-up must not flatten the program into an unbroken run of workouts.
+  function farBehindRun() {
+    const startMs = today(-59);
+    return {
+      startMs,
+      program: makeFourOnThreeOffProgram(startMs),
+      run: makeRun(startMs, [
+        makeDayState(0, 0, "skipped"),
+        makeDayState(0, 1, "completed"),
+      ]),
+    };
+  }
+
+  it("cascades rest days that follow the resumption point", () => {
+    const { program, run } = farBehindRun();
+    const cascade = computeCascadeSchedule(program, run, today());
+
+    // Resume with the next unresolved workout today, then follow the program
+    // order — including its rest days — on consecutive calendar days.
+    expect(cascade.dateToSlot.get(dateKey(today(0)))).toEqual({ weekIndex: 0, dayIndex: 3 });
+    expect(cascade.dateToSlot.get(dateKey(today(1)))).toEqual({ weekIndex: 0, dayIndex: 4 });
+    expect(cascade.dateToSlot.get(dateKey(today(2)))).toEqual({ weekIndex: 0, dayIndex: 5 });
+    expect(cascade.dateToSlot.get(dateKey(today(3)))).toEqual({ weekIndex: 0, dayIndex: 6 });
+    expect(cascade.dateToSlot.get(dateKey(today(4)))).toEqual({ weekIndex: 1, dayIndex: 0 });
+  });
+
+  it("keeps the program's workout density instead of scheduling one every day", () => {
+    const { program, run } = farBehindRun();
+    const cascade = computeCascadeSchedule(program, run, today());
+
+    const workoutDays = Array.from({ length: 7 }, (_, i) => today(i)).filter((ms) => {
+      const slot = cascade.dateToSlot.get(dateKey(ms));
+      if (!slot) return false;
+      const entry = program.days.find(
+        (pd) => pd.weekIndex === slot.weekIndex && pd.dayIndex === slot.dayIndex,
+      );
+      return entry != null && !entry.isRestDay && entry.routineId != null;
+    });
+
+    // 4-on/3-off means at most 4 workouts land in any 7-day window.
+    expect(workoutDays).toHaveLength(4);
+  });
+
+  it("absorbs an overdue rest day that precedes the resumption point", () => {
+    const { startMs, program, run } = farBehindRun();
+    // w0d2 sits between the already-resolved w0d1 and the next pending workout,
+    // so it stays on its original (past) date rather than consuming a future day.
+    expect(computeCascadeSchedule(program, run, today()).slotToMs.get("0:2")).toBe(
+      startMs + 2 * MS_PER_DAY,
+    );
   });
 });

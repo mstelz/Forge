@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ProgramRunClosedError } from "../mutations";
+import { ProgramRunClosedError, applyDayStateTransition } from "../mutations";
 import type { Program, ProgramRun } from "../../../shared";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -259,5 +259,82 @@ describe("program-run-reconciler — upserts day-state to completed (idempotent)
       existingState?.status === "completed" &&
       existingState?.sessionId === "sess-123";
     expect(alreadyCorrect).toBe(true);
+  });
+});
+
+// ─── applyDayStateTransition — cascade anchor ─────────────────────────────────
+
+describe("applyDayStateTransition — completedAt stamping", () => {
+  const base = { weekIndex: 0, dayIndex: 3, sessionId: null, now: 1_700_000_000_000, newId: "ds-new" };
+
+  it("stamps completedAt when a new slot is completed", () => {
+    const [ds] = applyDayStateTransition([], { ...base, status: "completed" });
+    expect(ds!.completedAt).toBe(base.now);
+  });
+
+  it("stamps completedAt when a new slot is skipped", () => {
+    const [ds] = applyDayStateTransition([], { ...base, status: "skipped" });
+    expect(ds!.completedAt).toBe(base.now);
+  });
+
+  it("leaves completedAt unset for a non-resolved status", () => {
+    const [ds] = applyDayStateTransition([], { ...base, status: "active" });
+    expect(ds!.completedAt).toBeUndefined();
+  });
+
+  it("stamps completedAt when an existing not_started slot is completed", () => {
+    const existing = {
+      id: "ds-1",
+      weekIndex: 0,
+      dayIndex: 3,
+      status: "not_started" as const,
+      sessionId: null,
+      updatedAt: 1,
+    };
+    const [ds] = applyDayStateTransition([existing], { ...base, status: "completed" });
+    expect(ds!.completedAt).toBe(base.now);
+  });
+
+  it("preserves the original completedAt on re-resolution", () => {
+    const existing = {
+      id: "ds-1",
+      weekIndex: 0,
+      dayIndex: 3,
+      status: "completed" as const,
+      sessionId: null,
+      completedAt: 1_600_000_000_000,
+      updatedAt: 1,
+    };
+    const [ds] = applyDayStateTransition([existing], { ...base, status: "completed" });
+    expect(ds!.completedAt).toBe(1_600_000_000_000);
+  });
+
+  it("clears completedAt when a resolved slot is reopened", () => {
+    const existing = {
+      id: "ds-1",
+      weekIndex: 0,
+      dayIndex: 3,
+      status: "completed" as const,
+      sessionId: null,
+      completedAt: 1_600_000_000_000,
+      updatedAt: 1,
+    };
+    const [ds] = applyDayStateTransition([existing], { ...base, status: "not_started" });
+    expect(ds!.completedAt).toBeUndefined();
+  });
+
+  it("leaves unrelated slots untouched", () => {
+    const other = {
+      id: "ds-other",
+      weekIndex: 0,
+      dayIndex: 1,
+      status: "completed" as const,
+      sessionId: null,
+      completedAt: 42,
+      updatedAt: 1,
+    };
+    const result = applyDayStateTransition([other], { ...base, status: "completed" });
+    expect(result).toHaveLength(2);
+    expect(result.find((s) => s.dayIndex === 1)).toEqual(other);
   });
 });

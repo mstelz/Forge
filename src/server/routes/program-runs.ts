@@ -27,6 +27,7 @@ function rowToDayState(row: ProgramRunDayStateRow): ProgramRunDayState {
     dayIndex: row.dayIndex,
     status: row.status as ProgramRunDayState["status"],
     sessionId: row.sessionId ?? null,
+    completedAt: row.completedAt ?? undefined,
     updatedAt: row.updatedAt,
   };
 }
@@ -81,6 +82,7 @@ function insertDayStates(
         dayIndex: ds.dayIndex,
         status: ds.status,
         sessionId: ds.sessionId ?? null,
+        completedAt: ds.completedAt ?? null,
         updatedAt: ds.updatedAt,
       })
       .run();

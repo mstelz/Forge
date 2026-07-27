@@ -170,6 +170,12 @@ export function computeCascadeSchedule(
   // Start the cascade "one day before today" so the first pending slot lands today.
   let prevPendingMs = todayStartMs - MS_PER_DAY;
 
+  // Rest days only occupy calendar space once the run has resumed — that is,
+  // from the first pending workout onward. Rest days sitting *before* that
+  // point are absorbed by the time the user already spent behind, so they never
+  // push the next workout out. See the isRestDay branch below.
+  let resumed = false;
+
   for (let w = 0; w < program.durationWeeks; w++) {
     for (let d = 0; d < 7; d++) {
       const dayEntries = program.days.filter((pd) => pd.weekIndex === w && pd.dayIndex === d);
@@ -192,16 +198,22 @@ export function computeCascadeSchedule(
         effectiveMs = completedDayMs;
         // Advance the chain so subsequent pending slots cascade from this date.
         prevPendingMs = Math.max(prevPendingMs, effectiveMs);
-      } else if (isRestDay) {
-        // Rest days are calendar anchors, not playable work. They should remain
-        // visible on their original date, but should not push the next workout
-        // further out when the run is catching up from overdue sessions.
+      } else if (isRestDay && !resumed) {
+        // An overdue rest day ahead of the resumption point is already "spent" —
+        // leave it on its original date so it does not delay the next workout.
         effectiveMs = originalMs;
+      } else if (isRestDay) {
+        // Past the resumption point the rest day is real upcoming rest, so it
+        // takes its turn in the sequence and pushes later slots out a day.
+        // Unlike workouts it is never clamped forward to today.
+        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);
+        prevPendingMs = effectiveMs;
       } else {
         // Pending slots clamp to today at minimum (explicit floor replaces the
         // implicit guarantee that came from initialising prevPendingMs to today-1).
         effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY, todayStartMs);
         prevPendingMs = effectiveMs;
+        resumed = true;
       }
 
       const slotKey = `${w}:${d}`;

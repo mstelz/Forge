@@ -295,6 +295,8 @@ export const programRunDayStates = sqliteTable(
     dayIndex: integer("day_index").notNull(),
     status: text("status").notNull(),
     sessionId: text("session_id"),
+    /** Unix ms when this slot was completed/skipped. Anchors the cascade schedule. */
+    completedAt: integer("completed_at"),
     updatedAt: integer("updated_at").notNull(),
   },
   (t) => ({

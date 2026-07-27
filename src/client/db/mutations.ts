@@ -1,6 +1,6 @@
 import { type Table } from "dexie";
 import { forgeDB } from "./forge-db";
-import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings, ProgramRunDayStatus } from "../../shared";
+import type { Exercise, Equipment, PendingWrite, Routine, Session, SessionSetLog, Program, ProgramRun, Goal, Settings, ProgramRunDayStatus, ProgramRunDayState } from "../../shared";
 import { SETTINGS_ID } from "../../shared/settings";
 
 import { uuidv4 as uuid } from "../lib/uuid";
@@ -314,6 +314,61 @@ export async function endProgramRun(
   return updated;
 }
 
+/**
+ * Apply a day-state transition to a run's dayStates array.
+ *
+ * Stamps `completedAt` the first time a slot reaches a resolved status
+ * (completed/skipped). The cascade schedule anchors its timeline on that
+ * value — without it a slot resolved today falls back to its original
+ * calendar date and the next slot collapses onto today.
+ */
+export function applyDayStateTransition(
+  dayStates: ProgramRunDayState[],
+  change: {
+    weekIndex: number;
+    dayIndex: number;
+    status: ProgramRunDayStatus;
+    sessionId: string | null;
+    now: number;
+    newId: string;
+  },
+): ProgramRunDayState[] {
+  const { weekIndex, dayIndex, status, sessionId, now, newId } = change;
+  const isResolved = status === "completed" || status === "skipped";
+  const existing = dayStates.find(
+    (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
+  );
+
+  if (!existing) {
+    return [
+      ...dayStates,
+      {
+        id: newId,
+        weekIndex,
+        dayIndex,
+        status,
+        sessionId,
+        completedAt: isResolved ? now : undefined,
+        updatedAt: now,
+      },
+    ];
+  }
+
+  return dayStates.map((s) =>
+    s.weekIndex === weekIndex && s.dayIndex === dayIndex
+      ? {
+          ...s,
+          status,
+          sessionId: sessionId ?? s.sessionId,
+          // Keep the original resolution time on re-resolution; clear it if the
+          // slot is reopened so a stale anchor cannot outlive its status.
+          completedAt: isResolved ? (s.completedAt ?? now) : undefined,
+          updatedAt: now,
+        }
+      : s,
+  );
+}
+
 export async function setProgramRunDayState(
   runId: string,
   weekIndex: number,
@@ -325,19 +380,14 @@ export async function setProgramRunDayState(
   const run = await forgeDB.programRuns.get(runId);
   if (!run) return null;
   const now = Date.now();
-  const existing = run.dayStates.find(
-    (s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex,
-  );
-  const newDayStates = existing
-    ? run.dayStates.map((s) =>
-        s.weekIndex === weekIndex && s.dayIndex === dayIndex
-          ? { ...s, status, sessionId: sessionId ?? s.sessionId, updatedAt: now }
-          : s,
-      )
-    : [
-        ...run.dayStates,
-        { id: uuid(), weekIndex, dayIndex, status, sessionId, updatedAt: now },
-      ];
+  const newDayStates = applyDayStateTransition(run.dayStates, {
+    weekIndex,
+    dayIndex,
+    status,
+    sessionId,
+    now,
+    newId: uuid(),
+  });
   const updated: ProgramRun = { ...run, dayStates: newDayStates, updatedAt: now };
   await forgeDB.transaction("rw", forgeDB.programRuns, forgeDB.pendingWrites, async () => {
     await forgeDB.programRuns.put(updated);
