@@ -1,4 +1,5 @@
 import type { LogSetType } from "../../../shared/session-log";
+import { formatHms, parseDuration, MAX_DURATION_SEC } from "../time";
 
 /**
  * Pure state machine for the active-workout "log a set" form (active.tsx BottomPanel).
@@ -19,7 +20,7 @@ export type LogFormState = {
   repsInputStr: string;
   rpe: number | null;
   durationSec: number | null;
-  durationDigits: number[];
+  durationInputStr: string;
   distanceDisplay: number | null;
   distanceInputStr: string;
   setType: LogSetType;
@@ -33,7 +34,7 @@ export const initialLogFormState: LogFormState = {
   repsInputStr: "",
   rpe: null,
   durationSec: null,
-  durationDigits: [],
+  durationInputStr: "",
   distanceDisplay: null,
   distanceInputStr: "",
   setType: "normal",
@@ -59,8 +60,8 @@ export type LogFormAction =
   | { type: "decrementReps" }
   | { type: "incrementRpe" }
   | { type: "decrementRpe" }
-  | { type: "pushDurationDigit"; digit: number }
-  | { type: "popDurationDigit" }
+  | { type: "durationInput"; value: string }
+  | { type: "normalizeDuration" }
   | { type: "incrementDuration" }
   | { type: "decrementDuration" }
   | { type: "distanceInput"; value: string }
@@ -69,41 +70,6 @@ export type LogFormAction =
   | { type: "setNote"; note: string }
   | { type: "prefill"; values: LogFormPrefill }
   | { type: "resetAfterLog" };
-
-// ── Pure digit-buffer helpers (shared with the duration input renderer) ──────────
-export function secondsToDigits(secs: number): number[] {
-  const s = Math.max(0, Math.round(secs));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  const full = [
-    Math.floor(h / 10), h % 10,
-    Math.floor(m / 10), m % 10,
-    Math.floor(r / 10), r % 10,
-  ];
-  // Trim leading zeros
-  let start = 0;
-  while (start < full.length - 1 && full[start] === 0) start++;
-  return full.slice(start);
-}
-
-export function bufferToSeconds(digits: number[]): number {
-  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
-  const h = padded[0]! * 10 + padded[1]!;
-  const m = padded[2]! * 10 + padded[3]!;
-  const s = padded[4]! * 10 + padded[5]!;
-  return h * 3600 + m * 60 + s;
-}
-
-export function formatDigits(digits: number[]): string {
-  if (digits.length === 0) return "";
-  const padded = [...Array(Math.max(0, 6 - digits.length)).fill(0), ...digits];
-  const h = padded[0]! * 10 + padded[1]!;
-  const m = padded[2]! * 10 + padded[3]!;
-  const s = padded[4]! * 10 + padded[5]!;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 export function logFormReducer(state: LogFormState, action: LogFormAction): LogFormState {
   switch (action.type) {
@@ -131,24 +97,34 @@ export function logFormReducer(state: LogFormState, action: LogFormAction): LogF
       return { ...state, rpe: Math.min(10, Math.round(((state.rpe ?? 5) + 0.5) * 2) / 2) };
     case "decrementRpe":
       return { ...state, rpe: state.rpe != null ? Math.max(0, Math.round((state.rpe - 0.5) * 2) / 2) : null };
-    case "pushDurationDigit": {
-      const next = [...state.durationDigits, action.digit].slice(-6);
-      return { ...state, durationDigits: next, durationSec: bufferToSeconds(next) };
+    case "durationInput": {
+      // An ordinary controlled field: whatever the input reports is the value,
+      // so selecting the text and typing replaces it like any other input.
+      const parsed = parseDuration(action.value);
+      return {
+        ...state,
+        durationInputStr: action.value,
+        durationSec: parsed === undefined ? state.durationSec : parsed,
+      };
     }
-    case "popDurationDigit": {
-      const next = state.durationDigits.slice(0, -1);
-      return { ...state, durationDigits: next, durationSec: next.length > 0 ? bufferToSeconds(next) : null };
+    case "normalizeDuration": {
+      // On blur, redisplay the committed value so "90" tidies to "1:30" and a
+      // half-typed string falls back to the last duration that parsed.
+      return {
+        ...state,
+        durationInputStr: state.durationSec != null ? formatHms(state.durationSec) : "",
+      };
     }
     case "incrementDuration": {
-      const next = (state.durationSec ?? 0) + 30;
-      return { ...state, durationSec: next, durationDigits: secondsToDigits(next) };
+      const next = Math.min(MAX_DURATION_SEC, (state.durationSec ?? 0) + 30);
+      return { ...state, durationSec: next, durationInputStr: formatHms(next) };
     }
     case "decrementDuration": {
       const next = Math.max(0, (state.durationSec ?? 0) - 30);
       return {
         ...state,
         durationSec: next > 0 ? next : null,
-        durationDigits: next > 0 ? secondsToDigits(next) : [],
+        durationInputStr: next > 0 ? formatHms(next) : "",
       };
     }
     case "distanceInput": {
@@ -169,7 +145,7 @@ export function logFormReducer(state: LogFormState, action: LogFormAction): LogF
       if (v.weightDisplay !== undefined) { next.weightDisplay = v.weightDisplay; next.weightInputStr = String(v.weightDisplay); }
       if (v.reps !== undefined) { next.reps = v.reps; next.repsInputStr = String(v.reps); }
       if (v.rpe !== undefined) next.rpe = v.rpe;
-      if (v.durationSec !== undefined) { next.durationSec = v.durationSec; next.durationDigits = secondsToDigits(v.durationSec); }
+      if (v.durationSec !== undefined) { next.durationSec = v.durationSec; next.durationInputStr = formatHms(v.durationSec); }
       if (v.distanceDisplay !== undefined) { next.distanceDisplay = v.distanceDisplay; next.distanceInputStr = String(v.distanceDisplay); }
       if (v.setType !== undefined) next.setType = v.setType;
       if (v.note !== undefined) next.note = v.note;

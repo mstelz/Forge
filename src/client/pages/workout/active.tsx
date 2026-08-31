@@ -37,8 +37,9 @@ import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
+import { summarizeLastTime } from "../../lib/session/last-time";
 import {
-  logFormReducer, initialLogFormState, formatDigits,
+  logFormReducer, initialLogFormState,
   type LogFormPrefill,
 } from "../../lib/session/log-form";
 import { syncLog } from "../../sync/sync-logger";
@@ -423,29 +424,18 @@ function LastTimeLine({
   const settings = useContext(SettingsContext);
   const summary = useMemo(() => {
     if (!allLogs || allLogs.length === 0) return null;
-    const prev = allLogs.filter(
+    const metrics = summarizeLastTime(allLogs, sessionId, {
+      weightUnit: settings.weightUnit,
+      distanceUnit: settings.distanceUnit,
+    });
+    if (!metrics) return null;
+
+    const prior = allLogs.filter(
       (l) => l.sessionId !== sessionId && l.status === "logged",
     );
-    if (prev.length === 0) return null;
-
-    const mostRecentAt = Math.max(...prev.map((l) => l.loggedAt));
-    const sessionLogs = prev
-      .filter((l) => mostRecentAt - l.loggedAt < 4 * 3_600_000)
-      .sort((a, b) => a.order - b.order);
-
-    if (sessionLogs.length === 0) return null;
-
-    const firstLog = sessionLogs[0]!;
-    const weightKg = firstLog.weightKg;
-    const repsArr = sessionLogs.map((l) => l.reps).filter((r): r is number => r != null);
-    const weightStr = weightKg != null ? formatWeight(weightKg, settings.weightUnit) : null;
-    const repsStr = repsArr.length > 0 ? repsArr.join(", ") : null;
-    const when = formatDaysAgo(mostRecentAt);
-
-    if (weightStr && repsStr) return `Last time: ${weightStr} × ${repsStr} · ${when}`;
-    if (repsStr) return `Last time: ${repsStr} reps · ${when}`;
-    return null;
-  }, [allLogs, sessionId]);
+    const mostRecentAt = Math.max(...prior.map((l) => l.loggedAt));
+    return `Last time: ${metrics} · ${formatDaysAgo(mostRecentAt)}`;
+  }, [allLogs, sessionId, settings.weightUnit, settings.distanceUnit]);
 
   if (!summary) return null;
   return (
@@ -874,7 +864,7 @@ function BottomPanel({
   const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
   const {
     weightDisplay, weightInputStr, reps, repsInputStr, rpe,
-    durationSec, durationDigits, distanceDisplay, distanceInputStr, setType, note,
+    durationSec, durationInputStr, distanceDisplay, distanceInputStr, setType, note,
   } = form;
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -1269,27 +1259,14 @@ function BottomPanel({
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={formatDigits(durationDigits)}
+                    aria-label="Duration"
+                    value={durationInputStr}
                     placeholder="0:00"
                     onFocus={(e) => e.target.select()}
-                    onChange={() => {}}
+                    onChange={(e) => dispatch({ type: "durationInput", value: e.target.value })}
+                    onBlur={() => dispatch({ type: "normalizeDuration" })}
                     onKeyDown={(e) => {
-                      if (e.key >= "0" && e.key <= "9") {
-                        e.preventDefault();
-                        dispatch({ type: "pushDurationDigit", digit: parseInt(e.key, 10) });
-                      } else if (e.key === "Backspace") {
-                        e.preventDefault();
-                        dispatch({ type: "popDurationDigit" });
-                      }
-                    }}
-                    onInput={(e) => {
-                      const ie = e.nativeEvent as InputEvent;
-                      if (ie.inputType === "insertText" && ie.data) {
-                        const d = parseInt(ie.data, 10);
-                        if (!isNaN(d)) dispatch({ type: "pushDurationDigit", digit: d });
-                      } else if (ie.inputType === "deleteContentBackward") {
-                        dispatch({ type: "popDurationDigit" });
-                      }
+                      if (e.key === "Enter") e.currentTarget.blur();
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                   />
@@ -1950,11 +1927,15 @@ export function ActiveWorkoutPage() {
   const [pendingExerciseId, setPendingExerciseId] = useState<string | null>(null);
   const [setCountInput, setSetCountInput] = useState("3");
 
-  const handleAddExercise = useCallback((exerciseId: string) => {
-    setPickerOpen(false);
-    setSetCountInput("3");
-    setPendingExerciseId(exerciseId);
-  }, []);
+  const handleAddExercise = useCallback(
+    (exerciseId: string, exerciseType: ExerciseType) => {
+      setPickerOpen(false);
+      // A run is one continuous effort, not three sets of it.
+      setSetCountInput(exerciseType === "cardio" ? "1" : "3");
+      setPendingExerciseId(exerciseId);
+    },
+    [],
+  );
 
   const confirmAddExercise = useCallback(
     async (exerciseId: string, setCount: number) => {
@@ -2472,7 +2453,7 @@ export function ActiveWorkoutPage() {
               <button
                 type="button"
                 onClick={handleDiscardConfirmed}
-                className={`rounded-full px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 ${isReopenEdit ? "bg-[var(--accent)] focus-visible:ring-[var(--accent)]" : "bg-red-500 focus-visible:ring-red-500"}`}
+                className={`rounded-full px-4 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 ${isReopenEdit ? "bg-[var(--accent)] text-[var(--accent-fg)] focus-visible:ring-[var(--accent)]" : "bg-red-500 text-white focus-visible:ring-red-500"}`}
               >
                 {isReopenEdit ? "Done editing" : "Discard"}
               </button>

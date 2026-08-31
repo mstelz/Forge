@@ -11,6 +11,7 @@ import { FullEmptyState, ZeroMatchState, ListSkeleton } from "./empty-states";
 import { useFilteredPrograms } from "./use-filtered-programs";
 import type { Program } from "../../../shared";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
+import { useToast } from "../../components/toast";
 
 // ─── Other program row ─────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ export function ProgramListPage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Program | null>(null);
+  const toast = useToast();
   const qc = useQueryClient();
 
   const { data: programs, isLoading } = usePrograms();
@@ -100,7 +102,10 @@ export function ProgramListPage() {
   const handleDeleteRequest = (program: Program) => {
     // Guard: refuse to delete if this program has an active run
     if (activeProgramIds.has(program.id)) {
-      alert("End the active run first before deleting this program.");
+      toast("This program has an active run", {
+        tone: "error",
+        detail: "End the run before deleting the program.",
+      });
       return;
     }
     setDeleteTarget(program);

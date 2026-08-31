@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { BuilderAction } from "./state";
+import { ConfirmDialog } from "../../../components/confirm-dialog";
+import { useToast } from "../../../components/toast";
 
 // Duplicate-week and repeat-pattern modals for the program builder, extracted from
 // index.tsx (issue 09). Self-contained; both dispatch to the builder reducer.
@@ -23,20 +25,22 @@ export function DuplicateWeekModal({
   const [destStart, setDestStart] = useState(1);
   const [destEnd, setDestEnd] = useState(1);
 
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+
   if (!open) return null;
 
+  const apply = () => {
+    dispatch({ type: "DUPLICATE_WEEK", sourceWeek, destStart, destEnd });
+    setConfirmOverwrite(false);
+    onClose();
+  };
+
   const handleApply = () => {
-    const hasExisting = hasDaysInRange(destStart, destEnd);
-    if (
-      hasExisting &&
-      !confirm(
-        `Weeks ${destStart + 1}–${destEnd + 1} have existing assignments. Overwrite?`,
-      )
-    ) {
+    if (hasDaysInRange(destStart, destEnd)) {
+      setConfirmOverwrite(true);
       return;
     }
-    dispatch({ type: "DUPLICATE_WEEK", sourceWeek, destStart, destEnd });
-    onClose();
+    apply();
   };
 
   const weekOptions = Array.from({ length: durationWeeks }, (_, i) => i);
@@ -125,6 +129,16 @@ export function DuplicateWeekModal({
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOverwrite}
+        onOpenChange={setConfirmOverwrite}
+        title="Overwrite existing weeks?"
+        description={`Weeks ${destStart + 1}–${destEnd + 1} already have assignments. Duplicating week ${sourceWeek + 1} will replace them.`}
+        confirmLabel="Overwrite"
+        tone="danger"
+        onConfirm={apply}
+      />
     </div>
   );
 }
@@ -147,24 +161,30 @@ export function RepeatPatternModal({
   const [sourceStart, setSourceStart] = useState(0);
   const [sourceEnd, setSourceEnd] = useState(Math.min(1, durationWeeks - 1));
 
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const toast = useToast();
+
   if (!open) return null;
+
+  const apply = () => {
+    dispatch({ type: "REPEAT_PATTERN", sourceStart, sourceEnd });
+    setConfirmOverwrite(false);
+    onClose();
+  };
 
   const handleApply = () => {
     if (sourceEnd >= durationWeeks - 1) {
-      alert("No weeks remain after the pattern end to repeat into.");
+      toast("Nothing to repeat into", {
+        tone: "error",
+        detail: "No weeks remain after the pattern ends.",
+      });
       return;
     }
-    const hasExisting = hasDaysAfter(sourceEnd);
-    if (
-      hasExisting &&
-      !confirm(
-        `Weeks ${sourceEnd + 2}–${durationWeeks} have existing assignments. Overwrite?`,
-      )
-    ) {
+    if (hasDaysAfter(sourceEnd)) {
+      setConfirmOverwrite(true);
       return;
     }
-    dispatch({ type: "REPEAT_PATTERN", sourceStart, sourceEnd });
-    onClose();
+    apply();
   };
 
   const weekOptions = Array.from({ length: durationWeeks }, (_, i) => i);
@@ -242,6 +262,16 @@ export function RepeatPatternModal({
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOverwrite}
+        onOpenChange={setConfirmOverwrite}
+        title="Overwrite existing weeks?"
+        description={`Weeks ${sourceEnd + 2}–${durationWeeks} already have assignments. Repeating the pattern will replace them.`}
+        confirmLabel="Overwrite"
+        tone="danger"
+        onConfirm={apply}
+      />
     </div>
   );
 }

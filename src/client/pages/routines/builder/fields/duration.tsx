@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatMmSs, parseMmSs } from "../../../../lib/time";
+import { formatHms, parseDuration } from "../../../../lib/time";
 
 type Props = {
   durationSec: number | undefined;
@@ -21,14 +21,14 @@ function DurationField({
   const [raw, setRaw] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
-  const displayed = raw ?? (value != null ? formatMmSs(value) : "");
+  const displayed = raw ?? (value != null ? formatHms(value) : "");
 
   const commit = () => {
     if (raw === null) return;
     const trimmed = raw.trim();
     if (!trimmed) { onCommit(undefined); setRaw(null); setError(false); return; }
-    const parsed = parseMmSs(trimmed);
-    if (parsed === null) { setError(true); return; }
+    const parsed = parseDuration(trimmed);
+    if (parsed == null || parsed < 1) { setError(true); return; }
     setError(false);
     setRaw(null);
     onCommit(parsed);

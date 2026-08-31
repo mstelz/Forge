@@ -10,7 +10,7 @@ import { cn } from "../lib/cn";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSelect: (exerciseId: string) => void;
+  onSelect: (exerciseId: string, exerciseType: Exercise["type"]) => void;
   title?: string;
 };
 
@@ -47,9 +47,9 @@ export function ExercisePicker({ open, onClose, onSelect, title = "Select exerci
       return next;
     });
 
-  const handleSelect = (id: string) => {
+  const handleSelect = (id: string, type: Exercise["type"]) => {
     clearAll();
-    onSelect(id);
+    onSelect(id, type);
   };
 
   const handleClose = () => {
@@ -166,7 +166,7 @@ function PickerRow({
 }: {
   exercise: Exercise;
   equipmentById: Map<string, Equipment>;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, type: Exercise["type"]) => void;
 }) {
   const badge = TYPE_BADGE[exercise.type];
   const primary = exercise.primaryMuscles[0]
@@ -180,7 +180,7 @@ function PickerRow({
   return (
     <button
       type="button"
-      onClick={() => onSelect(exercise.id)}
+      onClick={() => onSelect(exercise.id, exercise.type)}
       className="flex w-full items-center gap-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-3 py-3 text-left transition-colors hover:bg-[var(--surface-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
     >
       <span

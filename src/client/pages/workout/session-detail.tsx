@@ -12,6 +12,7 @@ import { reconcileProgramRuns } from "../../sync/program-run-reconciler";
 import { queryKeys } from "../../db/query-keys";
 import { syncLog } from "../../sync/sync-logger";
 import type { SessionSetLog } from "../../../shared";
+import { useToast } from "../../components/toast";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,6 +55,7 @@ export function SessionDetailPage() {
   const { data: logs } = useSessionLogs(id);
   const { data: allSessionLogs } = useAllSessionLogs();
   const [reopening, setReopening] = useState(false);
+  const toast = useToast();
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editingTimes, setEditingTimes] = useState(false);
@@ -219,7 +221,10 @@ export function SessionDetailPage() {
               if (reopening || !session) return;
               const existing = await forgeDB.sessions.where("status").equals("in_progress").first().catch(() => null);
               if (existing) {
-                alert("Another workout is already in progress. Finish or discard it first.");
+                toast("Another workout is already in progress", {
+                  tone: "error",
+                  detail: "Finish or discard it before editing this one.",
+                });
                 return;
               }
               setReopening(true);

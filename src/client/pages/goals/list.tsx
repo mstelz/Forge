@@ -109,7 +109,7 @@ function GoalCard({ goal, setLogs }: { goal: Goal; setLogs: SessionSetLog[] }) {
 
       {/* Progress bar */}
       <div className="space-y-1">
-        <div className="relative h-1.5 w-full rounded-full bg-[#26272A] overflow-hidden">
+        <div className="relative h-1.5 w-full rounded-full bg-[var(--border)] overflow-hidden">
           <div
             className="absolute inset-y-0 left-0 rounded-full bg-[var(--accent)] transition-all"
             style={{ width: `${percent}%` }}
@@ -323,7 +323,7 @@ export function GoalListPage() {
         </div>
 
         {/* Divider */}
-        <div className="mx-3 h-5 w-px shrink-0 bg-[#26272A]" />
+        <div className="mx-3 h-5 w-px shrink-0 bg-[var(--border)]" />
 
         {/* Category segment */}
         <div className="flex shrink-0 gap-2">

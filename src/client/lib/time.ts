@@ -39,6 +39,41 @@ export function parseMmSs(input: string): number | null {
   return null;
 }
 
+/** Upper bound for a logged duration — 24 hours, matching RoutineItemSchema. */
+export const MAX_DURATION_SEC = 86_400;
+
+/**
+ * Parse a duration a user typed: "h:mm:ss", "m:ss", or bare integer seconds.
+ *
+ * Three-way result so a controlled input can tell "cleared" from "not valid yet":
+ *   number    → a duration
+ *   null      → the field is empty, clear the value
+ *   undefined → not parseable, keep what the user typed and commit nothing
+ */
+export function parseDuration(input: string): number | null | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(":");
+  if (parts.length > 3) return undefined;
+  if (!parts.every((p) => /^\d+$/.test(p))) return undefined;
+
+  const nums = parts.map((p) => parseInt(p, 10));
+  let total: number;
+  if (nums.length === 1) {
+    total = nums[0]!;
+  } else {
+    // Only the leading unit may exceed its base ("90:00" is a valid 90 minutes).
+    if (nums.slice(1).some((n) => n > 59)) return undefined;
+    total =
+      nums.length === 2
+        ? nums[0]! * 60 + nums[1]!
+        : nums[0]! * 3600 + nums[1]! * 60 + nums[2]!;
+  }
+
+  return total >= 0 && total <= MAX_DURATION_SEC ? total : undefined;
+}
+
 /** Milliseconds → compact human duration "Xh Ym" (or "Ym" under an hour). */
 export function formatDurationMs(ms: number): string {
   const totalMin = Math.floor(ms / 60000);

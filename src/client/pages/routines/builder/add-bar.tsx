@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import { ExercisePicker } from "../../../components/exercise-picker";
 import type { BuilderAction, BuilderState } from "./state";
+import type { ExerciseType } from "../../../../shared/enums";
 
 type Props = {
   state: BuilderState;
@@ -10,18 +11,18 @@ type Props = {
 };
 
 export function AddBar({ state, dispatch, pickerOpen, setPickerOpen }: Props) {
-  const handleAddSingle = (exerciseId: string) => {
-    dispatch({ type: "ADD_SINGLE_BLOCK", exerciseId });
+  const handleAddSingle = (exerciseId: string, exerciseType: ExerciseType) => {
+    dispatch({ type: "ADD_SINGLE_BLOCK", exerciseId, exerciseType });
     setPickerOpen(null);
   };
 
-  const handleSupersetFirst = (exerciseId: string) => {
-    dispatch({ type: "BEGIN_SUPERSET", firstExerciseId: exerciseId });
+  const handleSupersetFirst = (exerciseId: string, exerciseType: ExerciseType) => {
+    dispatch({ type: "BEGIN_SUPERSET", firstExerciseId: exerciseId, exerciseType });
     setPickerOpen("superset-second");
   };
 
-  const handleSupersetSecond = (exerciseId: string) => {
-    dispatch({ type: "COMPLETE_SUPERSET", secondExerciseId: exerciseId });
+  const handleSupersetSecond = (exerciseId: string, exerciseType: ExerciseType) => {
+    dispatch({ type: "COMPLETE_SUPERSET", secondExerciseId: exerciseId, exerciseType });
     setPickerOpen(null);
   };
 

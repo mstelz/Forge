@@ -120,9 +120,9 @@ export function SupersetBlock({ block, supersetIndex, exerciseMap, dispatch }: P
       <ExercisePicker
         open={addPickerOpen}
         onClose={() => setAddPickerOpen(false)}
-        onSelect={(exerciseId) => {
+        onSelect={(exerciseId, exerciseType) => {
           setAddPickerOpen(false);
-          dispatch({ type: "ADD_ITEM_TO_SUPERSET", blockId: block.id, exerciseId });
+          dispatch({ type: "ADD_ITEM_TO_SUPERSET", blockId: block.id, exerciseId, exerciseType });
         }}
         title="Add to superset"
       />

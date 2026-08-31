@@ -7,6 +7,8 @@ import { setTheme } from "../../lib/theme";
 import { triggerExport } from "../../export/trigger";
 import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
+import { deviceTimeZone } from "../../lib/zoned-date";
+import { useToast } from "../../components/toast";
 import { SyncStatusSheet } from "../../sync/sync-status-sheet";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Settings } from "../../../shared/settings";
@@ -50,7 +52,7 @@ function SegmentedControl({ options, value, onChange }: SegmentedControlProps) {
             className={[
               "rounded-full px-3 py-1 text-xs font-semibold transition-colors min-h-[28px]",
               isActive
-                ? "bg-[#F59E0B] text-black"
+                ? "bg-[var(--accent)] text-[var(--accent-fg)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             ].join(" ")}
           >
@@ -79,7 +81,7 @@ function ToggleSwitch({ checked, onChange }: ToggleSwitchProps) {
       onClick={() => onChange(!checked)}
       className={[
         "relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] min-w-[48px]",
-        checked ? "bg-[#F59E0B]" : "bg-[var(--border-strong)]",
+        checked ? "bg-[var(--accent)]" : "bg-[var(--border-strong)]",
       ].join(" ")}
     >
       <span
@@ -185,6 +187,13 @@ const TIMEZONES = [
   "UTC",
 ];
 
+/** The common list, plus this device's zone and any saved zone not already in it. */
+function timezoneOptions(current: string): string[] {
+  const seen = new Set(TIMEZONES);
+  const extras = [deviceTimeZone(), current].filter((tz) => tz && !seen.has(tz));
+  return [...new Set([...extras, ...TIMEZONES])];
+}
+
 // ─── Settings Page ────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -195,6 +204,8 @@ export function SettingsPage() {
   const [resetting, setResetting] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const deviceZone = deviceTimeZone();
+  const toast = useToast();
 
   const save = (patch: Partial<Settings>) => {
     void updateSettings({ ...settings, ...patch, updatedAt: Date.now() });
@@ -208,7 +219,9 @@ export function SettingsPage() {
   const handleExport = async () => {
     const result = await triggerExport();
     if (!result.ok) {
-      alert(`Export failed — try again\n\n${result.error}`);
+      toast("Export failed", { tone: "error", detail: result.error });
+    } else {
+      toast("Workout data exported", { tone: "success" });
     }
   };
 
@@ -218,16 +231,20 @@ export function SettingsPage() {
       const text = await file.text();
       const result = await importFromJson(text);
       if (!result.ok) {
-        alert(`Import failed\n\n${result.error}`);
+        toast("Import failed", { tone: "error", detail: result.error });
       } else {
         const summary = Object.entries(result.counts)
           .map(([k, v]) => `${v} ${k}`)
           .join(", ");
-        alert(`Import successful${summary ? `\n\n${summary}` : ""}`);
-        window.location.reload();
+        toast("Import complete", { tone: "success", detail: summary || undefined });
+        // Let the toast land before the reload wipes it.
+        setTimeout(() => window.location.reload(), 900);
       }
     } catch (err) {
-      alert(`Import failed\n\n${err instanceof Error ? err.message : String(err)}`);
+      toast("Import failed", {
+        tone: "error",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setImporting(false);
       if (importInputRef.current) importInputRef.current.value = "";
@@ -244,7 +261,7 @@ export function SettingsPage() {
     } catch {
       setResetting(false);
       setShowResetConfirm(false);
-      alert("Reset failed — try again.");
+      toast("Reset failed — try again.", { tone: "error" });
     }
   };
 
@@ -336,9 +353,9 @@ export function SettingsPage() {
               onChange={(e) => save({ timezone: e.target.value })}
               className="max-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-xs text-[var(--text-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] truncate"
             >
-              {TIMEZONES.map((tz) => (
+              {timezoneOptions(settings.timezone).map((tz) => (
                 <option key={tz} value={tz}>
-                  {tz}
+                  {tz === deviceZone ? `${tz} (this device)` : tz}
                 </option>
               ))}
             </select>
