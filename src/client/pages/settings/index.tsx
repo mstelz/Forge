@@ -9,10 +9,19 @@ import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
 import { deviceTimeZone } from "../../lib/zoned-date";
 import { useToast } from "../../components/toast";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { SyncStatusSheet } from "../../sync/sync-status-sheet";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Settings } from "../../../shared/settings";
 import type { Theme } from "../../lib/theme";
+import {
+  DISTANCE_UNIT_SEGMENTS,
+  HEIGHT_UNIT_SEGMENTS,
+  THEME_SEGMENTS,
+  WEEK_START_SEGMENTS,
+  WEIGHT_UNIT_SEGMENTS,
+} from "./segments";
+import type { SegmentOption } from "./segments";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -28,26 +37,33 @@ function HamburgerIcon() {
 
 // ─── Segmented Control ────────────────────────────────────────────────────────
 
-interface SegmentOption {
-  value: string;
+interface SegmentedControlProps<T extends string> {
+  options: readonly SegmentOption<T>[];
+  /** The stored value, passed straight through — never coerced on the way in. */
+  value: T;
+  onChange: (value: T) => void;
   label: string;
 }
 
-interface SegmentedControlProps {
-  options: SegmentOption[];
-  value: string;
-  onChange: (value: string) => void;
-}
-
-function SegmentedControl({ options, value, onChange }: SegmentedControlProps) {
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: SegmentedControlProps<T>) {
   return (
-    <div className="flex items-center rounded-full bg-[var(--border)] p-0.5">
+    <div
+      className="flex items-center rounded-full bg-[var(--border)] p-0.5"
+      role="group"
+      aria-label={label}
+    >
       {options.map((opt) => {
         const isActive = opt.value === value;
         return (
           <button
             key={opt.value}
             type="button"
+            aria-pressed={isActive}
             onClick={() => onChange(opt.value)}
             className={[
               "rounded-full px-3 py-1 text-xs font-semibold transition-colors min-h-[28px]",
@@ -194,6 +210,22 @@ function timezoneOptions(current: string): string[] {
   return [...new Set([...extras, ...TIMEZONES])];
 }
 
+// ─── Reset copy ───────────────────────────────────────────────────────────────
+
+/**
+ * Deliberately does not promise permanence. Reset drops the local Dexie database
+ * and nothing else: the outbox and the `lastReconcileAt` cursor live inside that
+ * database, so the deletion is never pushed, and the reconcile pass on the reload
+ * that follows requests every collection with no cursor and writes the server's
+ * rows straight back (src/client/sync/reconcile.ts). Verified end to end against a
+ * live server — a logged set and a changed unit both came back within seconds.
+ */
+const RESET_DESCRIPTION =
+  "Clears Forge's local database on this device. Anything already synced comes " +
+  "back from the server as soon as the app reloads, so this rebuilds a broken " +
+  "local copy rather than erasing your history. Changes still waiting to sync " +
+  "are lost.";
+
 // ─── Settings Page ────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -211,9 +243,9 @@ export function SettingsPage() {
     void updateSettings({ ...settings, ...patch, updatedAt: Date.now() });
   };
 
-  const handleThemeChange = (theme: string) => {
+  const handleThemeChange = (theme: Settings["theme"]) => {
     setTheme(theme as Theme);
-    save({ theme: theme as Settings["theme"] });
+    save({ theme });
   };
 
   const handleExport = async () => {
@@ -296,47 +328,38 @@ export function SettingsPage() {
           <SettingsRow>
             <SettingsLabel>Weight</SettingsLabel>
             <SegmentedControl
-              options={[
-                { value: "kg", label: "kg" },
-                { value: "lb", label: "lb" },
-              ]}
+              label="Weight unit"
+              options={WEIGHT_UNIT_SEGMENTS}
               value={settings.weightUnit}
-              onChange={(v) => save({ weightUnit: v as Settings["weightUnit"] })}
+              onChange={(v) => save({ weightUnit: v })}
             />
           </SettingsRow>
 
           <SettingsRow>
             <SettingsLabel>Distance</SettingsLabel>
             <SegmentedControl
-              options={[
-                { value: "km", label: "km" },
-                { value: "mi", label: "mi" },
-              ]}
-              value={settings.distanceUnit === "m" ? "km" : settings.distanceUnit}
-              onChange={(v) => save({ distanceUnit: v as Settings["distanceUnit"] })}
+              label="Distance unit"
+              options={DISTANCE_UNIT_SEGMENTS}
+              value={settings.distanceUnit}
+              onChange={(v) => save({ distanceUnit: v })}
             />
           </SettingsRow>
 
           <SettingsRow>
             <SettingsLabel>Height</SettingsLabel>
             <SegmentedControl
-              options={[
-                { value: "cm", label: "cm" },
-                { value: "ft", label: "ft" },
-              ]}
+              label="Height unit"
+              options={HEIGHT_UNIT_SEGMENTS}
               value={settings.heightUnit}
-              onChange={(v) => save({ heightUnit: v as Settings["heightUnit"] })}
+              onChange={(v) => save({ heightUnit: v })}
             />
           </SettingsRow>
 
           <SettingsRow>
             <SettingsLabel>Theme</SettingsLabel>
             <SegmentedControl
-              options={[
-                { value: "system", label: "SYSTEM" },
-                { value: "light", label: "LIGHT" },
-                { value: "dark", label: "DARK" },
-              ]}
+              label="Theme"
+              options={THEME_SEGMENTS}
               value={settings.theme}
               onChange={handleThemeChange}
             />
@@ -364,12 +387,10 @@ export function SettingsPage() {
           <SettingsRow>
             <SettingsLabel>Week starts on</SettingsLabel>
             <SegmentedControl
-              options={[
-                { value: "mon", label: "Mon" },
-                { value: "sun", label: "Sun" },
-              ]}
+              label="Week starts on"
+              options={WEEK_START_SEGMENTS}
               value={settings.weekStartsOn}
-              onChange={(v) => save({ weekStartsOn: v as Settings["weekStartsOn"] })}
+              onChange={(v) => save({ weekStartsOn: v })}
             />
           </SettingsRow>
         </div>
@@ -451,7 +472,15 @@ export function SettingsPage() {
             onClick={() => setShowResetConfirm(true)}
             className="flex w-full items-center justify-between px-4 py-3 bg-[var(--surface)] border-t border-[var(--border)] hover:bg-[var(--surface-elevated)] transition-colors"
           >
-            <span className="text-sm font-medium text-red-500">Reset all data</span>
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-sm font-medium text-[var(--danger)]">
+                Reset this device
+              </span>
+              <span className="text-xs text-[var(--text-muted)]">
+                Rebuild the local copy from the server
+              </span>
+            </div>
+            <ChevronRight size={16} className="text-[var(--text-subtle)]" aria-hidden="true" />
           </button>
         </div>
 
@@ -467,41 +496,18 @@ export function SettingsPage() {
       ) : null}
 
       {/* ─── Reset confirm dialog ─── */}
-      {showResetConfirm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="presentation">
-          <div className="absolute inset-0 bg-black/70" onClick={() => !resetting && setShowResetConfirm(false)} />
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="reset-title"
-            aria-describedby="reset-desc"
-            className="relative w-full max-w-sm rounded-[var(--radius-card)] bg-[var(--surface)] p-6 shadow-2xl ring-1 ring-[var(--border)]"
-          >
-            <h2 id="reset-title" className="text-base font-bold text-[var(--text)]">Reset all data?</h2>
-            <p id="reset-desc" className="mt-2 text-sm text-[var(--text-muted)]">
-              This will permanently delete all workouts, routines, programs, goals, and settings from this device. This cannot be undone.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                disabled={resetting}
-                className="flex-1 rounded-md border border-[var(--border)] py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleResetConfirm()}
-                disabled={resetting}
-                className="flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-50"
-              >
-                {resetting ? "Resetting…" : "Reset everything"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={showResetConfirm}
+        onOpenChange={(open) => {
+          if (!resetting) setShowResetConfirm(open);
+        }}
+        title="Reset this device?"
+        description={RESET_DESCRIPTION}
+        confirmLabel={resetting ? "Resetting…" : "Reset this device"}
+        tone="danger"
+        pending={resetting}
+        onConfirm={() => void handleResetConfirm()}
+      />
     </>
   );
 }
