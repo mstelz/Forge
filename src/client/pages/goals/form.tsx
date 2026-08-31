@@ -4,6 +4,7 @@ import { GoalCreateSchema } from "../../../shared/goals";
 import { cn } from "../../lib/cn";
 import { useExercises } from "../../hooks/use-exercises";
 import { formatSeconds } from "./format";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
@@ -221,6 +222,7 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const { data: exercises } = useExercises();
 
@@ -302,7 +304,8 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
 
   const handleCancel = () => {
     if (isDirty) {
-      if (!confirm("Discard changes?")) return;
+      setConfirmDiscard(true);
+      return;
     }
     onCancel();
   };
@@ -572,6 +575,17 @@ export function GoalForm({ mode, initial, baseRecord, onSubmit, onCancel }: Prop
           Cancel
         </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title="Discard changes?"
+        description="Your edits to this goal will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onConfirm={onCancel}
+      />
     </form>
   );
 }

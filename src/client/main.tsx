@@ -10,6 +10,7 @@ import { installReconciliation } from "./sync/reconcile";
 import { installGlobalErrorHandler } from "./sync/global-error-handler";
 import { syncLog } from "./sync/sync-logger";
 import { SettingsProvider } from "./contexts/settings-context";
+import { ToastProvider } from "./components/toast";
 import { forgeDB } from "./db/forge-db";
 import { SettingsSchema, SETTINGS_ID } from "../shared/settings";
 import { deviceTimeZone } from "./lib/zoned-date";
@@ -86,7 +87,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </SettingsProvider>
     </QueryClientProvider>
   </StrictMode>,
