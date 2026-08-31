@@ -4,19 +4,19 @@ import type { Equipment } from "../../../shared";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import { useEquipment } from "../../hooks/use-equipment";
 import { deleteEquipmentWithFanout } from "../../db/mutations";
+import { restoreEquipment } from "../../db/undo";
+import { useUndoToast } from "../../components/toast";
 import { useEquipmentReferenceCounts } from "./use-reference-counts";
 import { EquipmentRow } from "./row";
 import { CreateEquipmentDialog } from "./create-dialog";
-import { DeleteEquipmentDialog } from "./delete-dialog";
 
 export function EquipmentListPage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
   const { data: equipment, isLoading } = useEquipment();
   const { data: refCounts } = useEquipmentReferenceCounts();
+  const undoToast = useUndoToast();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<Equipment | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
 
   const sorted = useMemo(
     () => [...(equipment ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
@@ -25,15 +25,19 @@ export function EquipmentListPage() {
 
   const refCount = (id: string) => refCounts?.get(id) ?? 0;
 
-  const onConfirmDelete = async () => {
-    if (!pendingDelete) return;
-    setDeletePending(true);
-    try {
-      await deleteEquipmentWithFanout(pendingDelete.id);
-      setPendingDelete(null);
-    } finally {
-      setDeletePending(false);
-    }
+  // Deleting equipment also strips it from the exercises that referenced it.
+  // The fanout hands back those exercises so the undo can re-attach them —
+  // without that the equipment would come back orphaned.
+  const handleDelete = async (item: Equipment) => {
+    const { affected, touchedExercises } = await deleteEquipmentWithFanout(item.id);
+    const suffix =
+      affected > 0
+        ? ` and removed it from ${affected} exercise${affected === 1 ? "" : "s"}`
+        : "";
+    undoToast(
+      `Deleted ${item.name}${suffix}`,
+      () => void restoreEquipment(item, touchedExercises),
+    );
   };
 
   return (
@@ -72,7 +76,7 @@ export function EquipmentListPage() {
                 <EquipmentRow
                   equipment={eq}
                   referenceCount={refCount(eq.id)}
-                  onRequestDelete={() => setPendingDelete(eq)}
+                  onRequestDelete={() => void handleDelete(eq)}
                 />
               </li>
             ))}
@@ -81,19 +85,6 @@ export function EquipmentListPage() {
       </main>
 
       <CreateEquipmentDialog open={createOpen} onOpenChange={setCreateOpen} />
-
-      {pendingDelete ? (
-        <DeleteEquipmentDialog
-          open={!!pendingDelete}
-          onOpenChange={(open) => {
-            if (!open) setPendingDelete(null);
-          }}
-          equipmentName={pendingDelete.name}
-          referenceCount={refCount(pendingDelete.id)}
-          onConfirm={onConfirmDelete}
-          pending={deletePending}
-        />
-      ) : null}
     </>
   );
 }

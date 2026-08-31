@@ -1,23 +1,22 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useExercise } from "../../hooks/use-exercises";
 import { useEquipment } from "../../hooks/use-equipment";
 import { deleteExercise } from "../../db/mutations";
+import { restoreExercise } from "../../db/undo";
+import { useUndoToast } from "../../components/toast";
 import { DetailHeader } from "./detail-header";
 import { InstructionalCard } from "./instructional-card";
 import { Instructions } from "./instructions";
 import { ExerciseHistorySection } from "./history-placeholder";
 import { DetailMenu } from "./detail-menu";
-import { DeleteExerciseDialog } from "./delete-dialog";
 
 export function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: exercise, isLoading } = useExercise(id);
   const { data: equipment } = useEquipment();
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
+  const undoToast = useUndoToast();
 
   const equipmentById = useMemo(() => {
     const m = new Map<string, NonNullable<typeof equipment>[number]>();
@@ -25,15 +24,14 @@ export function ExerciseDetailPage() {
     return m;
   }, [equipment]);
 
-  const onConfirmDelete = async () => {
-    if (!id) return;
-    setDeletePending(true);
-    try {
-      await deleteExercise(id);
-      navigate("/exercises");
-    } finally {
-      setDeletePending(false);
-    }
+  // Delete now, offer it back. The snapshot is taken before the delete so the
+  // undo restores the exercise exactly as it was.
+  const handleDelete = async () => {
+    if (!exercise) return;
+    const snapshot = exercise;
+    await deleteExercise(snapshot.id);
+    navigate("/exercises");
+    undoToast(`Deleted ${snapshot.name}`, () => void restoreExercise(snapshot));
   };
 
   return (
@@ -50,7 +48,7 @@ export function ExerciseDetailPage() {
           Exercise
         </h1>
         {id && exercise ? (
-          <DetailMenu exerciseId={id} onDelete={() => setDeleteOpen(true)} />
+          <DetailMenu exerciseId={id} onDelete={() => void handleDelete()} />
         ) : (
           <span className="w-9" aria-hidden="true" />
         )}
@@ -73,16 +71,6 @@ export function ExerciseDetailPage() {
           </>
         )}
       </main>
-
-      {exercise ? (
-        <DeleteExerciseDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          exerciseName={exercise.name}
-          onConfirm={onConfirmDelete}
-          pending={deletePending}
-        />
-      ) : null}
     </>
   );
 }

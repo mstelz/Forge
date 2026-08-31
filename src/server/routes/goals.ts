@@ -129,7 +129,14 @@ goalsRoute.patch("/:id", async (c) => {
     updatedAt: Math.max(revalidated.data.updatedAt, now),
   };
 
-  await db.update(goals).set(goalToRow(updated)).where(eq(goals.id, id)).run();
+  // deletedAt: null lifts any tombstone. The merge above copies the stored row,
+  // so without this an update to a soft-deleted goal would carry the tombstone
+  // straight back and the undo would never take effect.
+  await db
+    .update(goals)
+    .set({ ...goalToRow(updated), deletedAt: null })
+    .where(eq(goals.id, id))
+    .run();
   return c.json(updated);
 });
 

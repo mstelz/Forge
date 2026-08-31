@@ -86,7 +86,13 @@ equipmentRoute.patch("/:id", async (c) => {
     updatedAt: Math.max(incoming.updatedAt, Date.now()),
   };
 
-  await db.update(equipment).set(updated).where(eq(equipment.id, id)).run();
+  // deletedAt: null lifts any tombstone — an update asserts the row exists, and
+  // it is what an undone delete re-sends to resurrect the equipment.
+  await db
+    .update(equipment)
+    .set({ ...updated, deletedAt: null })
+    .where(eq(equipment.id, id))
+    .run();
   return c.json(updated);
 });
 

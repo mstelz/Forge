@@ -10,13 +10,14 @@ import {
 } from "@radix-ui/react-dropdown-menu";
 import type { Routine } from "../../../shared";
 import { deleteRoutine, createSession } from "../../db/mutations";
+import { restoreRoutine } from "../../db/undo";
+import { useUndoToast } from "../../components/toast";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { useExercises } from "../../hooks/use-exercises";
 import { useActiveSession } from "../../hooks/use-sessions";
 import { buildLiveStructure } from "../workout/start";
 import type { Session } from "../../../shared";
-import { DeleteRoutineDialog } from "./delete-dialog";
 
 type Props = {
   routine: Routine;
@@ -27,11 +28,10 @@ export function RoutineRow({ routine }: Props) {
   const qc = useQueryClient();
   const { data: exercises } = useExercises();
   const { data: activeSession } = useActiveSession();
+  const undoToast = useUndoToast();
 
   const [expanded, setExpanded] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const exerciseMap = new Map(exercises?.map((e) => [e.id, e.name]) ?? []);
 
@@ -78,14 +78,11 @@ export function RoutineRow({ routine }: Props) {
     }
   };
 
-  const handleConfirmDelete = async () => {
-    setDeleting(true);
-    try {
-      await deleteRoutine(routine.id);
-      setDialogOpen(false);
-    } finally {
-      setDeleting(false);
-    }
+  // The routine document held here carries its blocks, items and set targets,
+  // so restoring it puts the whole structure back, not just the header row.
+  const handleDelete = async () => {
+    await deleteRoutine(routine.id);
+    undoToast(`Deleted ${routine.name}`, () => void restoreRoutine(routine));
   };
 
   return (
@@ -130,7 +127,7 @@ export function RoutineRow({ routine }: Props) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => setDialogOpen(true)}
+                  onSelect={() => void handleDelete()}
                   className="cursor-pointer rounded-[8px] px-3 py-2 text-sm text-[var(--danger)] outline-none data-[highlighted]:bg-[var(--surface)]"
                 >
                   Delete
@@ -192,14 +189,6 @@ export function RoutineRow({ routine }: Props) {
           </div>
         )}
       </div>
-
-      <DeleteRoutineDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        routineName={routine.name}
-        onConfirm={() => void handleConfirmDelete()}
-        pending={deleting}
-      />
     </>
   );
 }

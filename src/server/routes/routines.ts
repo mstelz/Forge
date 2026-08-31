@@ -136,6 +136,10 @@ async function loadRoutine(id: string): Promise<Routine | null> {
     createdAt: routine.createdAt,
     updatedAt: routine.updatedAt,
     blocks: assembledBlocks,
+    // Without this the tombstone never reaches the client, so a soft-deleted
+    // routine is silently resurrected by the next reconcile instead of being
+    // removed from the local database.
+    deletedAt: routine.deletedAt ?? null,
   };
 }
 
@@ -302,6 +306,9 @@ routinesRoute.patch("/:id", async (c) => {
         notes: input.notes ?? null,
         estimatedDurationMin: input.estimatedDurationMin ?? null,
         updatedAt,
+        // An update asserts the row exists, so it lifts any tombstone. This is
+        // what makes undo work: the client restores by re-sending the document.
+        deletedAt: null,
       })
       .where(eq(routines.id, id))
       .run();

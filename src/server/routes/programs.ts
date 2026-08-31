@@ -204,6 +204,9 @@ programsRoute.patch("/:id", async (c) => {
         description: input.description ?? null,
         durationWeeks: input.durationWeeks,
         updatedAt,
+        // An update asserts the row exists, so it lifts any tombstone — this is
+        // how an undone delete resurrects the program for every other device.
+        deletedAt: null,
       })
       .where(eq(programs.id, id))
       .run();

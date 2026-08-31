@@ -8,18 +8,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@radix-ui/react-dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-} from "@radix-ui/react-dialog";
 import { useGoal } from "../../hooks/use-goals";
 import { useAllSessionLogs } from "../../hooks/use-sessions";
 import { useExercise } from "../../hooks/use-exercises";
 import { updateGoal, deleteGoal } from "../../db/mutations";
+import { restoreGoal } from "../../db/undo";
+import { useUndoToast } from "../../components/toast";
 import { computeGoalProgress } from "../../goals/progress";
 import { formatCountdown, formatMonDD } from "./countdown";
 import { formatGoalValue } from "./format";
@@ -37,52 +31,6 @@ const CATEGORY_LABELS: Record<Goal["category"], string> = {
   program: "PROGRAM",
   other: "OTHER",
 };
-
-// ─── Delete Confirm Dialog ────────────────────────────────────────────────────
-
-function DeleteConfirmDialog({
-  open,
-  onOpenChange,
-  onConfirm,
-  pending,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onConfirm: () => void;
-  pending: boolean;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 z-40 bg-black/60" />
-        <DialogContent className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] bg-[var(--surface)] p-5 shadow-lg ring-1 ring-[var(--border)]">
-          <DialogTitle className="text-base font-semibold text-[var(--text)]">Delete goal?</DialogTitle>
-          <DialogDescription className="mt-2 text-sm text-[var(--text-muted)]">
-            This goal will be permanently deleted. This cannot be undone.
-          </DialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-              className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={pending}
-              className="rounded-full bg-[var(--danger)] px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)] disabled:opacity-60"
-            >
-              {pending ? "Deleting…" : "Delete"}
-            </button>
-          </div>
-        </DialogContent>
-      </DialogPortal>
-    </Dialog>
-  );
-}
 
 // ─── Inline currentValue editor ───────────────────────────────────────────────
 
@@ -160,19 +108,14 @@ export function GoalDetailPage() {
   const { data: goal, isLoading } = useGoal(id);
   const { data: setLogs = [] } = useAllSessionLogs();
   const { data: linkedExercise } = useExercise(goal?.linkedExerciseId ?? undefined);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [actionPending, setActionPending] = useState(false);
+  const undoToast = useUndoToast();
 
-  const handleDeleteConfirm = async () => {
-    if (!id) return;
-    setActionPending(true);
-    try {
-      await deleteGoal(id);
-      navigate("/goals");
-    } finally {
-      setActionPending(false);
-      setDeleteOpen(false);
-    }
+  const handleDelete = async () => {
+    if (!goal) return;
+    const snapshot = goal;
+    await deleteGoal(snapshot.id);
+    navigate("/goals");
+    undoToast(`Deleted ${snapshot.title}`, () => void restoreGoal(snapshot));
   };
 
   const handleMarkComplete = async () => {
@@ -299,7 +242,7 @@ export function GoalDetailPage() {
           onMarkActive={handleMarkActive}
           onAbandon={handleAbandon}
           onReactivate={handleReactivate}
-          onDelete={() => setDeleteOpen(true)}
+          onDelete={() => void handleDelete()}
         />
       </header>
 
@@ -407,13 +350,6 @@ export function GoalDetailPage() {
           )}
         </Link>
       </main>
-
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={handleDeleteConfirm}
-        pending={actionPending}
-      />
     </>
   );
 }
