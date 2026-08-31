@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useExerciseLogs } from "../../hooks/use-sessions";
 import { formatWeight, formatDistance } from "../../lib/units";
 import { useSettingsContext } from "../../contexts/settings-context";
+import { ProgressChart } from "../../components/progress-chart";
+import type { ExerciseType } from "../../../shared/enums";
 
 // ---------------------------------------------------------------------------
 // Epley 1RM formula
@@ -15,9 +17,15 @@ function epley(weightKg: number, reps: number): number {
 // Component
 // ---------------------------------------------------------------------------
 
-export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
+export function ExerciseHistorySection({
+  exerciseId,
+  exerciseType,
+}: {
+  exerciseId: string;
+  exerciseType: ExerciseType;
+}) {
   const { data: allLogs } = useExerciseLogs(exerciseId);
-  const { weightUnit, distanceUnit } = useSettingsContext();
+  const { weightUnit, distanceUnit, timezone } = useSettingsContext();
 
   function secsToStr(s: number): string {
     const h = Math.floor(s / 3600);
@@ -98,6 +106,14 @@ export function ExerciseHistorySection({ exerciseId }: { exerciseId: string }) {
         <StatTile label="Total Sessions" value={String(totalSessions)} />
         <StatTile label="Logged Sets" value={String(logged.length)} />
       </div>
+
+      <ProgressChart
+        logs={allLogs ?? []}
+        exerciseType={exerciseType}
+        weightUnit={weightUnit}
+        distanceUnit={distanceUnit}
+        timezone={timezone}
+      />
 
       {/* Recent history list */}
       {logged.length > 0 ? (

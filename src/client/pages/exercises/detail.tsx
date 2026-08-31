@@ -69,7 +69,7 @@ export function ExerciseDetailPage() {
               description={exercise.description ?? null}
             />
             <Instructions instructions={exercise.instructions ?? null} />
-            <ExerciseHistorySection exerciseId={id!} />
+            <ExerciseHistorySection exerciseId={id!} exerciseType={exercise.type} />
           </>
         )}
       </main>
