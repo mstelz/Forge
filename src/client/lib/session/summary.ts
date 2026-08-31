@@ -1,5 +1,5 @@
 import type { Session, SessionSetLog } from "../../../shared";
-import { bestEpleyForExercise } from "./epley";
+import { countSessionRecords } from "./records";
 
 export function summarizeSession(
   _session: Session,
@@ -24,21 +24,13 @@ export function summarizeSession(
   // totalLoggedSets: count of status='logged' logs
   const totalLoggedSets = logs.filter((l) => l.status === "logged").length;
 
-  // prCount: count of distinct exerciseIds where this session's best Epley
-  // strictly exceeds the best Epley across allPriorLogs for that exerciseId
-  const exerciseIds = new Set(logs.map((l) => l.exerciseId));
-  let prCount = 0;
-
-  for (const exerciseId of exerciseIds) {
-    const sessionBest = bestEpleyForExercise(logs, exerciseId);
-    if (!sessionBest) continue;
-
-    const priorBest = bestEpleyForExercise(allPriorLogs, exerciseId);
-
-    if (priorBest === null || sessionBest.epley1RM > priorBest.epley1RM) {
-      prCount++;
-    }
-  }
+  // prCount: distinct exercises that set a record this session. Shares its rules
+  // with the recognition shown while lifting, so the summary cannot disagree with
+  // what the user was told mid-workout — see ./records.
+  //
+  // This is stricter than it used to be: an exercise with no prior history no
+  // longer counts, where before every first-ever set scored a PR.
+  const prCount = countSessionRecords(logs, allPriorLogs);
 
   return { totalVolumeKg, totalLoggedSets, prCount };
 }

@@ -4,6 +4,10 @@ import {
 } from "react";
 import { SettingsContext } from "../../../contexts/settings-context";
 import { logSetBatch, updateSessionLog, updateSetBatch } from "../../../db/mutations";
+import { listLogsForExercise } from "../../../db/queries";
+import { recordsByLogId } from "../../../lib/session/records";
+import { describeRecord, headlineRecord } from "../../../lib/session/record-labels";
+import { syncLog } from "../../../sync/sync-logger";
 import { convertDistance, convertWeight, distanceToMeters, weightToKg } from "../../../lib/units";
 import { getLastLogValuesForExercise } from "../../../lib/session/prior-values";
 import {
@@ -18,7 +22,7 @@ import {
   DurationDistanceInputs, RpeStepper, SetTypeChips, WeightRepsInputs,
 } from "./metric-inputs";
 import { RestTimerStrip } from "./rest-timer";
-import { Toast } from "./toast";
+import { Toast, type ToastType } from "./toast";
 import type { ExerciseType, Session, SessionSetLog } from "../../../../shared";
 import type { CursorPos, LiveItem, LiveStructure, LogSetType, PlannedSlot, RestTimerData } from "./types";
 
@@ -34,6 +38,8 @@ export interface BottomPanelProps {
   onSkipSet: () => void;
   onEditSaved: () => void;
   exerciseTypes: Map<string, ExerciseType>;
+  /** Used to name the lift when a set sets a record. */
+  exerciseNames: Map<string, string>;
   noteOpen: boolean;
   onToggleNote: () => void;
   onCloseNote: () => void;
@@ -52,6 +58,7 @@ export function BottomPanel({
   onSkipSet,
   onEditSaved,
   exerciseTypes,
+  exerciseNames,
   noteOpen,
   onToggleNote,
   onCloseNote,
@@ -62,14 +69,47 @@ export function BottomPanel({
   // orthogonal and stays as plain state.
   const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
   const { rpe, setType, note } = form;
+  const { weightUnit, distanceUnit, showRpe } = useContext(SettingsContext);
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-  const showToast = useCallback((message: string, type: "error" | "info" = "error") => {
+  const showToast = useCallback((message: string, type: ToastType = "error", ms = 3000) => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), ms);
   }, []);
+
+  /**
+   * Say so when a set just beat something, naming the lift and the number.
+   *
+   * Deliberately fire-and-forget after the write: reading an exercise's whole
+   * history is not something the LOG SET button should ever wait on. If it is
+   * slow, the set is already saved and the cursor has already moved.
+   */
+  const announceRecords = useCallback(
+    (logId: string, exerciseId: string, exerciseName: string) => {
+      void listLogsForExercise(exerciseId)
+        .then((history) => {
+          const beaten = recordsByLogId(history).get(logId);
+          const headline = beaten ? headlineRecord(beaten) : null;
+          if (!headline) return;
+          showToast(
+            `${exerciseName} — ${describeRecord(headline, { weightUnit, distanceUnit })}`,
+            "record",
+            5000,
+          );
+        })
+        .catch((err) =>
+          syncLog({
+            level: "error",
+            category: "app",
+            message: "record check failed",
+            detail: String(err),
+          }),
+        );
+    },
+    [showToast, weightUnit, distanceUnit],
+  );
 
   const currentSlot = useMemo<PlannedSlot | null>(() => {
     if (!cursor) return null;
@@ -90,7 +130,6 @@ export function BottomPanel({
   const currentExerciseType = currentItem
     ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
     : "strength";
-  const { weightUnit, distanceUnit, showRpe } = useContext(SettingsContext);
   const { showWeightReps, showDurationDistance } = metricFieldsFor(currentExerciseType);
 
   const isEditingExisting = useMemo(
@@ -218,6 +257,11 @@ export function BottomPanel({
         await updateSetBatch(updatedExtraLog, restingSession(now), prevLogUpdate);
         dispatch({ type: "resetAfterLog" }); onCloseNote();
         prevSlotKey.current = null;
+        announceRecords(
+          updatedExtraLog.id,
+          currentItem.exerciseId,
+          exerciseNames.get(currentItem.exerciseId) ?? "This exercise",
+        );
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Failed to save. Please try again.");
       } finally {
@@ -275,6 +319,13 @@ export function BottomPanel({
         };
 
         await logSetBatch(record, restingSession(now), prevLogUpdate);
+        // Only a genuinely new set can set a record — editing one after the fact
+        // would re-announce history the user already saw.
+        announceRecords(
+          record.id,
+          currentItem.exerciseId,
+          exerciseNames.get(currentItem.exerciseId) ?? "This exercise",
+        );
       }
 
       dispatch({ type: "resetAfterLog" }); onCloseNote();

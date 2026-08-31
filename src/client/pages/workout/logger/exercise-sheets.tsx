@@ -5,6 +5,8 @@ import { formatDistance, formatWeight } from "../../../lib/units";
 import { formatHms } from "../../../lib/time";
 import { InstructionalCard } from "../../exercises/instructional-card";
 import { Instructions } from "../../exercises/instructions";
+import { recordsByLogId } from "../../../lib/session/records";
+import { describeRecord, headlineRecord, recordBadge } from "../../../lib/session/record-labels";
 import { formatDaysAgo } from "./format";
 import { useLastTimeForExercise } from "./last-time";
 
@@ -72,6 +74,12 @@ export function ExerciseHistorySheet({
   const { data: allLogs } = useLastTimeForExercise(exerciseId);
   const { weightUnit, distanceUnit } = useContext(SettingsContext);
 
+  // Records stay visible after the fact — the toast at the time is not the record.
+  const records = useMemo(
+    () => (allLogs ? recordsByLogId(allLogs) : new Map()),
+    [allLogs],
+  );
+
   const sessions = useMemo(() => {
     if (!allLogs) return [];
     const logged = allLogs.filter((l) => l.status === "logged").sort((a, b) => b.loggedAt - a.loggedAt);
@@ -114,12 +122,22 @@ export function ExerciseHistorySheet({
                   if (log.reps != null) parts.push(`${log.reps} reps`);
                   if (log.durationSec != null) parts.push(formatHms(log.durationSec));
                   if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
+                  const beaten = records.get(log.id) ?? [];
+                  const headline = headlineRecord(beaten);
                   return (
                     <div key={log.id} className="flex items-center gap-3">
                       <span className="w-10 text-[10px] font-semibold text-[var(--text-subtle)]">
                         Set {si + 1}
                       </span>
                       <span className="text-sm text-[var(--text)]">{parts.join(" × ") || "—"}</span>
+                      {headline && (
+                        <span
+                          title={describeRecord(headline, { weightUnit, distanceUnit })}
+                          className="rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]"
+                        >
+                          {recordBadge(headline)}
+                        </span>
+                      )}
                       {log.rpe != null && (
                         <span className="ml-auto text-[10px] text-[var(--text-muted)]">RPE {log.rpe}</span>
                       )}
