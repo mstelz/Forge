@@ -7,6 +7,7 @@ import { setTheme } from "../../lib/theme";
 import { triggerExport } from "../../export/trigger";
 import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
+import { deviceTimeZone } from "../../lib/zoned-date";
 import { SyncStatusSheet } from "../../sync/sync-status-sheet";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
 import type { Settings } from "../../../shared/settings";
@@ -185,6 +186,13 @@ const TIMEZONES = [
   "UTC",
 ];
 
+/** The common list, plus this device's zone and any saved zone not already in it. */
+function timezoneOptions(current: string): string[] {
+  const seen = new Set(TIMEZONES);
+  const extras = [deviceTimeZone(), current].filter((tz) => tz && !seen.has(tz));
+  return [...new Set([...extras, ...TIMEZONES])];
+}
+
 // ─── Settings Page ────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -195,6 +203,7 @@ export function SettingsPage() {
   const [resetting, setResetting] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const deviceZone = deviceTimeZone();
 
   const save = (patch: Partial<Settings>) => {
     void updateSettings({ ...settings, ...patch, updatedAt: Date.now() });
@@ -336,9 +345,9 @@ export function SettingsPage() {
               onChange={(e) => save({ timezone: e.target.value })}
               className="max-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-xs text-[var(--text-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] truncate"
             >
-              {TIMEZONES.map((tz) => (
+              {timezoneOptions(settings.timezone).map((tz) => (
                 <option key={tz} value={tz}>
-                  {tz}
+                  {tz === deviceZone ? `${tz} (this device)` : tz}
                 </option>
               ))}
             </select>

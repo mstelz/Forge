@@ -3,6 +3,7 @@ import type { Settings } from "../../shared/settings";
 import { SETTINGS_ID } from "../../shared/settings";
 import { useSettings } from "../hooks/use-settings";
 import { setTheme } from "../lib/theme";
+import { deviceTimeZone } from "../lib/zoned-date";
 import type { Theme } from "../lib/theme";
 
 const defaultSettings: Settings = {
@@ -10,7 +11,7 @@ const defaultSettings: Settings = {
   weightUnit: "kg",
   distanceUnit: "km",
   heightUnit: "cm",
-  timezone: "America/Chicago",
+  timezone: deviceTimeZone(),
   weekStartsOn: "mon",
   showRpe: true,
   showCardio: true,

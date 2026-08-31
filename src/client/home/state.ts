@@ -15,6 +15,7 @@ import { isVolumeLog } from "../hooks/use-history";
 import { computeNextPlayableDay, computeCascadeSchedule } from "../lib/programs/next-day";
 import { computeGoalProgress, getGoalEffectiveStatus } from "../goals/progress";
 import { useSettingsContext } from "../contexts/settings-context";
+import { zonedYMD } from "../lib/zoned-date";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -425,7 +426,7 @@ const HOMEPAGE_KEY = ["homepage", "state"] as const;
 
 export function useHomepageState(): { data: HomepageState | undefined; isLoading: boolean } {
   const qc = useQueryClient();
-  const { weekStartsOn } = useSettingsContext();
+  const { weekStartsOn, timezone } = useSettingsContext();
 
   useEffect(() => {
     const subs = [
@@ -446,10 +447,10 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
   }, [qc]);
 
   const query = useQuery({
-    queryKey: [...HOMEPAGE_KEY, weekStartsOn],
+    queryKey: [...HOMEPAGE_KEY, weekStartsOn, timezone],
     queryFn: async (): Promise<HomepageState> => {
       const now = new Date();
-      const todayLocal = toYMD(now);
+      const todayLocal = zonedYMD(now, timezone);
 
       const weekStartDate = getWeekStart(now, weekStartsOn);
       const weekStart = weekStartDate.getTime();
@@ -681,7 +682,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
       }
 
       return {
-        todayLocal: { ...toYMD(now), weekday: now.getDay() },
+        todayLocal: { ...zonedYMD(now, timezone), weekday: now.getDay() },
         weekStart,
         activeRunStates,
         activeProgramRun: activeRunStates[0]?.run ?? null,
