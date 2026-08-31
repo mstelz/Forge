@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { summarizeSession } from "../../../../lib/session/summary";
-import { bestEpleyForExercise } from "../../../../lib/session/epley";
 import type { Session, SessionSetLog } from "../../../../../shared";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -162,7 +161,7 @@ describe("PR count — summarizeSession prCount", () => {
     expect(summary.prCount).toBe(1);
   });
 
-  it("counts all exercises as PRs when no prior history exists", () => {
+  it("counts no PRs when no prior history exists", () => {
     const session = makeSession({ status: "finished" });
     const exBench = "ex-bench";
     const exSquat = "ex-squat";
@@ -174,8 +173,29 @@ describe("PR count — summarizeSession prCount", () => {
 
     const summary = summarizeSession(session, currentLogs, []); // no prior logs
 
-    // Both are PRs (no prior baseline)
-    expect(summary.prCount).toBe(2);
+    // A record needs something to beat. The first time you ever do an exercise
+    // every number is a best, and calling that a PR cheapens the word — so the
+    // first session with an exercise establishes the baseline instead.
+    expect(summary.prCount).toBe(0);
+  });
+
+  it("counts a PR on the second session with an exercise", () => {
+    const session = makeSession({ status: "finished" });
+    const exBench = "ex-bench";
+
+    const priorLogs: SessionSetLog[] = [
+      makeLog("b0", "pe-1", exBench, "s0", "logged", {
+        sessionId: "sess-old",
+        weightKg: 100,
+        reps: 5,
+        setType: "normal",
+      }),
+    ];
+    const currentLogs: SessionSetLog[] = [
+      makeLog("b1", "pe-1", exBench, "s1", "logged", { weightKg: 105, reps: 5, setType: "normal" }),
+    ];
+
+    expect(summarizeSession(session, currentLogs, priorLogs).prCount).toBe(1);
   });
 
   it("PR count excludes warmup sets from Epley calculation", () => {
@@ -193,7 +213,7 @@ describe("PR count — summarizeSession prCount", () => {
 
     const summary = summarizeSession(session, currentLogs, []);
 
-    // Warmup sets are excluded from bestEpleyForExercise → no PR
+    // Warmups are invisible to record detection → no PR
     expect(summary.prCount).toBe(0);
   });
 });

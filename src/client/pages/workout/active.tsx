@@ -161,6 +161,7 @@ export function ActiveWorkoutPage() {
         onSkipSet={actions.handleSkipSet}
         onEditSaved={() => setSelectedPos(null)}
         exerciseTypes={exerciseTypesRef.current}
+        exerciseNames={exerciseNamesRef.current}
         noteOpen={noteOpen}
         onToggleNote={() => setNoteOpen((o) => !o)}
         onCloseNote={() => setNoteOpen(false)}

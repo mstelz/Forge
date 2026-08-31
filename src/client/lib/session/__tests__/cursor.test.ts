@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { computeNextCursor, countPlannedSlots } from "../cursor";
-import { bestEpleyForExercise } from "../epley";
 import type { LiveStructure } from "../cursor";
 import type { SessionSetLog } from "../../../../shared";
 
@@ -166,42 +165,9 @@ describe("computeNextCursor — exhaustion", () => {
   });
 });
 
-// ─── Test 3: bestEpleyForExercise exclusions ──────────────────────────────────
-
-describe("bestEpleyForExercise — exclusions", () => {
-  const exerciseId = "ex-bench";
-
-  it("excludes warmup logs and only returns the normal log's result", () => {
-    const warmupLog = makeLog("log-warmup", "pe-1", "slot-1", "logged", {
-      exerciseId,
-      setType: "warmup",
-      weightKg: 60,
-      reps: 10,
-    });
-    const normalLog = makeLog("log-normal", "pe-1", "slot-2", "logged", {
-      exerciseId,
-      setType: "normal",
-      weightKg: 100,
-      reps: 5,
-    });
-
-    const result = bestEpleyForExercise([warmupLog, normalLog], exerciseId);
-    expect(result).not.toBeNull();
-    expect(result!.logId).toBe("log-normal");
-    expect(result!.weightKg).toBe(100);
-  });
-
-  it("returns null when only warmup logs exist", () => {
-    const warmupLog = makeLog("log-warmup", "pe-1", "slot-1", "logged", {
-      exerciseId,
-      setType: "warmup",
-      weightKg: 60,
-      reps: 10,
-    });
-    const result = bestEpleyForExercise([warmupLog], exerciseId);
-    expect(result).toBeNull();
-  });
-});
+// The `bestEpleyForExercise` exclusion tests that used to sit here moved to
+// lib/session/__tests__/records.test.ts along with the behaviour, when record
+// detection replaced that function.
 
 // ─── Test 4: getLastLogValuesForExercise — pure logic test ────────────────────
 // We test the ordering/filtering logic directly without Dexie by simulating

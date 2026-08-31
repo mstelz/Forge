@@ -1,7 +1,9 @@
 import { useContext } from "react";
 import { SettingsContext } from "../../../contexts/settings-context";
 import { CheckIcon } from "../icons";
+import { headlineRecord, recordBadge } from "../../../lib/session/record-labels";
 import { formatRepsTarget, formatRpeTarget, formatSetSummary } from "./format";
+import type { ExerciseRecord } from "../../../lib/session/records";
 import type { SessionSetLog } from "../../../../shared";
 import type { PlannedSlot } from "./types";
 
@@ -14,9 +16,28 @@ export interface SetRowProps {
   log?: SessionSetLog;
   isCursor: boolean;
   onClick: () => void;
+  /** Records this set beat when it was logged, if any. */
+  records?: ExerciseRecord[];
 }
 
-export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
+/**
+ * Sits on the set that set the record and stays there — a toast says it once and
+ * is gone, but this is still here next week when you scroll back through history.
+ */
+function RecordBadge({ records }: { records: ExerciseRecord[] }) {
+  const headline = headlineRecord(records);
+  if (!headline) return null;
+  return (
+    <span
+      title={records.map((r) => recordBadge(r)).join(" · ")}
+      className="shrink-0 rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]"
+    >
+      {recordBadge(headline)}
+    </span>
+  );
+}
+
+export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick, records }: SetRowProps) {
   const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const repsTarget = formatRepsTarget(slot);
   const rpeTarget = formatRpeTarget(slot);
@@ -35,6 +56,7 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: Se
             <span className="text-sm font-semibold text-[var(--text)]">
               {formatSetSummary(log, weightUnit, distanceUnit)}
             </span>
+            {records && records.length > 0 && <RecordBadge records={records} />}
           </div>
           <span className="text-xs text-[var(--accent)]">editing</span>
         </button>
@@ -57,6 +79,7 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: Se
               RPE {log.rpe}
             </span>
           )}
+          {records && records.length > 0 && <RecordBadge records={records} />}
         </div>
         <CheckIcon className="text-green-500" />
       </button>

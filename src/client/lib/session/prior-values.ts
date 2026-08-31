@@ -29,3 +29,4 @@ export async function getLastLogValuesForExercise(
     distanceM: last.distanceM ?? undefined,
   };
 }
+

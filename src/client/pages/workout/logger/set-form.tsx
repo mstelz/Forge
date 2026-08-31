@@ -4,8 +4,14 @@ import {
 } from "react";
 import { SettingsContext } from "../../../contexts/settings-context";
 import { logSetBatch, updateSessionLog, updateSetBatch } from "../../../db/mutations";
+import { listLogsForExercise } from "../../../db/queries";
+import { recordsByLogId } from "../../../lib/session/records";
+import { describeRecord, headlineRecord } from "../../../lib/session/record-labels";
+import { syncLog } from "../../../sync/sync-logger";
 import { convertDistance, convertWeight, distanceToMeters, weightToKg } from "../../../lib/units";
 import { getLastLogValuesForExercise } from "../../../lib/session/prior-values";
+import { platesForTarget, describeLoading } from "../../../lib/plates";
+import { useLoadStyle } from "./use-load-style";
 import {
   logFormReducer, initialLogFormState,
   type LogFormPrefill,
@@ -13,13 +19,67 @@ import {
 import { uuidv4 } from "../../../lib/uuid";
 import { CheckIcon } from "../icons";
 import { computeRestBackfill, startRestTimer, validateMetrics } from "./log-set-builders";
+import { metricFieldsFor } from "./metric-visibility";
 import {
   DurationDistanceInputs, RpeStepper, SetTypeChips, WeightRepsInputs,
 } from "./metric-inputs";
 import { RestTimerStrip } from "./rest-timer";
-import { Toast } from "./toast";
+import { Toast, type ToastType } from "./toast";
 import type { ExerciseType, Session, SessionSetLog } from "../../../../shared";
 import type { CursorPos, LiveItem, LiveStructure, LogSetType, PlannedSlot, RestTimerData } from "./types";
+
+/**
+ * Which plates to put on the bar, revealed on tap.
+ *
+ * Only shown for barbell work, and only once there is a weight to break down.
+ * The bar and plate set are the common defaults — a home gym with an odd set will
+ * see a loading it cannot make, which is why an inexact target says so explicitly
+ * rather than quietly rounding.
+ */
+function PlateHint({
+  weightDisplay,
+  unit,
+  open,
+  onToggle,
+}: {
+  weightDisplay: number;
+  unit: "kg" | "lb";
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const loading = platesForTarget(weightDisplay, unit);
+
+  return (
+    <div className="-mt-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        {open ? "Hide plates" : "Show plates"}
+      </button>
+      {open && (
+        <p className="mt-1 text-xs text-[var(--text)]">
+          {!loading ? (
+            <span className="text-[var(--text-muted)]">
+              Lighter than the bar — nothing to load.
+            </span>
+          ) : (
+            <>
+              {describeLoading(loading, unit)}
+              {loading.approximate && (
+                <span className="text-[var(--text-muted)]">
+                  {" "}— closest is {loading.achievedWeight}{unit}
+                </span>
+              )}
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export interface BottomPanelProps {
   cursor: CursorPos | null;
@@ -33,6 +93,8 @@ export interface BottomPanelProps {
   onSkipSet: () => void;
   onEditSaved: () => void;
   exerciseTypes: Map<string, ExerciseType>;
+  /** Used to name the lift when a set sets a record. */
+  exerciseNames: Map<string, string>;
   noteOpen: boolean;
   onToggleNote: () => void;
   onCloseNote: () => void;
@@ -51,6 +113,7 @@ export function BottomPanel({
   onSkipSet,
   onEditSaved,
   exerciseTypes,
+  exerciseNames,
   noteOpen,
   onToggleNote,
   onCloseNote,
@@ -61,14 +124,48 @@ export function BottomPanel({
   // orthogonal and stays as plain state.
   const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
   const { rpe, setType, note } = form;
+  const { weightUnit, distanceUnit, showRpe } = useContext(SettingsContext);
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [platesOpen, setPlatesOpen] = useState(false);
 
-  const showToast = useCallback((message: string, type: "error" | "info" = "error") => {
+  const showToast = useCallback((message: string, type: ToastType = "error", ms = 3000) => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), ms);
   }, []);
+
+  /**
+   * Say so when a set just beat something, naming the lift and the number.
+   *
+   * Deliberately fire-and-forget after the write: reading an exercise's whole
+   * history is not something the LOG SET button should ever wait on. If it is
+   * slow, the set is already saved and the cursor has already moved.
+   */
+  const announceRecords = useCallback(
+    (logId: string, exerciseId: string, exerciseName: string) => {
+      void listLogsForExercise(exerciseId)
+        .then((history) => {
+          const beaten = recordsByLogId(history).get(logId);
+          const headline = beaten ? headlineRecord(beaten) : null;
+          if (!headline) return;
+          showToast(
+            `${exerciseName} — ${describeRecord(headline, { weightUnit, distanceUnit })}`,
+            "record",
+            5000,
+          );
+        })
+        .catch((err) =>
+          syncLog({
+            level: "error",
+            category: "app",
+            message: "record check failed",
+            detail: String(err),
+          }),
+        );
+    },
+    [showToast, weightUnit, distanceUnit],
+  );
 
   const currentSlot = useMemo<PlannedSlot | null>(() => {
     if (!cursor) return null;
@@ -89,9 +186,8 @@ export function BottomPanel({
   const currentExerciseType = currentItem
     ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
     : "strength";
-  const { weightUnit, distanceUnit, showRpe, showCardio } = useContext(SettingsContext);
-  const showWeightReps = currentExerciseType !== "cardio";
-  const showDurationDistance = (currentExerciseType === "cardio" || currentExerciseType === "mixed") && showCardio;
+  const { showWeightReps, showDurationDistance } = metricFieldsFor(currentExerciseType);
+  const { hasPlates } = useLoadStyle(currentItem?.exerciseId);
 
   const isEditingExisting = useMemo(
     () =>
@@ -144,26 +240,33 @@ export function BottomPanel({
       return;
     }
 
-    // No existing log — clear note and pre-fill metrics from the last logged set.
+    // No existing log — clear the note and carry last time's numbers forward.
     dispatch({ type: "prefill", values: { note: "" } });
 
-    // Pre-fill from the last logged set for this exercise across ALL sessions
-    // (not just the current one).
+    // The last set actually logged for this exercise, across ALL sessions — its
+    // weight and reps as performed. The form proposes nothing of its own: what
+    // you did last time is the honest starting point, and adjusting from a real
+    // number takes one tap on a stepper.
     let isCurrent = true;
-    getLastLogValuesForExercise(currentItem.exerciseId).then((prev) => {
-      if (!isCurrent) return;
-      if (prev) {
-        const values: LogFormPrefill = {};
-        if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
-        if (prev.reps != null) values.reps = prev.reps;
-        if (prev.durationSec != null) values.durationSec = prev.durationSec;
-        if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
-        // Do not pre-fill RPE — it is per-set
-        dispatch({ type: "prefill", values });
-      } else if (currentSlot.reps != null) {
-        dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
-      }
-    });
+    void getLastLogValuesForExercise(currentItem.exerciseId)
+      .then((prev) => {
+        if (!isCurrent) return;
+        if (prev) {
+          const values: LogFormPrefill = {};
+          if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
+          if (prev.reps != null) values.reps = prev.reps;
+          if (prev.durationSec != null) values.durationSec = prev.durationSec;
+          if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
+          // Do not pre-fill RPE — it is per-set
+          dispatch({ type: "prefill", values });
+        } else if (currentSlot.reps != null) {
+          // Nothing logged before: fall back to the reps the plan prescribes.
+          dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
+        }
+      })
+      .catch((err) =>
+        syncLog({ level: "error", category: "app", message: "set-form prefill failed", detail: String(err) }),
+      );
     return () => { isCurrent = false; };
   }, [currentItem, currentSlot, logs, weightUnit, distanceUnit]);
 
@@ -218,6 +321,11 @@ export function BottomPanel({
         await updateSetBatch(updatedExtraLog, restingSession(now), prevLogUpdate);
         dispatch({ type: "resetAfterLog" }); onCloseNote();
         prevSlotKey.current = null;
+        announceRecords(
+          updatedExtraLog.id,
+          currentItem.exerciseId,
+          exerciseNames.get(currentItem.exerciseId) ?? "This exercise",
+        );
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Failed to save. Please try again.");
       } finally {
@@ -275,6 +383,13 @@ export function BottomPanel({
         };
 
         await logSetBatch(record, restingSession(now), prevLogUpdate);
+        // Only a genuinely new set can set a record — editing one after the fact
+        // would re-announce history the user already saw.
+        announceRecords(
+          record.id,
+          currentItem.exerciseId,
+          exerciseNames.get(currentItem.exerciseId) ?? "This exercise",
+        );
       }
 
       dispatch({ type: "resetAfterLog" }); onCloseNote();
@@ -288,24 +403,33 @@ export function BottomPanel({
     }
   };
 
+  // Rendered by both branches below. Logging the last set of a workout moves the
+  // cursor to null, and a toast that only existed in the cursor branch would be
+  // thrown away at exactly the moment it had something to say — the last set is
+  // as likely to be the record as any other.
+  const toastEl = toast ? <Toast message={toast.message} type={toast.type} /> : null;
+
   if (!cursor) {
     return (
-      <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
-        <button
-          type="button"
-          onClick={onFinishWorkout}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
-        >
-          <CheckIcon className="text-[var(--accent-fg)]" />
-          FINISH WORKOUT
-        </button>
-        <button
-          type="button"
-          className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
-        >
-          Add extra set
-        </button>
-      </div>
+      <>
+        <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
+          <button
+            type="button"
+            onClick={onFinishWorkout}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
+          >
+            <CheckIcon className="text-[var(--accent-fg)]" />
+            FINISH WORKOUT
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            Add extra set
+          </button>
+        </div>
+        {toastEl}
+      </>
     );
   }
 
@@ -336,6 +460,11 @@ export function BottomPanel({
             />
           )}
         </div>
+
+        {/* Plate breakdown — tap to reveal, because the logger is dense enough */}
+        {hasPlates && showWeightReps && form.weightDisplay != null && (
+          <PlateHint weightDisplay={form.weightDisplay} unit={weightUnit} open={platesOpen} onToggle={() => setPlatesOpen((o) => !o)} />
+        )}
 
         {showRpe && <RpeStepper rpe={rpe} dispatch={dispatch} />}
 
@@ -399,8 +528,7 @@ export function BottomPanel({
         )}
       </div>
 
-      {/* Toast */}
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toastEl}
     </div>
   );
 }

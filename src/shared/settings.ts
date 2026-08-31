@@ -16,6 +16,11 @@ export const SettingsSchema = z.object({
   timezone: z.string().min(1).default("America/Chicago"),
   weekStartsOn: z.enum(["mon", "sun"]).default("mon"),
   showRpe: z.boolean().default(true),
+  /**
+   * Retired. Nothing reads this any more — a cardio exercise now always gets the
+   * duration and distance fields it needs to be logged at all. The key is kept so
+   * older clients and existing exports keep validating; do not wire it back up.
+   */
   showCardio: z.boolean().default(true),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   createdAt: z.number().int().nonnegative(),
