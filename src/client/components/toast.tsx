@@ -7,11 +7,18 @@ import {
   type ReactNode,
 } from "react";
 import { uuidv4 } from "../lib/uuid";
-import { toastReducer, type Toast, type ToastTone } from "./toast-state";
+import {
+  dismissDelayFor,
+  once,
+  toastReducer,
+  type Toast,
+  type ToastActionSpec,
+  type ToastTone,
+} from "./toast-state";
 
 type ShowToast = (
   message: string,
-  opts?: { tone?: ToastTone; detail?: string },
+  opts?: { tone?: ToastTone; detail?: string; action?: ToastActionSpec },
 ) => void;
 
 const ToastContext = createContext<ShowToast>(() => {});
@@ -21,10 +28,23 @@ export function useToast(): ShowToast {
   return useContext(ToastContext);
 }
 
+/**
+ * Announce a deletion and offer to take it back — the affordance that lets a
+ * destructive action happen immediately instead of behind a confirm dialog.
+ */
+export function useUndoToast(): (message: string, undo: () => void) => void {
+  const show = useToast();
+  return useCallback(
+    (message, undo) => show(message, { action: { label: "Undo", run: undo } }),
+    [show],
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(toastReducer, { toasts: [] });
 
   const show = useCallback<ShowToast>((message, opts) => {
+    const action = opts?.action;
     dispatch({
       type: "push",
       toast: {
@@ -32,6 +52,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         message,
         tone: opts?.tone ?? "info",
         detail: opts?.detail,
+        // Guard at creation: the button is torn down on the first tap, but a
+        // double tap can fire twice before React re-renders.
+        action: action ? { ...action, run: once(action.run) } : undefined,
       },
     });
   }, []);
@@ -73,9 +96,6 @@ const TONE_ACCENT: Record<ToastTone, string> = {
   info: "bg-[var(--accent)]",
 };
 
-/** Errors stay put — a message you cannot re-read is worse than none. */
-const AUTO_DISMISS_MS = 4500;
-
 function ToastRow({
   toast,
   onDismiss,
@@ -83,11 +103,15 @@ function ToastRow({
   toast: Toast;
   onDismiss: (id: string) => void;
 }) {
+  const delay = dismissDelayFor(toast);
+
   useEffect(() => {
-    if (toast.tone === "error") return;
-    const timer = setTimeout(() => onDismiss(toast.id), AUTO_DISMISS_MS);
+    if (delay === null) return;
+    const timer = setTimeout(() => onDismiss(toast.id), delay);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.tone, onDismiss]);
+  }, [toast.id, delay, onDismiss]);
+
+  const action = toast.action;
 
   return (
     <div
@@ -107,6 +131,18 @@ function ToastRow({
           </p>
         ) : null}
       </div>
+      {action ? (
+        <button
+          type="button"
+          onClick={() => {
+            action.run();
+            onDismiss(toast.id);
+          }}
+          className="shrink-0 self-center rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[var(--accent)] hover:bg-[var(--surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          {action.label}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}

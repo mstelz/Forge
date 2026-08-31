@@ -57,6 +57,9 @@ recordIfOrphaned("program_days", "overrides_json", "0006_program_day_overrides",
 recordIfOrphaned("program_runs", "week_zero_start_date", "0007_program_run_week_zero", 1779910000000);
 recordIfOrphaned("program_days", "order", "0008_program_day_multi_workout", 1748390400000);
 recordIfDropped("routine_items", "rpe_mode", "0009_remove_routine_rpe", 1748476800000);
+// 0014 repairs the columns 0011 never applied (see that migration's header). A
+// database that already has them — added out of band — must not re-run it.
+recordIfOrphaned("equipment", "deleted_at", "0014_tombstones_repair", 1785128400000);
 
 migrate(db, { migrationsFolder: MIGRATIONS_DIR });
 console.log("migrations applied");

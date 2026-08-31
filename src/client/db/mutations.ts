@@ -19,7 +19,7 @@ async function guardNotFinished(sessionId: string): Promise<void> {
 
 // Single sanctioned construction point for the outbox union. Callers pass a
 // payload already validated by their typed mutation; the cast is contained here.
-const enqueue = (
+export const enqueue = (
   entity: PendingWrite["entity"],
   op: PendingWrite["op"],
   payload: unknown,
@@ -231,8 +231,15 @@ export async function deleteSessionLog(id: string, sessionId: string): Promise<v
   });
 }
 
-export async function deleteEquipmentWithFanout(id: string): Promise<{ affected: number }> {
-  let affected = 0;
+/**
+ * Deleting equipment also strips its id from every exercise that referenced it.
+ * `touchedExercises` holds those exercises *as they were before* the strip, so
+ * an undo can put the references back rather than resurrecting an orphan.
+ */
+export async function deleteEquipmentWithFanout(
+  id: string,
+): Promise<{ affected: number; touchedExercises: Exercise[] }> {
+  const touchedExercises: Exercise[] = [];
   await forgeDB.transaction(
     "rw",
     forgeDB.equipment,
@@ -243,6 +250,7 @@ export async function deleteEquipmentWithFanout(id: string): Promise<{ affected:
       const now = Date.now();
       for (const ex of all) {
         if (!ex.equipmentIds.includes(id)) continue;
+        touchedExercises.push(ex);
         const updated: Exercise = {
           ...ex,
           equipmentIds: ex.equipmentIds.filter((x) => x !== id),
@@ -250,13 +258,12 @@ export async function deleteEquipmentWithFanout(id: string): Promise<{ affected:
         };
         await forgeDB.exercises.put(updated);
         await forgeDB.pendingWrites.add(enqueue("exercise", "update", updated));
-        affected++;
       }
       await forgeDB.equipment.delete(id);
       await forgeDB.pendingWrites.add(enqueue("equipment", "delete", { id }));
     },
   );
-  return { affected };
+  return { affected: touchedExercises.length, touchedExercises };
 }
 
 // ---------------------------------------------------------------------------

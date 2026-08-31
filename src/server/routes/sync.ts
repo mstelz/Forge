@@ -56,6 +56,10 @@ function applyExercise(entry: { id: string; op: string; payload: Payload }): Ite
       notes: entry.payload.notes ?? existing.notes,
       updatedAt: Math.max(entry.payload.updatedAt ?? 0, now),
       lastUsedAt: entry.payload.lastUsedAt ?? existing.lastUsedAt,
+      // An update asserts the row exists, so it lifts any tombstone. Undo of a
+      // delete re-sends the record as an update; the batch path has to honour
+      // that as much as PATCH /exercises/:id does, or the resurrect is a no-op.
+      deletedAt: null,
     }).where(eq(exercises.id, id)).run();
     return { id: entry.id, status: "ok", code: 200 };
   }
@@ -78,7 +82,8 @@ function applyEquipment(entry: { id: string; op: string; payload: Payload }): It
   if (entry.op === "update") {
     const existing = db.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, id)).get();
     if (!existing) return { id: entry.id, status: "conflict", code: 404 };
-    db.update(equipment).set({ name: entry.payload.name, updatedAt: Math.max(entry.payload.updatedAt ?? 0, now) }).where(eq(equipment.id, id)).run();
+    // deletedAt: null — an update lifts the tombstone, which is how undo resurrects.
+    db.update(equipment).set({ name: entry.payload.name, updatedAt: Math.max(entry.payload.updatedAt ?? 0, now), deletedAt: null }).where(eq(equipment.id, id)).run();
     return { id: entry.id, status: "ok", code: 200 };
   }
   if (entry.op === "delete") {
@@ -130,6 +135,8 @@ function applyGoal(entry: { id: string; op: string; payload: Payload }): ItemRes
       status: entry.payload.status ?? existing.status,
       completedAt: entry.payload.completedAt ?? existing.completedAt,
       updatedAt: Math.max(entry.payload.updatedAt ?? 0, now),
+      // deletedAt: null — an update lifts the tombstone, which is how undo resurrects.
+      deletedAt: null,
     }).where(eq(goals.id, id)).run();
     return { id: entry.id, status: "ok", code: 200 };
   }

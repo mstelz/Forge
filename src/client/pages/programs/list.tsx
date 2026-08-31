@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePrograms } from "../../hooks/use-programs";
 import { useActiveRuns, useFinishedRunsForProgram } from "../../hooks/use-program-runs";
 import { deleteProgram } from "../../db/mutations";
+import { restoreProgram } from "../../db/undo";
 import { queryKeys } from "../../db/query-keys";
 import { ActiveProgramCard } from "./active-card";
-import { DeleteProgramDialog } from "./delete-dialog";
 import { FullEmptyState, ZeroMatchState, ListSkeleton } from "./empty-states";
 import { useFilteredPrograms } from "./use-filtered-programs";
 import type { Program } from "../../../shared";
 import type { AppShellOutletContext } from "../../layouts/app-shell";
-import { useToast } from "../../components/toast";
+import { useToast, useUndoToast } from "../../components/toast";
 
 // ─── Other program row ─────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ function OtherProgramRow({
       <button
         type="button"
         onClick={() => onDelete(program)}
-        aria-label={`More options for ${program.name}`}
+        aria-label={`Delete ${program.name}`}
         className="shrink-0 rounded-md p-1.5 text-[var(--text-subtle)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <KebabIcon />
@@ -73,8 +73,8 @@ function OtherProgramRow({
 export function ProgramListPage() {
   const { openDrawer } = useOutletContext<AppShellOutletContext>();
   const [search, setSearch] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<Program | null>(null);
   const toast = useToast();
+  const undoToast = useUndoToast();
   const qc = useQueryClient();
 
   const { data: programs, isLoading } = usePrograms();
@@ -90,16 +90,15 @@ export function ProgramListPage() {
   const totalCount = programs?.length ?? 0;
   const hasSearch = search.trim().length > 0;
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => deleteProgram(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.programs.all });
-      qc.invalidateQueries({ queryKey: queryKeys.programRuns.all });
-      setDeleteTarget(null);
-    },
-  });
+  const refreshPrograms = () => {
+    qc.invalidateQueries({ queryKey: queryKeys.programs.all });
+    qc.invalidateQueries({ queryKey: queryKeys.programRuns.all });
+  };
 
-  const handleDeleteRequest = (program: Program) => {
+  // The program document carries its days, so the undo restores the whole
+  // schedule. Program runs are never deleted with the program, so there is
+  // nothing else to put back.
+  const handleDelete = async (program: Program) => {
     // Guard: refuse to delete if this program has an active run
     if (activeProgramIds.has(program.id)) {
       toast("This program has an active run", {
@@ -108,12 +107,11 @@ export function ProgramListPage() {
       });
       return;
     }
-    setDeleteTarget(program);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id);
+    await deleteProgram(program.id);
+    refreshPrograms();
+    undoToast(`Deleted ${program.name}`, () => {
+      void restoreProgram(program).then(refreshPrograms);
+    });
   };
 
   return (
@@ -195,7 +193,7 @@ export function ProgramListPage() {
                       <li key={p.id}>
                         <OtherProgramRow
                           program={p}
-                          onDelete={handleDeleteRequest}
+                          onDelete={(program) => void handleDelete(program)}
                         />
                       </li>
                     ))}
@@ -208,14 +206,6 @@ export function ProgramListPage() {
           </>
         )}
       </main>
-
-      <DeleteProgramDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        programName={deleteTarget?.name ?? ""}
-        onConfirm={handleDeleteConfirm}
-        pending={deleteMutation.isPending}
-      />
     </>
   );
 }
