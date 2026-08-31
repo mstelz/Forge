@@ -23,15 +23,18 @@ not asked for. It is the most deferrable thing in the backlog.
 
 Both of the hard parts now exist and are tested:
 
-- **Warmups are already excluded from everything that matters.**
-  `lib/session/records.ts` refuses to let a warmup set a record *or* become the
-  baseline that hides a later one, and `selectLastSessionSets` in
-  `prior-values.ts` skips them so progression is never judged off a light set.
-  The original spec listed these as work to do; they are done.
-- **The increment problem is solved.** `lib/equipment-loading.ts` knows what a
-  given piece of equipment can actually be set to, so a percentage-based ramp can
-  resolve to loadable weights instead of "68.75kg". Generation should use it
-  rather than reimplementing it.
+- **Warmups cannot set a record.** `lib/session/records.ts` refuses to let a
+  warmup set a record *or* become the baseline that hides a later one. The
+  original spec listed this as work to do; it is done.
+- **`lib/equipment-loading.ts` classifies equipment** by load style, which is
+  half of resolving a percentage-based ramp to loadable weights.
+
+Note that progression suggestions were built during Wave 2 and then **removed** —
+the prefill now simply carries last session's weight and reps forward. The
+increment table that went with it (`loadIncrement`, `roundToLoadable`) was deleted
+along with it rather than left as dead code, so a warmup generator would need to
+reintroduce it. It is a small table; the reasoning is in the git history of
+`lib/equipment-loading.ts`.
 
 ## What is left, if it is ever picked up
 

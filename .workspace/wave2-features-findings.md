@@ -3,16 +3,20 @@
 Things noticed in passing that were out of scope for the branch they were found
 on. None are fixed; each is written down so it is not lost.
 
-## 1. "Last time" counts warmups; records and progression do not
+## 1. Warmups leak into "Last time" and into the set-form prefill
 
 `lib/session/last-time.ts` filters on `status === "logged"` and the session id —
 never on `setType`. So a warmup shows up in the "Last time" hint.
 
-Record detection and progression both now exclude warmups deliberately. That
-makes the hint the odd one out: the app can tell you "Last time: 40 kg × 10" when
-40 kg was your warmup and you worked at 100. One line to fix, but it changes what
-a user sees on every exercise, so it wants its own change and its own test rather
-than riding along with a feature.
+`getLastLogValuesForExercise` in `prior-values.ts` has the same gap, and it now
+matters more: the set form prefills from it directly. If your last logged set of
+an exercise was a warmup, the form opens at the warmup weight.
+
+Record detection excludes warmups deliberately, which makes these two the odd ones
+out — the app can tell you "Last time: 40 kg × 10" and prefill 40 kg when 40 kg
+was your warmup and you worked at 100. Both are a one-line filter, but they change
+what a user sees on every exercise, so they want their own change and their own
+tests rather than riding along with something else.
 
 ## 2. Extra sets are invisible to volume, and to the history sheet
 
