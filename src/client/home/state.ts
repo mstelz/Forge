@@ -72,6 +72,8 @@ export type HomepageState = {
   calendarDots: HomepageCalendarDot[];
   weeklyStats: { workouts: number; volumeKg: number; streakWeeks: number };
   topGoals: Goal[];
+  /** Nothing finished, nothing built — show the guided start. */
+  firstRun: boolean;
 };
 
 /** Minimal goal shape for homepage display. */
@@ -153,6 +155,21 @@ export function calendarWeekDays(
     day.setDate(start.getDate() + i);
     return day;
   });
+}
+
+/**
+ * True only for an install that has never been used: nothing finished, nothing
+ * built. Creating a single routine is enough to graduate — at that point the
+ * user has found their way and the guided card would just be in the way.
+ */
+export function isFirstRun(counts: {
+  finishedSessions: number;
+  routines: number;
+  programs: number;
+}): boolean {
+  return (
+    counts.finishedSessions === 0 && counts.routines === 0 && counts.programs === 0
+  );
 }
 
 /** Compute streakWeeks: consecutive weeks with ≥1 finished session. */
@@ -681,7 +698,23 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
         // goals table not present yet
       }
 
+      let firstRun = false;
+      try {
+        const [routineCount, programCount] = await Promise.all([
+          forgeDB.routines.count(),
+          forgeDB.programs.count(),
+        ]);
+        firstRun = isFirstRun({
+          finishedSessions: sessions.length,
+          routines: routineCount,
+          programs: programCount,
+        });
+      } catch {
+        // Tables may not exist yet; treat as an ordinary install.
+      }
+
       return {
+        firstRun,
         todayLocal: { ...zonedYMD(now, timezone), weekday: now.getDay() },
         weekStart,
         activeRunStates,

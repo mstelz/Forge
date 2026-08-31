@@ -24,6 +24,7 @@ import { buildLiveStructure } from "../workout/start";
 import { computeNextPlayableDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
 import { DayDetailSurface } from "./day-detail";
+import { ChevronRight } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Estimated duration helper
@@ -436,6 +437,74 @@ function NoProgramVariant() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// First run — shown only while the app has nothing in it at all
+// ---------------------------------------------------------------------------
+
+const FIRST_STEPS: { to: string; title: string; body: string }[] = [
+  {
+    to: "/workout/start",
+    title: "Log a workout now",
+    body: "Pick exercises as you go. Nothing to set up first.",
+  },
+  {
+    to: "/routines/new",
+    title: "Build a routine",
+    body: "Save the sets and reps you repeat, then start it in one tap.",
+  },
+  {
+    to: "/exercises",
+    title: "Browse the exercise library",
+    body: "Already stocked. Add your own whenever you need one.",
+  },
+];
+
+function FirstRunCard() {
+  return (
+    <section
+      className="mx-4 mb-3 overflow-hidden rounded-[var(--radius-card)] bg-[var(--surface)] ring-1 ring-[var(--border)]"
+      aria-labelledby="first-run-heading"
+    >
+      <div className="flex">
+        <div className="w-1 flex-shrink-0 bg-[var(--accent)]" aria-hidden="true" />
+        <div className="flex-1 p-4">
+          <h2 id="first-run-heading" className="text-base font-bold text-[var(--text)]">
+            Welcome to Forge
+          </h2>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            Nothing logged yet. Any of these is a fine place to start.
+          </p>
+
+          <ul className="mt-4 flex flex-col gap-2">
+            {FIRST_STEPS.map((step) => (
+              <li key={step.to}>
+                <Link
+                  to={step.to}
+                  className="flex items-center gap-3 rounded-[10px] border border-[var(--border)] px-3 py-2.5 hover:border-[var(--text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-colors"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-[var(--text)]">
+                      {step.title}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
+                      {step.body}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    className="shrink-0 text-[var(--text-subtle)]"
+                    aria-hidden="true"
+                  />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CompletedDayVariant({
   routine,
   sessionId,
@@ -783,7 +852,9 @@ export function HomePage() {
           <DailyBriefingStrip />
 
           {/* Program today cards — one per active run, or no-program fallback */}
-          {data.activeRunStates.length > 0 ? (
+          {data.firstRun ? (
+            <FirstRunCard />
+          ) : data.activeRunStates.length > 0 ? (
             data.activeRunStates.map((activeState) => (
               <TodayCard
                 key={activeState.run.id}
