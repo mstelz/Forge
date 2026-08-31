@@ -13,6 +13,7 @@ import {
 import { uuidv4 } from "../../../lib/uuid";
 import { CheckIcon } from "../icons";
 import { computeRestBackfill, startRestTimer, validateMetrics } from "./log-set-builders";
+import { metricFieldsFor } from "./metric-visibility";
 import {
   DurationDistanceInputs, RpeStepper, SetTypeChips, WeightRepsInputs,
 } from "./metric-inputs";
@@ -89,9 +90,8 @@ export function BottomPanel({
   const currentExerciseType = currentItem
     ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
     : "strength";
-  const { weightUnit, distanceUnit, showRpe, showCardio } = useContext(SettingsContext);
-  const showWeightReps = currentExerciseType !== "cardio";
-  const showDurationDistance = (currentExerciseType === "cardio" || currentExerciseType === "mixed") && showCardio;
+  const { weightUnit, distanceUnit, showRpe } = useContext(SettingsContext);
+  const { showWeightReps, showDurationDistance } = metricFieldsFor(currentExerciseType);
 
   const isEditingExisting = useMemo(
     () =>

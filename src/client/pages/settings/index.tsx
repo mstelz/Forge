@@ -405,14 +405,6 @@ export function SettingsPage() {
               onChange={(v) => save({ showRpe: v })}
             />
           </SettingsRow>
-
-          <SettingsRow>
-            <SettingsLabel>Show cardio</SettingsLabel>
-            <ToggleSwitch
-              checked={settings.showCardio}
-              onChange={(v) => save({ showCardio: v })}
-            />
-          </SettingsRow>
         </div>
 
         {/* ─── DATA MANAGEMENT ─── */}
