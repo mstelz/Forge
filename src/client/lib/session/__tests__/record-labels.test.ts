@@ -18,7 +18,7 @@ const lb = { weightUnit: "lb", distanceUnit: "mi" } as const;
 
 describe("describeRecord", () => {
   it("names the record and what it beat", () => {
-    expect(describeRecord(record(), kg)).toBe("Heaviest set — 110 kg, up from 100 kg");
+    expect(describeRecord(record(), kg)).toBe("Heaviest set: 110 kg, up from 100 kg");
   });
 
   it("renders in the user's weight unit", () => {
@@ -56,7 +56,7 @@ describe("describeRecord", () => {
 
   it("renders a duration record as a clock time", () => {
     expect(describeRecord(record({ kind: "longestDuration", value: 3600, previous: 1800 }), kg))
-      .toBe("Longest time — 1:00:00, up from 30:00");
+      .toBe("Longest time: 1:00:00, up from 30:00");
   });
 });
 

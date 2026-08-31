@@ -70,9 +70,17 @@ function emptyBests(): Bests {
   return { epley1RM: null, weightKg: null, distanceM: null, durationSec: null, pace: null };
 }
 
-/** Performed, and not a warmup. Everything else is invisible to records. */
+/**
+ * Performed, and not a warmup. Everything else is invisible to records.
+ *
+ * "extra" counts: a set added mid-workout with the ADD SET button is real work —
+ * the logger even draws it like any other logged set — and a bonus heavy single
+ * is exactly the kind of thing that sets a record. Only "skipped" is excluded, as
+ * a set that never happened.
+ */
 function canSetRecord(log: SessionSetLog): boolean {
-  return log.status === "logged" && log.setType !== "warmup";
+  const performed = log.status === "logged" || log.status === "extra";
+  return performed && log.setType !== "warmup";
 }
 
 function positive(value: number | null | undefined): number | null {

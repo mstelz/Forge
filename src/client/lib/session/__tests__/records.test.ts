@@ -89,6 +89,20 @@ describe("recordsByLogId — warmups", () => {
     const skipped = log({ weightKg: 300, reps: 5, status: "skipped" });
     expect(recordsByLogId([first, skipped]).has(skipped.id)).toBe(false);
   });
+
+  it("counts an extra set added mid-workout — it is real work", () => {
+    // ADD SET stores status "extra", but a bonus heavy single is exactly the
+    // kind of set that sets a record.
+    const first = log({ weightKg: 100, reps: 5 });
+    const bonus = log({ weightKg: 120, reps: 5, status: "extra" });
+    expect(kindsFor([first, bonus], bonus.id)).toContain("heaviestWeight");
+  });
+
+  it("lets an extra set become the baseline for later sets", () => {
+    const bonus = log({ weightKg: 120, reps: 5, status: "extra" });
+    const notBetter = log({ weightKg: 110, reps: 5 });
+    expect(recordsByLogId([bonus, notBetter]).has(notBetter.id)).toBe(false);
+  });
 });
 
 describe("recordsByLogId — the Epley high-rep trap", () => {

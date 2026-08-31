@@ -339,24 +339,33 @@ export function BottomPanel({
     }
   };
 
+  // Rendered by both branches below. Logging the last set of a workout moves the
+  // cursor to null, and a toast that only existed in the cursor branch would be
+  // thrown away at exactly the moment it had something to say — the last set is
+  // as likely to be the record as any other.
+  const toastEl = toast ? <Toast message={toast.message} type={toast.type} /> : null;
+
   if (!cursor) {
     return (
-      <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
-        <button
-          type="button"
-          onClick={onFinishWorkout}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
-        >
-          <CheckIcon className="text-[var(--accent-fg)]" />
-          FINISH WORKOUT
-        </button>
-        <button
-          type="button"
-          className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
-        >
-          Add extra set
-        </button>
-      </div>
+      <>
+        <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
+          <button
+            type="button"
+            onClick={onFinishWorkout}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
+          >
+            <CheckIcon className="text-[var(--accent-fg)]" />
+            FINISH WORKOUT
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            Add extra set
+          </button>
+        </div>
+        {toastEl}
+      </>
     );
   }
 
@@ -450,8 +459,7 @@ export function BottomPanel({
         )}
       </div>
 
-      {/* Toast */}
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toastEl}
     </div>
   );
 }

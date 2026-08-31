@@ -59,13 +59,18 @@ function formatValue(kind: RecordKind, value: number, units: RecordUnits): strin
   }
 }
 
-/** e.g. "Heaviest set — 110 kg, up from 100 kg". */
+/**
+ * e.g. "Heaviest set: 110 kg, up from 100 kg".
+ *
+ * A colon rather than a dash, because callers prefix the exercise name with one —
+ * "Bench Press — Heaviest set — 110 kg" reads like a list of three things.
+ */
 export function describeRecord(record: ExerciseRecord, units: RecordUnits): string {
   const value = formatValue(record.kind, record.value, units);
   const previous = formatValue(record.kind, record.previous, units);
   // A faster pace is a smaller number, so "up from" would read as a slowdown.
   const direction = record.kind === "fastestPace" ? "down from" : "up from";
-  return `${KIND_LABELS[record.kind]} — ${value}, ${direction} ${previous}`;
+  return `${KIND_LABELS[record.kind]}: ${value}, ${direction} ${previous}`;
 }
 
 /**
