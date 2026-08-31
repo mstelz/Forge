@@ -2,9 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   logFormReducer,
   initialLogFormState,
-  secondsToDigits,
-  bufferToSeconds,
-  formatDigits,
   type LogFormState,
 } from "../log-form";
 
@@ -57,35 +54,7 @@ describe("logFormReducer — rpe", () => {
   });
 });
 
-describe("logFormReducer — duration", () => {
-  it("pushes/pops digits and recomputes seconds", () => {
-    let s = logFormReducer(base(), { type: "pushDurationDigit", digit: 1 });
-    expect(s).toMatchObject({ durationDigits: [1], durationSec: 1 });
-    s = logFormReducer(s, { type: "pushDurationDigit", digit: 3 });
-    s = logFormReducer(s, { type: "pushDurationDigit", digit: 0 });
-    expect(s).toMatchObject({ durationDigits: [1, 3, 0], durationSec: 90 });
-    s = logFormReducer(s, { type: "popDurationDigit" });
-    expect(s).toMatchObject({ durationDigits: [1, 3], durationSec: 13 });
-  });
-
-  it("caps the digit buffer at 6", () => {
-    let s = base();
-    for (const d of [1, 2, 3, 4, 5, 6, 7]) s = logFormReducer(s, { type: "pushDurationDigit", digit: d });
-    expect(s.durationDigits).toEqual([2, 3, 4, 5, 6, 7]);
-  });
-
-  it("popping the last digit clears seconds to null", () => {
-    const s = logFormReducer(base({ durationDigits: [5], durationSec: 5 }), { type: "popDurationDigit" });
-    expect(s).toMatchObject({ durationDigits: [], durationSec: null });
-  });
-
-  it("steps by 30s, nulling out at zero on decrement", () => {
-    expect(logFormReducer(base(), { type: "incrementDuration" })).toMatchObject({ durationSec: 30, durationDigits: [3, 0] });
-    expect(logFormReducer(base({ durationSec: 30 }), { type: "incrementDuration" })).toMatchObject({ durationSec: 60, durationDigits: [1, 0, 0] });
-    expect(logFormReducer(base({ durationSec: 30 }), { type: "decrementDuration" })).toMatchObject({ durationSec: null, durationDigits: [] });
-    expect(logFormReducer(base({ durationSec: 60 }), { type: "decrementDuration" })).toMatchObject({ durationSec: 30, durationDigits: [3, 0] });
-  });
-});
+// Duration is no longer a digit buffer; see duration-input.test.ts.
 
 describe("logFormReducer — distance", () => {
   it("parses input and steps with 3-decimal rounding, clamped at 0", () => {
@@ -113,7 +82,7 @@ describe("logFormReducer — prefill", () => {
     expect(s).toMatchObject({
       weightDisplay: 62.5, weightInputStr: "62.5",
       reps: 5, repsInputStr: "5",
-      durationSec: 90, durationDigits: [1, 3, 0],
+      durationSec: 90, durationInputStr: "1:30",
       distanceDisplay: 2.5, distanceInputStr: "2.5",
       setType: "drop", note: "x",
     });
@@ -131,20 +100,5 @@ describe("logFormReducer — resetAfterLog", () => {
     const start = base({ weightDisplay: 60, weightInputStr: "60", reps: 5, repsInputStr: "5", rpe: 8, note: "x" });
     const s = logFormReducer(start, { type: "resetAfterLog" });
     expect(s).toMatchObject({ weightDisplay: 60, reps: 5, rpe: null, note: "" });
-  });
-});
-
-describe("digit helpers", () => {
-  it("round-trips seconds through the digit buffer", () => {
-    expect(secondsToDigits(90)).toEqual([1, 3, 0]);
-    expect(bufferToSeconds([1, 3, 0])).toBe(90);
-    expect(secondsToDigits(3661)).toEqual([1, 0, 1, 0, 1]);
-    expect(bufferToSeconds(secondsToDigits(3661))).toBe(3661);
-  });
-
-  it("formats the buffer as m:ss or h:mm:ss", () => {
-    expect(formatDigits([])).toBe("");
-    expect(formatDigits([1, 3, 0])).toBe("1:30");
-    expect(formatDigits([1, 0, 1, 0, 1])).toBe("1:01:01");
   });
 });

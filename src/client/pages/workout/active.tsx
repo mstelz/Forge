@@ -38,7 +38,7 @@ import { formatWeight, formatDistance, convertWeight, convertDistance, weightToK
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
 import {
-  logFormReducer, initialLogFormState, formatDigits,
+  logFormReducer, initialLogFormState,
   type LogFormPrefill,
 } from "../../lib/session/log-form";
 import { syncLog } from "../../sync/sync-logger";
@@ -874,7 +874,7 @@ function BottomPanel({
   const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
   const {
     weightDisplay, weightInputStr, reps, repsInputStr, rpe,
-    durationSec, durationDigits, distanceDisplay, distanceInputStr, setType, note,
+    durationSec, durationInputStr, distanceDisplay, distanceInputStr, setType, note,
   } = form;
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -1269,27 +1269,14 @@ function BottomPanel({
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={formatDigits(durationDigits)}
+                    aria-label="Duration"
+                    value={durationInputStr}
                     placeholder="0:00"
                     onFocus={(e) => e.target.select()}
-                    onChange={() => {}}
+                    onChange={(e) => dispatch({ type: "durationInput", value: e.target.value })}
+                    onBlur={() => dispatch({ type: "normalizeDuration" })}
                     onKeyDown={(e) => {
-                      if (e.key >= "0" && e.key <= "9") {
-                        e.preventDefault();
-                        dispatch({ type: "pushDurationDigit", digit: parseInt(e.key, 10) });
-                      } else if (e.key === "Backspace") {
-                        e.preventDefault();
-                        dispatch({ type: "popDurationDigit" });
-                      }
-                    }}
-                    onInput={(e) => {
-                      const ie = e.nativeEvent as InputEvent;
-                      if (ie.inputType === "insertText" && ie.data) {
-                        const d = parseInt(ie.data, 10);
-                        if (!isNaN(d)) dispatch({ type: "pushDurationDigit", digit: d });
-                      } else if (ie.inputType === "deleteContentBackward") {
-                        dispatch({ type: "popDurationDigit" });
-                      }
+                      if (e.key === "Enter") e.currentTarget.blur();
                     }}
                     className="w-0 min-w-0 flex-1 bg-transparent text-center text-lg font-bold tabular-nums text-[var(--text)] focus:outline-none"
                   />
