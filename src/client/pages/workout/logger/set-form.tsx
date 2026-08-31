@@ -9,7 +9,13 @@ import { recordsByLogId } from "../../../lib/session/records";
 import { describeRecord, headlineRecord } from "../../../lib/session/record-labels";
 import { syncLog } from "../../../sync/sync-logger";
 import { convertDistance, convertWeight, distanceToMeters, weightToKg } from "../../../lib/units";
-import { getLastLogValuesForExercise } from "../../../lib/session/prior-values";
+import {
+  getLastLogValuesForExercise,
+  getLastSessionSetsForExercise,
+} from "../../../lib/session/prior-values";
+import { suggestNextTarget, type Suggestion } from "../../../lib/session/progression";
+import { platesForTarget, describeLoading } from "../../../lib/plates";
+import { useLoadStyle } from "./use-load-style";
 import {
   logFormReducer, initialLogFormState,
   type LogFormPrefill,
@@ -25,6 +31,59 @@ import { RestTimerStrip } from "./rest-timer";
 import { Toast, type ToastType } from "./toast";
 import type { ExerciseType, Session, SessionSetLog } from "../../../../shared";
 import type { CursorPos, LiveItem, LiveStructure, LogSetType, PlannedSlot, RestTimerData } from "./types";
+
+/**
+ * Which plates to put on the bar, revealed on tap.
+ *
+ * Only shown for barbell work, and only once there is a weight to break down.
+ * The bar and plate set are the common defaults — a home gym with an odd set will
+ * see a loading it cannot make, which is why an inexact target says so explicitly
+ * rather than quietly rounding.
+ */
+function PlateHint({
+  weightDisplay,
+  unit,
+  open,
+  onToggle,
+}: {
+  weightDisplay: number;
+  unit: "kg" | "lb";
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const loading = platesForTarget(weightDisplay, unit);
+
+  return (
+    <div className="-mt-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        {open ? "Hide plates" : "Show plates"}
+      </button>
+      {open && (
+        <p className="mt-1 text-xs text-[var(--text)]">
+          {!loading ? (
+            <span className="text-[var(--text-muted)]">
+              Lighter than the bar — nothing to load.
+            </span>
+          ) : (
+            <>
+              {describeLoading(loading, unit)}
+              {loading.approximate && (
+                <span className="text-[var(--text-muted)]">
+                  {" "}— closest is {loading.achievedWeight}{unit}
+                </span>
+              )}
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export interface BottomPanelProps {
   cursor: CursorPos | null;
@@ -73,6 +132,8 @@ export function BottomPanel({
   const [logging, setLogging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [platesOpen, setPlatesOpen] = useState(false);
 
   const showToast = useCallback((message: string, type: ToastType = "error", ms = 3000) => {
     setToast({ message, type });
@@ -131,6 +192,7 @@ export function BottomPanel({
     ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
     : "strength";
   const { showWeightReps, showDurationDistance } = metricFieldsFor(currentExerciseType);
+  const { incrementKg, hasPlates, ready: loadStyleReady } = useLoadStyle(currentItem?.exerciseId, weightUnit);
 
   const isEditingExisting = useMemo(
     () =>
@@ -154,6 +216,10 @@ export function BottomPanel({
     if (!currentItem || !currentSlot) return;
     const slotKey = `${currentItem.performedExerciseId}:${currentSlot.id}`;
     if (prevSlotKey.current === slotKey) return;
+    // Wait for the equipment lookup before deciding anything. Deciding early means
+    // deciding against "unknown equipment", which is how a suggestion silently
+    // never appears. The guard above is not set until we commit, so this re-runs.
+    if (!loadStyleReady) return;
     prevSlotKey.current = slotKey;
 
     // If this slot already has a logged entry, pre-fill from it so the user
@@ -185,26 +251,54 @@ export function BottomPanel({
 
     // No existing log — clear note and pre-fill metrics from the last logged set.
     dispatch({ type: "prefill", values: { note: "" } });
+    setSuggestion(null);
 
-    // Pre-fill from the last logged set for this exercise across ALL sessions
-    // (not just the current one).
+    // One sequential flow rather than two racing prefills: a suggestion, where we
+    // have grounds for one, supersedes simply repeating last time's numbers.
     let isCurrent = true;
-    getLastLogValuesForExercise(currentItem.exerciseId).then((prev) => {
-      if (!isCurrent) return;
-      if (prev) {
-        const values: LogFormPrefill = {};
-        if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
-        if (prev.reps != null) values.reps = prev.reps;
-        if (prev.durationSec != null) values.durationSec = prev.durationSec;
-        if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
-        // Do not pre-fill RPE — it is per-set
-        dispatch({ type: "prefill", values });
-      } else if (currentSlot.reps != null) {
-        dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
+    void (async () => {
+      try {
+        const lastSets = await getLastSessionSetsForExercise(currentItem.exerciseId, session.id);
+        if (!isCurrent) return;
+
+        const next = suggestNextTarget(lastSets, currentSlot, incrementKg);
+        if (next) {
+          setSuggestion(next);
+          dispatch({
+            type: "prefill",
+            values: {
+              weightDisplay: toWeightDisplay(next.weightKg),
+              ...(next.reps != null ? { reps: next.reps } : {}),
+            },
+          });
+          return;
+        }
+
+        // No opinion worth having — fall back to the last logged set for this
+        // exercise across ALL sessions, which is what the form always did.
+        const prev = await getLastLogValuesForExercise(currentItem.exerciseId);
+        if (!isCurrent) return;
+        if (prev) {
+          const values: LogFormPrefill = {};
+          if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
+          if (prev.reps != null) values.reps = prev.reps;
+          if (prev.durationSec != null) values.durationSec = prev.durationSec;
+          if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
+          // Do not pre-fill RPE — it is per-set
+          dispatch({ type: "prefill", values });
+        } else if (currentSlot.reps != null) {
+          dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
+        }
+      } catch (err) {
+        syncLog({ level: "error", category: "app", message: "set-form prefill failed", detail: String(err) });
       }
-    });
+    })();
     return () => { isCurrent = false; };
-  }, [currentItem, currentSlot, logs, weightUnit, distanceUnit]);
+    // `session.id` and `incrementKg` are read above and left out on purpose: the
+    // slot guard makes this run once per slot, and re-running it mid-set would
+    // overwrite whatever the user has typed. `loadStyleReady` is in the list
+    // because the guard is not committed until it flips true.
+  }, [currentItem, currentSlot, logs, weightUnit, distanceUnit, loadStyleReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogSet = async () => {
     if (!cursor || !currentItem || logging) return;
@@ -396,6 +490,23 @@ export function BottomPanel({
             />
           )}
         </div>
+
+        {/* What the app thinks, kept visibly distinct from what the user typed —
+            and already in the field, so ignoring it costs nothing. */}
+        {suggestion && showWeightReps && (
+          <p className="-mt-2 text-xs text-[var(--text-muted)]">
+            <span className="font-semibold text-[var(--accent)]">
+              {suggestion.kind === "increase" ? "Suggested" : "Hold"}
+            </span>
+            {" · "}
+            {suggestion.reason}
+          </p>
+        )}
+
+        {/* Plate breakdown — tap to reveal, because the logger is dense enough */}
+        {hasPlates && showWeightReps && form.weightDisplay != null && (
+          <PlateHint weightDisplay={form.weightDisplay} unit={weightUnit} open={platesOpen} onToggle={() => setPlatesOpen((o) => !o)} />
+        )}
 
         {showRpe && <RpeStepper rpe={rpe} dispatch={dispatch} />}
 
