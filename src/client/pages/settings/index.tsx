@@ -51,7 +51,7 @@ function SegmentedControl({ options, value, onChange }: SegmentedControlProps) {
             className={[
               "rounded-full px-3 py-1 text-xs font-semibold transition-colors min-h-[28px]",
               isActive
-                ? "bg-[#F59E0B] text-black"
+                ? "bg-[var(--accent)] text-[var(--accent-fg)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             ].join(" ")}
           >
@@ -80,7 +80,7 @@ function ToggleSwitch({ checked, onChange }: ToggleSwitchProps) {
       onClick={() => onChange(!checked)}
       className={[
         "relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] min-w-[48px]",
-        checked ? "bg-[#F59E0B]" : "bg-[var(--border-strong)]",
+        checked ? "bg-[var(--accent)]" : "bg-[var(--border-strong)]",
       ].join(" ")}
     >
       <span

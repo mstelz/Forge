@@ -70,7 +70,7 @@ function Drawer({ onClose }: { onClose: () => void }) {
         </nav>
 
         <div className="mt-auto">
-          <div className="mb-2 border-t border-[#26272A]" />
+          <div className="mb-2 border-t border-[var(--border)]" />
           <NavLink
             to="/settings"
             onClick={onClose}

@@ -2453,7 +2453,7 @@ export function ActiveWorkoutPage() {
               <button
                 type="button"
                 onClick={handleDiscardConfirmed}
-                className={`rounded-full px-4 py-2 text-sm font-semibold text-white focus:outline-none focus-visible:ring-2 ${isReopenEdit ? "bg-[var(--accent)] focus-visible:ring-[var(--accent)]" : "bg-red-500 focus-visible:ring-red-500"}`}
+                className={`rounded-full px-4 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 ${isReopenEdit ? "bg-[var(--accent)] text-[var(--accent-fg)] focus-visible:ring-[var(--accent)]" : "bg-red-500 text-white focus-visible:ring-red-500"}`}
               >
                 {isReopenEdit ? "Done editing" : "Discard"}
               </button>

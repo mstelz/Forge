@@ -27,7 +27,7 @@ function ModeToggle({ label, value, onChange }: ToggleProps) {
             className={cn(
               "px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
               value === opt
-                ? "bg-[var(--accent)] text-white"
+                ? "bg-[var(--accent)] text-[var(--accent-fg)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

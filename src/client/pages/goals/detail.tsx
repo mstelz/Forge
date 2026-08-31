@@ -334,7 +334,7 @@ export function GoalDetailPage() {
 
           {/* Progress bar */}
           <div className="space-y-1">
-            <div className="relative h-1.5 w-full rounded-full bg-[#26272A] overflow-hidden">
+            <div className="relative h-1.5 w-full rounded-full bg-[var(--border)] overflow-hidden">
               <div
                 className="absolute inset-y-0 left-0 rounded-full bg-[var(--accent)] transition-all"
                 style={{ width: `${percent}%` }}
