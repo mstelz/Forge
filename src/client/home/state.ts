@@ -14,6 +14,7 @@ import type { Goal as SharedGoal } from "../../shared/goals";
 import { isVolumeLog } from "../hooks/use-history";
 import { computeNextPlayableDay, computeCascadeSchedule } from "../lib/programs/next-day";
 import { computeGoalProgress, getGoalEffectiveStatus } from "../goals/progress";
+import { useSettingsContext } from "../contexts/settings-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,13 +110,30 @@ type ProgramDaySlot = { weekIndex: number; dayIndex: number };
 // Date helpers
 // ---------------------------------------------------------------------------
 
-/** Monday 00:00 local of the week containing `date` (defaults to today). */
-export function getMondayWeekStart(date: Date = new Date()): Date {
+export type WeekStart = "mon" | "sun";
+
+const WEEKDAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"] as const;
+
+/**
+ * Single-letter column headers in the same order `calendarWeekDays` emits days.
+ * Both derive from `weekStartsOn` so a header can never drift off its column —
+ * the two used to be declared independently, which labelled every day early.
+ */
+export function dayOfWeekHeaders(weekStartsOn: WeekStart = "mon"): string[] {
+  const offset = weekStartsOn === "sun" ? 0 : 1;
+  return Array.from({ length: 7 }, (_, i) => WEEKDAY_INITIALS[(i + offset) % 7]!);
+}
+
+/** 00:00 local on the first day of the week containing `date`. */
+export function getWeekStart(
+  date: Date = new Date(),
+  weekStartsOn: WeekStart = "mon",
+): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   const dow = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const daysToMonday = (dow + 6) % 7; // Mon=0, Tue=1, ..., Sun=6
-  d.setDate(d.getDate() - daysToMonday);
+  const daysBack = weekStartsOn === "sun" ? dow : (dow + 6) % 7;
+  d.setDate(d.getDate() - daysBack);
   return d;
 }
 
@@ -123,12 +141,15 @@ export function toYMD(date: Date): { y: number; m: number; d: number } {
   return { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate() };
 }
 
-/** Return the 7 calendar days (Mon–Sun) of the week containing `date`. */
-export function calendarWeekDays(date: Date = new Date()): Date[] {
-  const monday = getMondayWeekStart(date);
+/** The 7 calendar days of the week containing `date`, in display order. */
+export function calendarWeekDays(
+  date: Date = new Date(),
+  weekStartsOn: WeekStart = "mon",
+): Date[] {
+  const start = getWeekStart(date, weekStartsOn);
   return Array.from({ length: 7 }, (_, i) => {
-    const day = new Date(monday);
-    day.setDate(monday.getDate() + i);
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
     return day;
   });
 }
@@ -137,6 +158,7 @@ export function calendarWeekDays(date: Date = new Date()): Date[] {
 export function computeStreakWeeks(
   sessions: Session[],
   now: Date = new Date(),
+  weekStartsOn: WeekStart = "mon",
 ): number {
   const finishedWithEnd = sessions.filter(
     (s) => s.status === "finished" && s.endedAt != null,
@@ -144,11 +166,11 @@ export function computeStreakWeeks(
 
   const weekStartsWithSessions = new Set<number>();
   for (const s of finishedWithEnd) {
-    const weekStart = getMondayWeekStart(new Date(s.endedAt!));
+    const weekStart = getWeekStart(new Date(s.endedAt!), weekStartsOn);
     weekStartsWithSessions.add(weekStart.getTime());
   }
 
-  const thisWeekStart = getMondayWeekStart(now);
+  const thisWeekStart = getWeekStart(now, weekStartsOn);
   const thisWeekHasSessions = weekStartsWithSessions.has(thisWeekStart.getTime());
 
   let streak = 0;
@@ -233,8 +255,9 @@ function buildCalendarDots(
   today: Date,
   finishedSessionsByDate: Map<string, boolean>,
   scheduledWorkoutDates: Set<string>,
+  weekStartsOn: WeekStart,
 ): HomepageCalendarDot[] {
-  const days = calendarWeekDays(today);
+  const days = calendarWeekDays(today, weekStartsOn);
   const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
   return days.map((d) => {
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -402,6 +425,7 @@ const HOMEPAGE_KEY = ["homepage", "state"] as const;
 
 export function useHomepageState(): { data: HomepageState | undefined; isLoading: boolean } {
   const qc = useQueryClient();
+  const { weekStartsOn } = useSettingsContext();
 
   useEffect(() => {
     const subs = [
@@ -422,12 +446,12 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
   }, [qc]);
 
   const query = useQuery({
-    queryKey: HOMEPAGE_KEY,
+    queryKey: [...HOMEPAGE_KEY, weekStartsOn],
     queryFn: async (): Promise<HomepageState> => {
       const now = new Date();
       const todayLocal = toYMD(now);
 
-      const weekStartDate = getMondayWeekStart(now);
+      const weekStartDate = getWeekStart(now, weekStartsOn);
       const weekStart = weekStartDate.getTime();
 
       // In-progress session
@@ -467,7 +491,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
 
       const weeklyWorkouts = weekSessions.length;
       const weeklyVolumeKg = Math.round(computeWeeklyVolumeKg(weekLogs) * 10) / 10;
-      const streakWeeks = computeStreakWeeks(sessions, now);
+      const streakWeeks = computeStreakWeeks(sessions, now, weekStartsOn);
 
       // Calendar dots — finished sessions by date
       const finishedByDate = new Map<string, boolean>();
@@ -630,7 +654,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
         // ok
       }
 
-      const calendarDots = buildCalendarDots(now, finishedByDate, scheduledWorkoutDates);
+      const calendarDots = buildCalendarDots(now, finishedByDate, scheduledWorkoutDates, weekStartsOn);
 
       // Top goals
       let topGoals: Goal[] = [];

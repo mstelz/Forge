@@ -9,6 +9,7 @@ import type { AppShellOutletContext } from "../../layouts/app-shell";
 import {
   useHomepageState,
   getDayDetail,
+  dayOfWeekHeaders,
   type HomepageCalendarDot,
   type HomepageWeekDot,
   type ActiveRunState,
@@ -140,7 +141,6 @@ function TopBar({
 // ---------------------------------------------------------------------------
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const DOW_HEADERS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
 function DailyBriefingStrip() {
   const today = new Date();
@@ -530,13 +530,15 @@ function MiniCalendar({
   calendarDots: HomepageCalendarDot[];
   onDayTap: (dot: HomepageCalendarDot) => void;
 }) {
+  const { weekStartsOn } = useContext(SettingsContext);
+  const headers = dayOfWeekHeaders(weekStartsOn);
   return (
     <div className="mx-4 mb-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-4 pt-3 pb-4 ring-1 ring-[var(--border)]">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
         This Week
       </p>
       <div className="grid grid-cols-7 gap-1">
-        {DOW_HEADERS.map((h, i) => (
+        {headers.map((h, i) => (
           <div key={i} className="text-center text-[9px] font-semibold uppercase text-[var(--text-subtle)]">
             {h}
           </div>

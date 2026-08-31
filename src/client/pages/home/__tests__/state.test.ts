@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ProgramRun, Session, SessionSetLog } from "../../../../shared";
 import {
-  getMondayWeekStart,
+  getWeekStart,
   computeStreakWeeks,
   computeWeeklyVolumeKg,
   calendarWeekDays,
@@ -88,7 +88,7 @@ describe("getMondayWeekStart", () => {
   it("returns Monday when given a Monday", () => {
     // 2024-01-15 is a Monday
     const monday = new Date(2024, 0, 15);
-    const result = getMondayWeekStart(monday);
+    const result = getWeekStart(monday);
     expect(result.getDay()).toBe(1); // Monday
     expect(result.getDate()).toBe(15);
   });
@@ -96,7 +96,7 @@ describe("getMondayWeekStart", () => {
   it("returns the previous Monday when given a Wednesday", () => {
     // 2024-01-17 is a Wednesday
     const wednesday = new Date(2024, 0, 17);
-    const result = getMondayWeekStart(wednesday);
+    const result = getWeekStart(wednesday);
     expect(result.getDay()).toBe(1); // Monday
     expect(result.getDate()).toBe(15);
   });
@@ -104,14 +104,14 @@ describe("getMondayWeekStart", () => {
   it("returns the previous Monday when given a Sunday", () => {
     // 2024-01-21 is a Sunday
     const sunday = new Date(2024, 0, 21);
-    const result = getMondayWeekStart(sunday);
+    const result = getWeekStart(sunday);
     expect(result.getDay()).toBe(1); // Monday
     expect(result.getDate()).toBe(15);
   });
 
   it("sets hours to 00:00:00.000", () => {
     const d = new Date(2024, 0, 17, 14, 30, 0);
-    const result = getMondayWeekStart(d);
+    const result = getWeekStart(d);
     expect(result.getHours()).toBe(0);
     expect(result.getMinutes()).toBe(0);
     expect(result.getSeconds()).toBe(0);
