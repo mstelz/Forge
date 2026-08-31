@@ -1,0 +1,406 @@
+import {
+  useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState,
+  type MutableRefObject,
+} from "react";
+import { SettingsContext } from "../../../contexts/settings-context";
+import { logSetBatch, updateSessionLog, updateSetBatch } from "../../../db/mutations";
+import { convertDistance, convertWeight, distanceToMeters, weightToKg } from "../../../lib/units";
+import { getLastLogValuesForExercise } from "../../../lib/session/prior-values";
+import {
+  logFormReducer, initialLogFormState,
+  type LogFormPrefill,
+} from "../../../lib/session/log-form";
+import { uuidv4 } from "../../../lib/uuid";
+import { CheckIcon } from "../icons";
+import { computeRestBackfill, startRestTimer, validateMetrics } from "./log-set-builders";
+import {
+  DurationDistanceInputs, RpeStepper, SetTypeChips, WeightRepsInputs,
+} from "./metric-inputs";
+import { RestTimerStrip } from "./rest-timer";
+import { Toast } from "./toast";
+import type { ExerciseType, Session, SessionSetLog } from "../../../../shared";
+import type { CursorPos, LiveItem, LiveStructure, LogSetType, PlannedSlot, RestTimerData } from "./types";
+
+export interface BottomPanelProps {
+  cursor: CursorPos | null;
+  liveStructure: LiveStructure;
+  logs: SessionSetLog[];
+  session: Session;
+  timer: RestTimerData;
+  timerDisplaySecs: number;
+  onTimerToggle: () => void;
+  onFinishWorkout: () => void;
+  onSkipSet: () => void;
+  onEditSaved: () => void;
+  exerciseTypes: Map<string, ExerciseType>;
+  noteOpen: boolean;
+  onToggleNote: () => void;
+  onCloseNote: () => void;
+  audioCtxRef: MutableRefObject<AudioContext | null>;
+}
+
+export function BottomPanel({
+  cursor,
+  liveStructure,
+  logs,
+  session,
+  timer,
+  timerDisplaySecs,
+  onTimerToggle,
+  onFinishWorkout,
+  onSkipSet,
+  onEditSaved,
+  exerciseTypes,
+  noteOpen,
+  onToggleNote,
+  onCloseNote,
+  audioCtxRef,
+}: BottomPanelProps) {
+  // All metric form fields live in one reducer so paired display/input values stay in
+  // lock-step; see lib/session/log-form.ts. UI status (logging/validation/toast) is
+  // orthogonal and stays as plain state.
+  const [form, dispatch] = useReducer(logFormReducer, initialLogFormState);
+  const { rpe, setType, note } = form;
+  const [logging, setLogging] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+
+  const showToast = useCallback((message: string, type: "error" | "info" = "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const currentSlot = useMemo<PlannedSlot | null>(() => {
+    if (!cursor) return null;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return null;
+    const item = block.items[cursor.itemIdx];
+    if (!item) return null;
+    return item.setTargets[cursor.slotIdx] ?? null;
+  }, [cursor, liveStructure]);
+
+  const currentItem = useMemo<LiveItem | null>(() => {
+    if (!cursor) return null;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return null;
+    return block.items[cursor.itemIdx] ?? null;
+  }, [cursor, liveStructure]);
+
+  const currentExerciseType = currentItem
+    ? (exerciseTypes.get(currentItem.exerciseId) ?? "strength")
+    : "strength";
+  const { weightUnit, distanceUnit, showRpe, showCardio } = useContext(SettingsContext);
+  const showWeightReps = currentExerciseType !== "cardio";
+  const showDurationDistance = (currentExerciseType === "cardio" || currentExerciseType === "mixed") && showCardio;
+
+  const isEditingExisting = useMemo(
+    () =>
+      !!(
+        currentItem &&
+        currentSlot &&
+        logs.some(
+          (l) =>
+            l.performedExerciseId === currentItem.performedExerciseId &&
+            l.plannedSetId === currentSlot.id &&
+            l.status === "logged",
+        )
+      ),
+    [currentItem, currentSlot, logs],
+  );
+
+  // Pre-fill from the existing log for this slot (if editing) or from the last log
+  // for this exercise. Re-runs whenever the active slot changes.
+  const prevSlotKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentItem || !currentSlot) return;
+    const slotKey = `${currentItem.performedExerciseId}:${currentSlot.id}`;
+    if (prevSlotKey.current === slotKey) return;
+    prevSlotKey.current = slotKey;
+
+    // If this slot already has a logged entry, pre-fill from it so the user
+    // edits the existing values rather than getting stale defaults.
+    const existingLog = logs.find(
+      (l) =>
+        l.performedExerciseId === currentItem.performedExerciseId &&
+        l.plannedSetId === currentSlot.id &&
+        l.status === "logged",
+    );
+
+    const toWeightDisplay = (kg: number) => Math.round(convertWeight(kg, weightUnit) * 100) / 100;
+    const toDistanceDisplay = (m: number) => Math.round(convertDistance(m, distanceUnit) * 1000) / 1000;
+
+    if (existingLog) {
+      const values: LogFormPrefill = {
+        setType: (existingLog.setType as LogSetType) ?? "normal",
+        // Pre-fill note from the saved log so editing can't accidentally wipe it
+        note: existingLog.notes ?? "",
+      };
+      if (existingLog.weightKg != null) values.weightDisplay = toWeightDisplay(existingLog.weightKg);
+      if (existingLog.reps != null) values.reps = existingLog.reps;
+      if (existingLog.rpe != null) values.rpe = existingLog.rpe;
+      if (existingLog.durationSec != null) values.durationSec = existingLog.durationSec;
+      if (existingLog.distanceM != null) values.distanceDisplay = toDistanceDisplay(existingLog.distanceM);
+      dispatch({ type: "prefill", values });
+      return;
+    }
+
+    // No existing log — clear note and pre-fill metrics from the last logged set.
+    dispatch({ type: "prefill", values: { note: "" } });
+
+    // Pre-fill from the last logged set for this exercise across ALL sessions
+    // (not just the current one).
+    let isCurrent = true;
+    getLastLogValuesForExercise(currentItem.exerciseId).then((prev) => {
+      if (!isCurrent) return;
+      if (prev) {
+        const values: LogFormPrefill = {};
+        if (prev.weightKg != null) values.weightDisplay = toWeightDisplay(prev.weightKg);
+        if (prev.reps != null) values.reps = prev.reps;
+        if (prev.durationSec != null) values.durationSec = prev.durationSec;
+        if (prev.distanceM != null) values.distanceDisplay = toDistanceDisplay(prev.distanceM);
+        // Do not pre-fill RPE — it is per-set
+        dispatch({ type: "prefill", values });
+      } else if (currentSlot.reps != null) {
+        dispatch({ type: "prefill", values: { reps: currentSlot.reps } });
+      }
+    });
+    return () => { isCurrent = false; };
+  }, [currentItem, currentSlot, logs, weightUnit, distanceUnit]);
+
+  const handleLogSet = async () => {
+    if (!cursor || !currentItem || logging) return;
+    const block = liveStructure.blocks[cursor.blockIdx];
+    if (!block) return;
+
+    const { weightDisplay, reps, durationSec, distanceDisplay } = form;
+    const storedKg = weightDisplay != null ? weightToKg(weightDisplay, weightUnit) : null;
+    const storedM = distanceDisplay != null ? distanceToMeters(distanceDisplay, distanceUnit) : null;
+
+    const invalid = validateMetrics({
+      showWeightReps,
+      showDurationDistance,
+      hasStrengthMetric: (reps != null && reps > 0) || (weightDisplay != null && weightDisplay > 0),
+      hasCardioMetric: (durationSec != null && durationSec > 0) || (distanceDisplay != null && distanceDisplay > 0),
+    });
+
+    const metricFields = (now: number) => ({
+      reps,
+      weightKg: storedKg,
+      rpe,
+      durationSec: showDurationDistance ? (durationSec ?? null) : null,
+      distanceM: showDurationDistance ? storedM : null,
+      notes: note.trim() || null,
+      setType,
+      loggedAt: now,
+      enteredWeight: weightDisplay,
+      enteredWeightUnit: (weightDisplay != null ? weightUnit : null) as "kg" | "lb" | null,
+    });
+    const restingSession = (now: number) =>
+      startRestTimer(session, block.restSec ?? currentItem.restSec ?? 90, now);
+
+    // ── Extra set branch (ADD SET button) ────────────────────────────────────
+    if (cursor.isExtra) {
+      const extraLog = [...logs]
+        .filter((l) => l.performedExerciseId === currentItem.performedExerciseId && l.status === "extra")
+        .sort((a, b) => b.loggedAt - a.loggedAt)[0];
+      if (!extraLog) return;
+
+      if (invalid) { setValidationError(invalid); return; }
+      setValidationError(null);
+      setLogging(true);
+      try {
+        const now = Date.now();
+        const updatedExtraLog = { ...extraLog, ...metricFields(now) };
+        const prevLogUpdate = computeRestBackfill(logs, now);
+        // Unlock AudioContext via this user gesture so it can play at timer expiry
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+        else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+        await updateSetBatch(updatedExtraLog, restingSession(now), prevLogUpdate);
+        dispatch({ type: "resetAfterLog" }); onCloseNote();
+        prevSlotKey.current = null;
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to save. Please try again.");
+      } finally {
+        setLogging(false);
+      }
+      return;
+    }
+
+    // ── Normal / edit planned-slot branch ────────────────────────────────────
+    if (!currentSlot) return;
+
+    if (invalid) {
+      setValidationError(invalid);
+      return;
+    }
+    setValidationError(null);
+
+    setLogging(true);
+    try {
+      const now = Date.now();
+
+      // Check if this planned slot already has a log (user is editing a logged set)
+      const existingLog = logs.find(
+        (l) =>
+          l.performedExerciseId === currentItem.performedExerciseId &&
+          l.plannedSetId === currentSlot.id &&
+          l.status === "logged",
+      );
+
+      const updatedFields = metricFields(now);
+
+      if (existingLog) {
+        // Update in place — don't advance rest timer or backfill restAfterSec
+        await updateSessionLog({ ...existingLog, ...updatedFields });
+        // Return to the next unlogged set
+        onEditSaved();
+      } else {
+        // New log: build all writes and commit in one transaction
+        const prevLogUpdate = computeRestBackfill(logs, now);
+
+        const order = logs.filter((l) => l.status === "logged").length;
+        const record: SessionSetLog = {
+          id: uuidv4(),
+          sessionId: session.id,
+          performedExerciseId: currentItem.performedExerciseId,
+          exerciseId: currentItem.exerciseId,
+          sessionItemId: currentItem.sessionItemId,
+          plannedSetId: currentSlot.id,
+          order,
+          restAfterSec: null,
+          enteredDistance: null,
+          enteredDistanceUnit: null,
+          status: "logged",
+          ...updatedFields,
+        };
+
+        await logSetBatch(record, restingSession(now), prevLogUpdate);
+      }
+
+      dispatch({ type: "resetAfterLog" }); onCloseNote();
+      // Reset slot tracking so the next cursor position pre-fills fresh
+      prevSlotKey.current = null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save. Please try again.";
+      showToast(msg);
+    } finally {
+      setLogging(false);
+    }
+  };
+
+  if (!cursor) {
+    return (
+      <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)] px-4 pb-6 pt-4 space-y-3">
+        <button
+          type="button"
+          onClick={onFinishWorkout}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90"
+        >
+          <CheckIcon className="text-[var(--accent-fg)]" />
+          FINISH WORKOUT
+        </button>
+        <button
+          type="button"
+          className="w-full rounded-2xl border border-[var(--border)] py-3 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+        >
+          Add extra set
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)]">
+      <RestTimerStrip
+        timer={timer}
+        displaySecs={timerDisplaySecs}
+        onToggle={onTimerToggle}
+      />
+
+      <div className="px-4 pb-5 pt-3 space-y-4">
+        {/* Metric inputs */}
+        <div className="flex flex-wrap gap-4">
+          {showWeightReps && (
+            <WeightRepsInputs
+              form={form}
+              dispatch={dispatch}
+              weightUnit={weightUnit}
+              onEdit={() => setValidationError(null)}
+            />
+          )}
+          {showDurationDistance && (
+            <DurationDistanceInputs
+              form={form}
+              dispatch={dispatch}
+              distanceUnit={distanceUnit}
+            />
+          )}
+        </div>
+
+        {showRpe && <RpeStepper rpe={rpe} dispatch={dispatch} />}
+
+        <SetTypeChips
+          setType={setType}
+          dispatch={dispatch}
+          noteOpen={noteOpen}
+          onToggleNote={onToggleNote}
+        />
+
+        {/* Note input */}
+        {noteOpen && (
+          <textarea
+            value={note}
+            onChange={(e) => dispatch({ type: "setNote", note: e.target.value })}
+            placeholder="Add a note…"
+            rows={2}
+            autoFocus
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:border-[var(--accent)] focus:outline-none"
+          />
+        )}
+
+        {/* Validation error */}
+        {validationError && (
+          <p role="alert" className="text-xs font-semibold text-[var(--danger)]">
+            {validationError}
+          </p>
+        )}
+
+        {/* LOG SET (+ optional SKIP button) */}
+        {!isEditingExisting && !cursor?.isExtra ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleLogSet}
+              disabled={logging}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
+            >
+              <CheckIcon className="text-[var(--accent-fg)]" />
+              {logging ? "Saving…" : "LOG SET"}
+            </button>
+            <button
+              type="button"
+              onClick={onSkipSet}
+              disabled={logging}
+              className="flex items-center justify-center rounded-2xl border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50"
+            >
+              Skip
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleLogSet}
+            disabled={logging}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-4 text-base font-bold text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
+          >
+            <CheckIcon className="text-[var(--accent-fg)]" />
+            {logging ? "Saving…" : isEditingExisting ? "SAVE EDIT" : "LOG SET"}
+          </button>
+        )}
+      </div>
+
+      {/* Toast */}
+      {toast && <Toast message={toast.message} type={toast.type} />}
+    </div>
+  );
+}
