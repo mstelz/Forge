@@ -6,6 +6,7 @@ import type {
   SetTarget,
   SetType,
 } from "../../../../shared";
+import type { ExerciseType } from "../../../../shared/enums";
 
 // ── Draft types (same shape as Routine but partial for in-progress edits) ──
 
@@ -24,20 +25,37 @@ export type DraftRoutine = Omit<Routine, "id" | "createdAt" | "updatedAt" | "blo
 
 // ── Default prescription for a new item ──
 
-export function defaultItem(exerciseId: string): DraftItem {
-  return {
+/** Opening prescription for a cardio item: one continuous 20-minute effort. */
+const DEFAULT_CARDIO_DURATION_SEC = 1200;
+
+/**
+ * A new item's opening prescription, shaped by what the exercise actually is.
+ * Cardio gets a single timed effort; everything else gets 3 × 10.
+ */
+export function defaultItem(
+  exerciseId: string,
+  exerciseType: ExerciseType = "strength",
+): DraftItem {
+  const base = {
     id: uuidv4(),
     exerciseId,
-    setCount: 3,
-    repMode: "uniform",
-    setTypeMode: "uniform",
-    uniformReps: 10,
-    uniformSetType: "normal",
+    repMode: "uniform" as const,
+    setTypeMode: "uniform" as const,
+    uniformSetType: "normal" as const,
     notes: null,
   };
+
+  if (exerciseType === "cardio") {
+    return { ...base, setCount: 1, durationSec: DEFAULT_CARDIO_DURATION_SEC };
+  }
+
+  return { ...base, setCount: 3, uniformReps: 10 };
 }
 
-export function defaultSingleBlock(exerciseId: string): DraftBlock {
+export function defaultSingleBlock(
+  exerciseId: string,
+  exerciseType: ExerciseType = "strength",
+): DraftBlock {
   return {
     id: uuidv4(),
     type: "single",
@@ -45,11 +63,14 @@ export function defaultSingleBlock(exerciseId: string): DraftBlock {
     restSec: null,
     tempo: null,
     notes: null,
-    items: [defaultItem(exerciseId)],
+    items: [defaultItem(exerciseId, exerciseType)],
   };
 }
 
-export function defaultSupersetBlock(exerciseIds: [string, string]): DraftBlock {
+export function defaultSupersetBlock(
+  exerciseIds: [string, string],
+  exerciseTypes: [ExerciseType, ExerciseType] = ["strength", "strength"],
+): DraftBlock {
   return {
     id: uuidv4(),
     type: "superset",
@@ -57,7 +78,7 @@ export function defaultSupersetBlock(exerciseIds: [string, string]): DraftBlock 
     restSec: null,
     tempo: null,
     notes: null,
-    items: exerciseIds.map((id) => defaultItem(id)),
+    items: exerciseIds.map((id, i) => defaultItem(id, exerciseTypes[i] ?? "strength")),
   };
 }
 
@@ -126,6 +147,7 @@ export function normalizeDraft(draft: DraftRoutine): Routine {
         durationSec: it.durationSec,
         durationMinSec: it.durationMinSec,
         durationMaxSec: it.durationMaxSec,
+        distanceM: it.distanceM,
         notes: it.notes ?? null,
       })),
     })),
@@ -138,14 +160,14 @@ export type BuilderAction =
   | { type: "SET_NAME"; name: string }
   | { type: "SET_NOTES"; notes: string }
   | { type: "SET_DURATION"; minutes: number | null }
-  | { type: "ADD_SINGLE_BLOCK"; exerciseId: string }
-  | { type: "BEGIN_SUPERSET"; firstExerciseId: string }
-  | { type: "COMPLETE_SUPERSET"; secondExerciseId: string }
+  | { type: "ADD_SINGLE_BLOCK"; exerciseId: string; exerciseType?: ExerciseType }
+  | { type: "BEGIN_SUPERSET"; firstExerciseId: string; exerciseType?: ExerciseType }
+  | { type: "COMPLETE_SUPERSET"; secondExerciseId: string; exerciseType?: ExerciseType }
   | { type: "REMOVE_BLOCK"; blockId: string }
   | { type: "REORDER_BLOCKS"; from: number; to: number }
   | { type: "REORDER_ITEMS"; blockId: string; from: number; to: number }
   | { type: "REPLACE_EXERCISE"; blockId: string; itemId: string; exerciseId: string }
-  | { type: "ADD_ITEM_TO_SUPERSET"; blockId: string; exerciseId: string }
+  | { type: "ADD_ITEM_TO_SUPERSET"; blockId: string; exerciseId: string; exerciseType?: ExerciseType }
   | { type: "REMOVE_ITEM"; blockId: string; itemId: string }
   | { type: "SET_BLOCK_REST"; blockId: string; restSec: number | null }
   | { type: "SET_BLOCK_TEMPO"; blockId: string; tempo: string }
@@ -165,7 +187,11 @@ export type BuilderAction =
   | { type: "SET_SET_TARGET_NOTES"; blockId: string; itemId: string; setIndex: number; notes: string };
 
 // Pending superset state (after first exercise chosen, before second)
-export type BuilderPendingSuperset = { pendingBlockId: string; firstExerciseId: string } | null;
+export type BuilderPendingSuperset = {
+  pendingBlockId: string;
+  firstExerciseId: string;
+  firstExerciseType?: ExerciseType;
+} | null;
 
 export type BuilderState = {
   draft: DraftRoutine;
@@ -226,7 +252,7 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
       return { ...state, isDirty: true, draft: { ...state.draft, estimatedDurationMin: action.minutes } };
 
     case "ADD_SINGLE_BLOCK": {
-      const block = defaultSingleBlock(action.exerciseId);
+      const block = defaultSingleBlock(action.exerciseId, action.exerciseType);
       return {
         ...state,
         isDirty: true,
@@ -238,14 +264,21 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
       const pendingBlockId = uuidv4();
       return {
         ...state,
-        pendingSuperset: { pendingBlockId, firstExerciseId: action.firstExerciseId },
+        pendingSuperset: {
+          pendingBlockId,
+          firstExerciseId: action.firstExerciseId,
+          firstExerciseType: action.exerciseType,
+        },
       };
     }
 
     case "COMPLETE_SUPERSET": {
       if (!state.pendingSuperset) return state;
-      const { pendingBlockId, firstExerciseId } = state.pendingSuperset;
-      const block = defaultSupersetBlock([firstExerciseId, action.secondExerciseId]);
+      const { pendingBlockId, firstExerciseId, firstExerciseType } = state.pendingSuperset;
+      const block = defaultSupersetBlock(
+        [firstExerciseId, action.secondExerciseId],
+        [firstExerciseType ?? "strength", action.exerciseType ?? "strength"],
+      );
       const blockWithId = { ...block, id: pendingBlockId };
       return {
         ...state,
@@ -286,7 +319,7 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     case "ADD_ITEM_TO_SUPERSET":
       return mapBlock(state, action.blockId, (b) => ({
         ...b,
-        items: [...b.items, defaultItem(action.exerciseId)],
+        items: [...b.items, defaultItem(action.exerciseId, action.exerciseType)],
       }));
 
     case "REMOVE_ITEM":

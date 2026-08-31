@@ -37,6 +37,7 @@ import { SettingsContext } from "../../contexts/settings-context";
 import { formatWeight, formatDistance, convertWeight, convertDistance, weightToKg, distanceToMeters } from "../../lib/units";
 import { formatMmSs, formatHms } from "../../lib/time";
 import { getLastLogValuesForExercise } from "../../lib/session/prior-values";
+import { summarizeLastTime } from "../../lib/session/last-time";
 import {
   logFormReducer, initialLogFormState,
   type LogFormPrefill,
@@ -423,29 +424,18 @@ function LastTimeLine({
   const settings = useContext(SettingsContext);
   const summary = useMemo(() => {
     if (!allLogs || allLogs.length === 0) return null;
-    const prev = allLogs.filter(
+    const metrics = summarizeLastTime(allLogs, sessionId, {
+      weightUnit: settings.weightUnit,
+      distanceUnit: settings.distanceUnit,
+    });
+    if (!metrics) return null;
+
+    const prior = allLogs.filter(
       (l) => l.sessionId !== sessionId && l.status === "logged",
     );
-    if (prev.length === 0) return null;
-
-    const mostRecentAt = Math.max(...prev.map((l) => l.loggedAt));
-    const sessionLogs = prev
-      .filter((l) => mostRecentAt - l.loggedAt < 4 * 3_600_000)
-      .sort((a, b) => a.order - b.order);
-
-    if (sessionLogs.length === 0) return null;
-
-    const firstLog = sessionLogs[0]!;
-    const weightKg = firstLog.weightKg;
-    const repsArr = sessionLogs.map((l) => l.reps).filter((r): r is number => r != null);
-    const weightStr = weightKg != null ? formatWeight(weightKg, settings.weightUnit) : null;
-    const repsStr = repsArr.length > 0 ? repsArr.join(", ") : null;
-    const when = formatDaysAgo(mostRecentAt);
-
-    if (weightStr && repsStr) return `Last time: ${weightStr} × ${repsStr} · ${when}`;
-    if (repsStr) return `Last time: ${repsStr} reps · ${when}`;
-    return null;
-  }, [allLogs, sessionId]);
+    const mostRecentAt = Math.max(...prior.map((l) => l.loggedAt));
+    return `Last time: ${metrics} · ${formatDaysAgo(mostRecentAt)}`;
+  }, [allLogs, sessionId, settings.weightUnit, settings.distanceUnit]);
 
   if (!summary) return null;
   return (
@@ -1937,11 +1927,15 @@ export function ActiveWorkoutPage() {
   const [pendingExerciseId, setPendingExerciseId] = useState<string | null>(null);
   const [setCountInput, setSetCountInput] = useState("3");
 
-  const handleAddExercise = useCallback((exerciseId: string) => {
-    setPickerOpen(false);
-    setSetCountInput("3");
-    setPendingExerciseId(exerciseId);
-  }, []);
+  const handleAddExercise = useCallback(
+    (exerciseId: string, exerciseType: ExerciseType) => {
+      setPickerOpen(false);
+      // A run is one continuous effort, not three sets of it.
+      setSetCountInput(exerciseType === "cardio" ? "1" : "3");
+      setPendingExerciseId(exerciseId);
+    },
+    [],
+  );
 
   const confirmAddExercise = useCallback(
     async (exerciseId: string, setCount: number) => {

@@ -86,6 +86,7 @@ export const RoutineItemSchema = z
     durationSec: z.number().int().min(1).max(86_400).optional(),
     durationMinSec: z.number().int().min(1).max(86_400).optional(),
     durationMaxSec: z.number().int().min(1).max(86_400).optional(),
+    distanceM: z.number().positive().max(1_000_000).optional(),
     notes: z.string().max(1000).nullable().optional(),
   })
   .superRefine((val, ctx) => {
@@ -136,10 +137,17 @@ export const RoutineItemSchema = z
       const hasMin = val.uniformRepsMin != null;
       const hasMax = val.uniformRepsMax != null;
       const hasRange = hasMin && hasMax;
+      // An item that prescribes time or distance needs no rep target — that is
+      // how a run or a row is planned. Reps stay required for everything else.
+      const prescribesTimeOrDistance =
+        val.durationSec != null ||
+        (val.durationMinSec != null && val.durationMaxSec != null) ||
+        val.distanceM != null;
       const allowAbsent =
-        val.setTypeMode === "uniform" &&
-        val.uniformSetType != null &&
-        REP_OPTIONAL_TYPES.has(val.uniformSetType);
+        prescribesTimeOrDistance ||
+        (val.setTypeMode === "uniform" &&
+          val.uniformSetType != null &&
+          REP_OPTIONAL_TYPES.has(val.uniformSetType));
 
       if (hasSingle && (hasMin || hasMax)) {
         ctx.addIssue({
