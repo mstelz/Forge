@@ -8,7 +8,7 @@ const MS_PER_DAY = 86_400_000;
 
 /** Returns midnight local time for "today + offsetDays" as unix ms */
 function today(offsetDays = 0): number {
-  const d = new Date();
+  const d = new Date(2026, 8, 14);
   d.setHours(0, 0, 0, 0);
   return d.getTime() + offsetDays * MS_PER_DAY;
 }
@@ -256,9 +256,9 @@ describe("computeCascadeSchedule — completedAt behavior", () => {
     expect(cascade.slotToMs.get("0:1")).toBe(today(1));
   });
 
-  it("does not let an overdue rest day displace the next playable workout", () => {
+  it("keeps the shifted rest day between completed and pending workouts", () => {
     // Program is overdue: Upper A, Rest, Lower A all started before today.
-    // Upper A was completed today, so Lower A should be tomorrow.
+    // Upper A completed today: rest tomorrow, Lower A the following day.
     const startMs = today(-5);
     const program = makeProgramWithRestBetweenWorkouts(startMs);
     const run = makeRun(startMs, [
@@ -267,12 +267,12 @@ describe("computeCascadeSchedule — completedAt behavior", () => {
 
     const cascade = computeCascadeSchedule(program, run, today());
 
-    expect(cascade.dateToSlot.get(dateKey(today(1)))).toEqual({
+    expect(cascade.dateToSlot.get(dateKey(today(2)))).toEqual({
       weekIndex: 0,
       dayIndex: 2,
     });
-    expect(cascade.slotToMs.get("0:1")).toBe(startMs + MS_PER_DAY);
-    expect(cascade.slotToMs.get("0:2")).toBe(today(1));
+    expect(cascade.slotToMs.get("0:1")).toBe(today(1));
+    expect(cascade.slotToMs.get("0:2")).toBe(today(2));
   });
 });
 
@@ -295,13 +295,13 @@ describe("computeCascadeSchedule — rest days in the forward schedule", () => {
     const { program, run } = farBehindRun();
     const cascade = computeCascadeSchedule(program, run, today());
 
-    // Resume with the next unresolved workout today, then follow the program
-    // order — including its rest days — on consecutive calendar days.
-    expect(cascade.dateToSlot.get(dateKey(today(0)))).toEqual({ weekIndex: 0, dayIndex: 3 });
-    expect(cascade.dateToSlot.get(dateKey(today(1)))).toEqual({ weekIndex: 0, dayIndex: 4 });
-    expect(cascade.dateToSlot.get(dateKey(today(2)))).toEqual({ weekIndex: 0, dayIndex: 5 });
-    expect(cascade.dateToSlot.get(dateKey(today(3)))).toEqual({ weekIndex: 0, dayIndex: 6 });
-    expect(cascade.dateToSlot.get(dateKey(today(4)))).toEqual({ weekIndex: 1, dayIndex: 0 });
+    // Resume at the first unfinished day, including rest days.
+    expect(cascade.dateToSlot.get(dateKey(today(0)))).toEqual({ weekIndex: 0, dayIndex: 2 });
+    expect(cascade.dateToSlot.get(dateKey(today(1)))).toEqual({ weekIndex: 0, dayIndex: 3 });
+    expect(cascade.dateToSlot.get(dateKey(today(2)))).toEqual({ weekIndex: 0, dayIndex: 4 });
+    expect(cascade.dateToSlot.get(dateKey(today(3)))).toEqual({ weekIndex: 0, dayIndex: 5 });
+    expect(cascade.dateToSlot.get(dateKey(today(4)))).toEqual({ weekIndex: 0, dayIndex: 6 });
+    expect(cascade.dateToSlot.get(dateKey(today(5)))).toEqual({ weekIndex: 1, dayIndex: 0 });
   });
 
   it("keeps the program's workout density instead of scheduling one every day", () => {
@@ -321,12 +321,50 @@ describe("computeCascadeSchedule — rest days in the forward schedule", () => {
     expect(workoutDays).toHaveLength(4);
   });
 
-  it("absorbs an overdue rest day that precedes the resumption point", () => {
-    const { startMs, program, run } = farBehindRun();
-    // w0d2 sits between the already-resolved w0d1 and the next pending workout,
-    // so it stays on its original (past) date rather than consuming a future day.
-    expect(computeCascadeSchedule(program, run, today()).slotToMs.get("0:2")).toBe(
-      startMs + 2 * MS_PER_DAY,
-    );
+  it("rolls an unfinished rest day forward instead of absorbing it", () => {
+    const { program, run } = farBehindRun();
+    expect(computeCascadeSchedule(program, run, today()).slotToMs.get("0:2")).toBe(today());
+  });
+});
+
+
+describe("computeCascadeSchedule — agreed calendar rules", () => {
+  const monday = new Date(2026, 8, 7).getTime();
+  const day = (offset: number) => new Date(2026, 8, 7 + offset).getTime();
+
+  it("shifts the whole sparse schedule each missed day, preserving gaps", () => {
+    const program = makeProgram(monday);
+    program.days = [0, 2, 4].map((dayIndex) => ({ ...program.days[0]!, id: `day-${dayIndex}`, dayIndex }));
+    for (const missed of [1, 2]) {
+      const schedule = computeCascadeSchedule(program, makeRun(monday), day(missed));
+      expect([0, 2, 4].map((d) => schedule.slotToMs.get(`0:${d}`))).toEqual([0, 2, 4].map((d) => day(d + missed)));
+    }
+  });
+
+  it("preserves the rest day after a late workout completion", () => {
+    const program = makeProgramWithRestBetweenWorkouts(monday);
+    const run = makeRun(monday, [makeDayState(0, 0, "completed", { completedAt: day(1) })]);
+    const schedule = computeCascadeSchedule(program, run, day(1));
+    expect(schedule.slotToMs.get("0:0")).toBe(day(1));
+    expect(schedule.slotToMs.get("0:1")).toBe(day(2));
+    expect(schedule.slotToMs.get("0:2")).toBe(day(3));
+    expect(schedule.dateToSlot.has(dateKey(monday))).toBe(false);
+  });
+
+  it("moves later days earlier only after the offered workout is completed", () => {
+    const program = makeFourOnThreeOffProgram(monday);
+    const run = makeRun(monday, [
+      makeDayState(0, 0, "completed", { completedAt: day(0) }),
+      makeDayState(0, 1, "completed", { completedAt: day(1) }),
+      makeDayState(0, 2, "completed", { completedAt: day(2) }),
+    ]);
+    expect(computeCascadeSchedule(program, run, day(2)).slotToMs.get("0:3")).toBe(day(3));
+    run.dayStates.push(makeDayState(0, 3, "active"));
+    expect(computeCascadeSchedule(program, run, day(2)).slotToMs.get("0:4")).toBe(day(4));
+    run.dayStates[3] = makeDayState(0, 3, "completed", { completedAt: day(2) });
+    const schedule = computeCascadeSchedule(program, run, day(2));
+    expect(schedule.slotToMs.get("0:4")).toBe(day(3));
+    expect(schedule.slotToMs.get("0:5")).toBe(day(4));
+    expect(schedule.slotToMs.get("1:0")).toBe(day(6));
   });
 });

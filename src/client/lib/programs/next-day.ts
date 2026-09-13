@@ -149,32 +149,27 @@ export type CascadeSchedule = {
 /**
  * Compute a cascade schedule for a program run.
  *
- * Completed/skipped slots stay on their original calendar dates.
- * Not-started slots are pushed forward so that each one falls at least one day
- * after the previous pending slot, but never before its original scheduled date.
- * This keeps the program sequence intact when the user falls behind.
- *
- * `todayStartMs` — unix ms for 00:00 local today. Past-due pending slots are
- * clamped to no earlier than today.
+ * Resolved slots anchor the remaining schedule to their actual completion date.
+ * Pending slots retain their distance in program days from that anchor. When a
+ * pending day is overdue, shift it and the remainder together to today.
+ * Completion may move the anchor earlier; merely starting a workout cannot.
  */
 export function computeCascadeSchedule(
   program: Program,
   run: ProgramRun,
   todayStartMs: number,
 ): CascadeSchedule {
-  const MS_PER_DAY = 86_400_000;
-  const startMs = run.weekZeroStartDate ?? run.startedAt;
+  const addDays = (ms: number, days: number) => {
+    const date = new Date(ms);
+    date.setDate(date.getDate() + days);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  };
+  const startMs = addDays(run.weekZeroStartDate ?? run.startedAt, 0);
   const slotToMs = new Map<string, number>();
   const dateToSlot = new Map<string, { weekIndex: number; dayIndex: number }>();
-
-  // Start the cascade "one day before today" so the first pending slot lands today.
-  let prevPendingMs = todayStartMs - MS_PER_DAY;
-
-  // Rest days only occupy calendar space once the run has resumed — that is,
-  // from the first pending workout onward. Rest days sitting *before* that
-  // point are absorbed by the time the user already spent behind, so they never
-  // push the next workout out. See the isRestDay branch below.
-  let resumed = false;
+  let anchorIndex = 0;
+  let anchorMs = startMs;
 
   for (let w = 0; w < program.durationWeeks; w++) {
     for (let d = 0; d < 7; d++) {
@@ -182,39 +177,19 @@ export function computeCascadeSchedule(
       if (dayEntries.length === 0) continue;
 
       const ds = run.dayStates.find((s) => s.weekIndex === w && s.dayIndex === d);
-      const originalMs = startMs + (w * 7 + d) * MS_PER_DAY;
+      const slotIndex = w * 7 + d;
+      const originalMs = addDays(startMs, slotIndex);
       const primary = dayEntries.find((pd) => (pd.order ?? 0) === 0) ?? dayEntries[0];
       const isRestDay = primary?.isRestDay ?? false;
 
       let effectiveMs: number;
       if (ds?.status === "completed" || ds?.status === "skipped") {
-        // Use the midnight of the actual completion date so the cascade timeline
-        // reflects when workouts were truly done. This prevents the next pending
-        // slot from collapsing onto today after a shifted workout is completed.
-        // Falls back to originalMs for legacy records without completedAt.
-        const completedDayMs = ds.completedAt
-          ? (() => { const c = new Date(ds.completedAt); c.setHours(0, 0, 0, 0); return c.getTime(); })()
-          : originalMs;
-        effectiveMs = completedDayMs;
-        // Advance the chain so subsequent pending slots cascade from this date.
-        prevPendingMs = Math.max(prevPendingMs, effectiveMs);
-      } else if (isRestDay && !resumed) {
-        // An overdue rest day ahead of the resumption point is already "spent" —
-        // leave it on its original date so it does not delay the next workout.
-        effectiveMs = originalMs;
-      } else if (isRestDay) {
-        // Past the resumption point the rest day is real upcoming rest, so it
-        // takes its turn in the sequence and pushes later slots out a day.
-        // Unlike workouts it is never clamped forward to today.
-        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY);
-        prevPendingMs = effectiveMs;
+        effectiveMs = ds.completedAt != null ? addDays(ds.completedAt, 0) : originalMs;
       } else {
-        // Pending slots clamp to today at minimum (explicit floor replaces the
-        // implicit guarantee that came from initialising prevPendingMs to today-1).
-        effectiveMs = Math.max(originalMs, prevPendingMs + MS_PER_DAY, todayStartMs);
-        prevPendingMs = effectiveMs;
-        resumed = true;
+        effectiveMs = Math.max(addDays(anchorMs, slotIndex - anchorIndex), todayStartMs);
       }
+      anchorIndex = slotIndex;
+      anchorMs = effectiveMs;
 
       const slotKey = `${w}:${d}`;
       slotToMs.set(slotKey, effectiveMs);

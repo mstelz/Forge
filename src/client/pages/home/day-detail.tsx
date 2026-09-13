@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { createSession } from "../../db/mutations";
+import { createSession, setProgramRunDayState } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
@@ -80,10 +80,11 @@ function DayDetailContent({
       ) : detail.session?.status === "finished" ? (
         <FinishedDayContent session={detail.session} stats={detail.sessionStats} />
       ) : detail.isRestDay ? (
-        <RestDayContent />
+        <RestDayContent detail={detail} onClose={onClose} />
       ) : detail.plannedRoutine ? (
         <PlannedDayContent
           routine={detail.plannedRoutine}
+          exerciseNames={detail.plannedExerciseNames ?? {}}
           programContext={detail.plannedProgramContext}
           isFuture={detail.isFutureDay}
           dateQuery={dateQuery}
@@ -156,12 +157,14 @@ function FinishedDayContent({
 
 function PlannedDayContent({
   routine,
+  exerciseNames,
   programContext,
   isFuture,
   dateQuery,
   onLogWorkout,
 }: {
   routine: Routine;
+  exerciseNames: Record<string, string>;
   programContext: DayDetail["plannedProgramContext"];
   isFuture: boolean;
   dateQuery: string;
@@ -173,6 +176,11 @@ function PlannedDayContent({
       <p className="text-xs text-[var(--text-muted)] mb-3">
         {isFuture ? "Scheduled workout" : "Workout not yet logged"}
       </p>
+      <ul className="mb-3 space-y-1 text-xs text-[var(--text-muted)]">
+        {routine.blocks.flatMap((b) => b.items).map((item) => (
+          <li key={item.id}>{exerciseNames[item.exerciseId] ?? "Exercise"} · {item.setCount} sets</li>
+        ))}
+      </ul>
       {!isFuture ? (
         programContext ? (
           <button
@@ -195,11 +203,36 @@ function PlannedDayContent({
   );
 }
 
-function RestDayContent() {
+function RestDayContent({ detail, onClose }: { detail: DayDetail; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const completed = detail.plannedDayState === "completed";
+  const handleComplete = async () => {
+    const context = detail.plannedProgramContext;
+    if (!context || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await setProgramRunDayState(context.runId, context.weekIndex, context.dayIndex, "completed");
+      await qc.invalidateQueries({ queryKey: ["homepage", "state"] });
+      onClose();
+    } catch {
+      setError("Could not complete this rest day. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div>
-      <p className="font-bold text-sm text-[var(--text)] mb-1">Rest day</p>
-      <p className="text-xs text-[var(--text-muted)]">Recover and come back tomorrow.</p>
+      <p className="font-bold text-sm text-[var(--text)] mb-1">{completed ? "Rest day complete" : "Rest day"}</p>
+      <p className="text-xs text-[var(--text-muted)]">{completed ? "Rest logged." : "Recover and come back tomorrow."}</p>
+      {!detail.isFutureDay && !completed && detail.plannedDayState !== "skipped" && detail.plannedProgramContext ? (
+        <button type="button" disabled={saving} onClick={handleComplete} className="mt-3 text-xs font-semibold text-[var(--accent)] hover:underline disabled:opacity-50">
+          {saving ? "Saving…" : "Mark complete"}
+        </button>
+      ) : null}
+      {error ? <p role="alert" className="mt-2 text-xs text-[var(--text-muted)]">{error}</p> : null}
     </div>
   );
 }

@@ -167,7 +167,7 @@ function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => v
       <button
         type="button"
         onClick={onTap}
-        aria-label={label}
+        aria-label={`${label}${dot.hasFinishedSession ? ", workout completed" : dot.hasScheduledWorkout ? ", workout planned" : dot.hasCompletedRestDay ? ", rest completed" : dot.hasRestDay ? ", rest day" : ""}`}
         className={[
           "flex h-7 w-7 items-center justify-center rounded-md text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
           dot.isToday
@@ -182,6 +182,8 @@ function CalendarCell({ dot, onTap }: { dot: HomepageCalendarDot; onTap: () => v
         <div className="h-[3px] w-[3px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
       ) : dot.hasScheduledWorkout ? (
         <div className="h-[3px] w-[3px] rounded-full ring-[1.5px] ring-[var(--accent)] opacity-60" aria-hidden="true" />
+      ) : dot.hasRestDay ? (
+        <div className={`h-[3px] w-[3px] rounded-full ${dot.hasCompletedRestDay ? "bg-green-500" : "bg-[var(--text-subtle)]"}`} aria-hidden="true" />
       ) : (
         <div className="h-[3px] w-[3px] rounded-full bg-transparent" aria-hidden="true" />
       )}
@@ -316,9 +318,12 @@ function RoutineVariant({
   return (
     <>
       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-subtle)]">
-        Session Priority
+        {activeState.canCatchUp ? "Rest complete · Optional catch-up" : "Session Priority"}
       </p>
       <h2 className="text-base font-bold text-[var(--text)]">{routine.name}</h2>
+      {activeState.canCatchUp ? (
+        <p className="mt-1 text-xs text-[var(--text-muted)]">You can do this workout early. Its planned date stays the same unless you finish it today.</p>
+      ) : null}
       {duration ? (
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatDuration(duration)}</p>
       ) : null}
