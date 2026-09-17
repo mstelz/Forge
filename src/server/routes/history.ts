@@ -1,3 +1,4 @@
+import { setVolumeKg } from "../../shared/session-log";
 import { Hono } from "hono";
 import { eq, and, desc, lt, lte, gte, like, sql } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -131,6 +132,7 @@ async function loadAggregates(
       status: sessionSetLogs.status,
       reps: sessionSetLogs.reps,
       weightKg: sessionSetLogs.weightKg,
+      segments: sessionSetLogs.segments,
     })
     .from(sessionSetLogs)
     .where(
@@ -144,7 +146,7 @@ async function loadAggregates(
     )
     .all();
 
-  const volumeSetTypes = new Set(["normal", "drop", "amrap", "failure"]);
+  const volumeSetTypes = new Set(["normal", "drop", "rest_pause", "amrap", "failure"]);
   const result = new Map<string, SessionAggregates>();
 
   for (const log of logs) {
@@ -168,7 +170,7 @@ async function loadAggregates(
       log.weightKg != null &&
       log.weightKg > 0
     ) {
-      agg.volumeKg += log.weightKg * log.reps;
+      agg.volumeKg += setVolumeKg(log);
     }
 
     result.set(log.sessionId, agg);

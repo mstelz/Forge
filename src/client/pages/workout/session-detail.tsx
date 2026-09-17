@@ -1,3 +1,4 @@
+import { formatStrengthSet } from "../../lib/session/segments";
 import { useState, useEffect, useRef, useContext } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -568,15 +569,15 @@ function buildLogLabel(log: SessionSetLog, exerciseType: string, weightUnit: "kg
 
   if (effectiveType === "mixed") {
     const parts: string[] = [];
-    if (hasWeight) parts.push(`${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`);
-    else if (log.reps != null) parts.push(`${log.reps} reps`);
+    if (hasWeight) parts.push(formatStrengthSet(log, weightUnit));
+    else if (log.reps != null) parts.push(formatStrengthSet(log, weightUnit));
     if (hasDuration) parts.push(formatMmSs(log.durationSec!));
     if (hasDistance) parts.push(formatDistance(log.distanceM!, distanceUnit));
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
 
-  if (hasWeight) return `${formatWeight(log.weightKg!, weightUnit)} × ${log.reps}`;
-  if (log.reps != null) return `${log.reps} reps`;
+  if (hasWeight) return formatStrengthSet(log, weightUnit);
+  if (log.reps != null) return formatStrengthSet(log, weightUnit);
   return "—";
 }
 

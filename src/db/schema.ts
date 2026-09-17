@@ -1,3 +1,4 @@
+import type { SetSegment } from "../shared/session-log";
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
@@ -197,6 +198,7 @@ export const sessionSetLogs = sqliteTable(
     durationSec: integer("duration_sec"),
     distanceM: real("distance_m"),
     notes: text("notes"),
+    segments: text("segments", { mode: "json" }).$type<SetSegment[] | null>(),
     setType: text("set_type").notNull(), // 'normal' | 'warmup' | 'drop' | 'failure' | 'amrap' | 'rest_pause'
     status: text("status").notNull(), // 'logged' | 'skipped' | 'extra'
     loggedAt: integer("logged_at").notNull(),

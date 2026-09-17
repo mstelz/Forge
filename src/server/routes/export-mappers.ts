@@ -186,6 +186,7 @@ export function rowToSessionSetLog(row: SessionSetLogRow): SessionSetLog {
     distanceM: row.distanceM ?? null,
     notes: row.notes ?? null,
     setType: row.setType as SessionSetLog["setType"],
+    segments: row.segments ?? null,
     status: row.status as SessionSetLog["status"],
     loggedAt: Number(row.loggedAt),
     restAfterSec: row.restAfterSec ?? null,

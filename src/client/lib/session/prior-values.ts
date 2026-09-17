@@ -1,9 +1,12 @@
+import type { SessionSetLog } from "../../../shared/session-log";
 import { forgeDB } from "../../db/forge-db";
 import Dexie from "dexie";
 
 export async function getLastLogValuesForExercise(
   exerciseId: string,
 ): Promise<{
+  setType: SessionSetLog["setType"];
+  segments: SessionSetLog["segments"];
   weightKg?: number;
   reps?: number;
   rpe?: number;
@@ -22,6 +25,8 @@ export async function getLastLogValuesForExercise(
   const last = logged[0]!;
 
   return {
+    setType: last.setType,
+    segments: last.segments,
     weightKg: last.weightKg ?? undefined,
     reps: last.reps ?? undefined,
     rpe: last.rpe ?? undefined,

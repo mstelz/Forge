@@ -13,7 +13,10 @@ import { formatHms, parseDuration, MAX_DURATION_SEC } from "../time";
  * actions carry already-resolved display numbers.
  */
 
+export type SegmentInput = { weight: string; reps: string; pause: string };
+
 export type LogFormState = {
+  segments: SegmentInput[];
   weightDisplay: number | null;
   weightInputStr: string;
   reps: number | null;
@@ -28,6 +31,7 @@ export type LogFormState = {
 };
 
 export const initialLogFormState: LogFormState = {
+  segments: [],
   weightDisplay: null,
   weightInputStr: "",
   reps: null,
@@ -43,6 +47,7 @@ export const initialLogFormState: LogFormState = {
 
 /** Resolved display values for a prefill; only provided keys are applied. */
 export type LogFormPrefill = {
+  segments?: SegmentInput[];
   weightDisplay?: number;
   reps?: number;
   rpe?: number;
@@ -53,6 +58,10 @@ export type LogFormPrefill = {
 };
 
 export type LogFormAction =
+  | { type: "load"; values: LogFormPrefill }
+  | { type: "addSegment" }
+  | { type: "removeSegment"; index: number }
+  | { type: "segmentInput"; index: number; field: keyof SegmentInput; value: string }
   | { type: "weightInput"; value: string }
   | { type: "adjustWeight"; delta: number }
   | { type: "repsInput"; value: string }
@@ -73,6 +82,19 @@ export type LogFormAction =
 
 export function logFormReducer(state: LogFormState, action: LogFormAction): LogFormState {
   switch (action.type) {
+    case "load":
+      return logFormReducer(initialLogFormState, { type: "prefill", values: action.values });
+    case "addSegment":
+      if (state.segments.length >= 20) return state;
+      return { ...state, segments: [...state.segments, {
+        weight: state.segments.at(-1)?.weight ?? state.weightInputStr,
+        reps: "", pause: state.setType === "rest_pause" ? "20" : "0",
+      }] };
+    case "removeSegment":
+      return { ...state, segments: state.segments.filter((_, i) => i !== action.index) };
+    case "segmentInput":
+      return { ...state, segments: state.segments.map((part, i) => i === action.index ? { ...part, [action.field]: action.value } : part) };
+
     case "weightInput": {
       const v = parseFloat(action.value);
       return { ...state, weightInputStr: action.value, weightDisplay: isNaN(v) ? null : Math.max(0, v) };
@@ -136,12 +158,17 @@ export function logFormReducer(state: LogFormState, action: LogFormAction): LogF
       return { ...state, distanceDisplay: next, distanceInputStr: String(next) };
     }
     case "setSetType":
-      return { ...state, setType: action.setType };
+      return { ...state, setType: action.setType, segments:
+        action.setType === "drop" || action.setType === "rest_pause"
+          ? state.segments.map(part => ({ ...part, pause: action.setType === "drop" ? "0" : part.pause === "0" ? "20" : part.pause }))
+          : [],
+      };
     case "setNote":
       return { ...state, note: action.note };
     case "prefill": {
       const v = action.values;
       const next = { ...state };
+      if (v.segments !== undefined) next.segments = v.segments;
       if (v.weightDisplay !== undefined) { next.weightDisplay = v.weightDisplay; next.weightInputStr = String(v.weightDisplay); }
       if (v.reps !== undefined) { next.reps = v.reps; next.repsInputStr = String(v.reps); }
       if (v.rpe !== undefined) next.rpe = v.rpe;

@@ -271,6 +271,7 @@ function applySessionLog(entry: { id: string; op: string; payload: Payload }): I
       distanceM: entry.payload.distanceM ?? null,
       notes: entry.payload.notes ?? null,
       setType: entry.payload.setType,
+      segments: entry.payload.segments ?? null,
       status: entry.payload.status,
       loggedAt: entry.payload.loggedAt ?? now,
       restAfterSec: entry.payload.restAfterSec ?? null,
@@ -285,6 +286,8 @@ function applySessionLog(entry: { id: string; op: string; payload: Payload }): I
     const existing = db.select().from(sessionSetLogs).where(and(eq(sessionSetLogs.id, id), eq(sessionSetLogs.sessionId, sessionId))).get();
     if (!existing) return { id: entry.id, status: "conflict", code: 404 };
     db.update(sessionSetLogs).set({
+      setType: entry.payload.setType ?? existing.setType,
+      segments: entry.payload.segments === undefined ? existing.segments : entry.payload.segments,
       reps: entry.payload.reps ?? existing.reps,
       weightKg: entry.payload.weightKg ?? existing.weightKg,
       rpe: entry.payload.rpe ?? existing.rpe,

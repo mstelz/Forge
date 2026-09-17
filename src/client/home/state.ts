@@ -1,3 +1,4 @@
+import { setVolumeKg } from "../../shared/session-log";
 /**
  * useHomepageState — composed read-only hook for the Today / Homepage surface.
  *
@@ -215,7 +216,7 @@ export function computeStreakWeeks(
 // ---------------------------------------------------------------------------
 
 export function computeWeeklyVolumeKg(logs: SessionSetLog[]): number {
-  return logs.filter(isVolumeLog).reduce((acc, l) => acc + (l.weightKg ?? 0) * (l.reps ?? 0), 0);
+  return logs.filter(isVolumeLog).reduce((acc, l) => acc + setVolumeKg(l), 0);
 }
 
 // ---------------------------------------------------------------------------

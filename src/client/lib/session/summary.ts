@@ -1,3 +1,4 @@
+import { setVolumeKg } from "../../../shared/session-log";
 import type { Session, SessionSetLog } from "../../../shared";
 import { countSessionRecords } from "./records";
 
@@ -10,16 +11,11 @@ export function summarizeSession(
   totalLoggedSets: number;
   prCount: number;
 } {
-  // totalVolumeKg: sum of weightKg * reps for all status='logged', setType='normal' logs
+  // Count each effort once, while compound sets remain one logged set.
   const loggedNormal = logs.filter(
-    (l) => l.status === "logged" && l.setType === "normal",
+    (l) => l.status === "logged" && ["normal", "drop", "rest_pause", "amrap", "failure"].includes(l.setType),
   );
-  const totalVolumeKg = loggedNormal.reduce((sum, l) => {
-    if (l.weightKg != null && l.reps != null) {
-      return sum + l.weightKg * l.reps;
-    }
-    return sum;
-  }, 0);
+  const totalVolumeKg = loggedNormal.reduce((sum, log) => sum + setVolumeKg(log), 0);
 
   // totalLoggedSets: count of status='logged' logs
   const totalLoggedSets = logs.filter((l) => l.status === "logged").length;

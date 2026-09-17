@@ -6,7 +6,21 @@ export type LogSetType = z.infer<typeof LogSetTypeEnum>;
 export const SessionLogStatusEnum = z.enum(['logged', 'skipped', 'extra']);
 export type SessionLogStatus = z.infer<typeof SessionLogStatusEnum>;
 
-const WEIGHT_REQUIRED_TYPES = new Set(['normal', 'drop', 'amrap', 'failure']);
+const WEIGHT_REQUIRED_TYPES = new Set(['normal', 'drop', 'amrap', 'failure', 'rest_pause']);
+
+/** Additional efforts after the main weight/reps pair; one log still represents one set. */
+export const SetSegmentSchema = z.object({
+  weightKg: z.number().finite().nonnegative().nullable(),
+  reps: z.number().int().positive(),
+  pauseSec: z.number().int().min(0).max(3600),
+});
+export type SetSegment = z.infer<typeof SetSegmentSchema>;
+const SegmentsSchema = z.array(SetSegmentSchema).max(20).nullable().optional();
+
+export function setVolumeKg(log: { weightKg: number | null; reps: number | null; segments?: SetSegment[] | null }): number {
+  return (log.weightKg ?? 0) * (log.reps ?? 0) +
+    (log.segments ?? []).reduce((sum, part) => sum + (part.weightKg ?? 0) * part.reps, 0);
+}
 
 export const SessionSetLogSchema = z.object({
   id: z.string().uuid(),
@@ -23,6 +37,7 @@ export const SessionSetLogSchema = z.object({
   distanceM: z.number().nullable(),
   notes: z.string().max(500).nullable(),
   setType: LogSetTypeEnum,
+  segments: SegmentsSchema,
   status: SessionLogStatusEnum,
   loggedAt: z.number().int(),
   restAfterSec: z.number().int().nullable(),
@@ -49,14 +64,14 @@ export const SessionSetLogSchema = z.object({
         message: 'reps must be > 0 when weightKg is present for this set type',
       });
     }
-    const hasWeight = val.weightKg != null && val.reps != null && val.reps > 0;
+    const hasWeight = val.reps != null && val.reps > 0;
     const hasDuration = val.durationSec != null && val.durationSec > 0;
     const hasDistance = val.distanceM != null && val.distanceM > 0;
     if (!hasWeight && !hasDuration && !hasDistance) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['reps'],
-        message: 'logged set must have at least one metric (weight+reps, durationSec, or distanceM)',
+        message: 'logged set must have at least one metric (reps, durationSec, or distanceM)',
       });
     }
   }
@@ -78,6 +93,7 @@ export const SessionSetLogCreateInput = z.object({
   distanceM: z.number().nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
   setType: LogSetTypeEnum,
+  segments: SegmentsSchema,
   status: SessionLogStatusEnum,
   loggedAt: z.number().int(),
   restAfterSec: z.number().int().nullable().optional(),

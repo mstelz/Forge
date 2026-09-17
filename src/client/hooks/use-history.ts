@@ -1,3 +1,4 @@
+import { setVolumeKg } from "../../shared/session-log";
 import { useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
@@ -116,11 +117,11 @@ function computeSummaries(
     const volumeKg = loggedLogs.reduce((sum, l) => {
       const type = l.setType;
       if (
-        (type === "normal" || type === "drop" || type === "amrap" || type === "failure") &&
+        (type === "normal" || type === "drop" || type === "rest_pause" || type === "amrap" || type === "failure") &&
         l.weightKg != null &&
         l.reps != null
       ) {
-        return sum + l.weightKg * l.reps;
+        return sum + setVolumeKg(l);
       }
       return sum;
     }, 0);
