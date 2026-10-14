@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   convertWeight,
   formatWeight,
+  formatWeightCompact,
   convertDistance,
   formatDistance,
 } from "../units";
@@ -38,6 +39,29 @@ describe("formatWeight", () => {
   it("drops .0 suffix for whole number lb", () => {
     // 10 kg * 2.20462 = 22.0462, rounded to 22 => but 22.0 -> "22 lb"
     expect(formatWeight(0, "lb")).toBe("0 lb");
+  });
+});
+
+describe("formatWeightCompact", () => {
+  it("matches formatWeight below 10,000", () => {
+    expect(formatWeightCompact(9999, "kg")).toBe("9999 kg");
+    expect(formatWeightCompact(82.5, "kg")).toBe("82.5 kg");
+  });
+
+  it("abbreviates thousands from 10,000", () => {
+    expect(formatWeightCompact(10_000, "kg")).toBe("10k kg");
+    expect(formatWeightCompact(10_500, "kg")).toBe("10.5k kg");
+    expect(formatWeightCompact(100_240, "kg")).toBe("100.2k kg");
+  });
+
+  it("abbreviates millions, never showing 1000k", () => {
+    expect(formatWeightCompact(999_960, "kg")).toBe("1m kg");
+    expect(formatWeightCompact(1_000_000, "kg")).toBe("1m kg");
+    expect(formatWeightCompact(1_250_000, "kg")).toBe("1.3m kg");
+  });
+
+  it("applies the threshold to the displayed unit", () => {
+    expect(formatWeightCompact(5000, "lb")).toBe("11k lb");
   });
 });
 

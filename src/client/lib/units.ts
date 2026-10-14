@@ -16,6 +16,16 @@ export function formatWeight(kg: number, unit: "kg" | "lb"): string {
   return `${display} ${unit}`;
 }
 
+/** Totals outgrow a stat tile: from 10,000 up, abbreviate as 10.5k / 1.2m. */
+export function formatWeightCompact(kg: number, unit: "kg" | "lb"): string {
+  const converted = convertWeight(kg, unit);
+  if (converted < 10_000) return formatWeight(kg, unit);
+  const trim = (n: number) => String(Math.round(n * 10) / 10);
+  // 999,950 and up would round to "1000k".
+  if (converted < 999_950) return `${trim(converted / 1000)}k ${unit}`;
+  return `${trim(converted / 1_000_000)}m ${unit}`;
+}
+
 export function weightToKg(display: number, unit: "kg" | "lb"): number {
   return unit === "lb" ? display / 2.20462 : display;
 }
