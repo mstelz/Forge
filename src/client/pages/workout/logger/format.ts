@@ -1,4 +1,5 @@
-import { formatWeight, formatDistance } from "../../../lib/units";
+import { formatDistance } from "../../../lib/units";
+import { formatStrengthSet } from "../../../lib/session/segments";
 import { formatHms } from "../../../lib/time";
 import type { SessionSetLog } from "../../../../shared";
 import type { PlannedSlot } from "./types";
@@ -29,8 +30,7 @@ export function formatSetSummary(
   const parts: string[] = [];
   if (log.durationSec != null) parts.push(formatHms(log.durationSec));
   if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
-  if (log.weightKg != null && log.reps != null) parts.push(`${formatWeight(log.weightKg, weightUnit)} × ${log.reps}`);
-  else if (log.reps != null) parts.push(`${log.reps} reps`);
+  if (log.reps != null) parts.push(formatStrengthSet(log, weightUnit));
   if (parts.length === 0) return "—";
   return parts.join(" · ");
 }
