@@ -3,6 +3,7 @@ import { SettingsContext } from "../../../contexts/settings-context";
 import { CheckIcon } from "../icons";
 import { headlineRecord, recordBadge } from "../../../lib/session/record-labels";
 import { formatRepsTarget, formatRpeTarget, formatSetSummary } from "./format";
+import { SetNoteButton } from "./set-note";
 import type { ExerciseRecord } from "../../../lib/session/records";
 import type { SessionSetLog } from "../../../../shared";
 import type { PlannedSlot } from "./types";
@@ -41,10 +42,15 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick, reco
   const { weightUnit, distanceUnit } = useContext(SettingsContext);
   const repsTarget = formatRepsTarget(slot);
   const rpeTarget = formatRpeTarget(slot);
+  const note = log?.notes?.trim();
+  // The row is itself a button, so the note button is laid over a gap the row
+  // leaves for it rather than nested inside.
+  const noteGap = note ? <span aria-hidden="true" className="w-6 shrink-0" /> : null;
 
   if (rowState === "logged" && log) {
     if (isCursor) {
       return (
+        <div className="relative">
         <button
           type="button"
           onClick={onClick}
@@ -58,11 +64,15 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick, reco
             </span>
             {records && records.length > 0 && <RecordBadge records={records} />}
           </div>
-          <span className="text-xs text-[var(--accent)]">editing</span>
+          {noteGap}
+          <span className="w-11 text-right text-xs text-[var(--accent)]">editing</span>
         </button>
+        {note && <SetNoteButton setNumber={setNumber} note={note} className="absolute right-16 top-1/2 -translate-y-1/2" />}
+        </div>
       );
     }
     return (
+      <div className="relative">
       <button
         type="button"
         onClick={onClick}
@@ -81,13 +91,17 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick, reco
           )}
           {records && records.length > 0 && <RecordBadge records={records} />}
         </div>
+        {noteGap}
         <CheckIcon className="text-green-500" />
       </button>
+      {note && <SetNoteButton setNumber={setNumber} note={note} className="absolute right-9 top-1/2 -translate-y-1/2" />}
+      </div>
     );
   }
 
   if (rowState === "skipped") {
     return (
+      <div className="relative">
       <button
         type="button"
         onClick={onClick}
@@ -95,8 +109,12 @@ export function SetRow({ setNumber, rowState, slot, log, isCursor, onClick, reco
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
       >
         <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
-        <span className="text-sm text-[var(--text-subtle)]">— skipped</span>
+        <span className="flex-1 text-sm text-[var(--text-subtle)]">— skipped</span>
+        {noteGap}
+        {note && <span aria-hidden="true" className="w-4 shrink-0" />}
       </button>
+      {note && <SetNoteButton setNumber={setNumber} note={note} className="absolute right-9 top-1/2 -translate-y-1/2" />}
+      </div>
     );
   }
 

@@ -1,5 +1,4 @@
-import { formatStrengthSet } from "../../lib/session/segments";
-import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type MutableRefObject, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
@@ -48,6 +47,9 @@ import {
   ChevronRightIcon, InfoIcon, BackIcon, CheckIcon, PlusSmIcon,
   NoteIcon, KebabIcon, PauseIcon, PlayIcon, TrashIcon,
 } from "./icons";
+import { SetRow, type SetRowState } from "./logger/set-row";
+import { useExerciseRecords } from "./logger/use-records";
+import type { ExerciseRecord } from "../../lib/session/records";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
 // ─── Internal types ──────────────────────────────────────────────────────────
@@ -224,17 +226,6 @@ function formatDaysAgo(ts: number): string {
   return `${days} days ago`;
 }
 
-function formatRepsTarget(slot: PlannedSlot): string {
-  if (slot.repsMin != null && slot.repsMax != null) return `${slot.repsMin}–${slot.repsMax} reps`;
-  if (slot.reps != null) return `${slot.reps} reps`;
-  return "";
-}
-
-function formatRpeTarget(slot: PlannedSlot): string {
-  if (slot.rpe != null) return `RPE ${slot.rpe}`;
-  return "";
-}
-
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function Toast({ message, type }: { message: string; type: "error" | "info" }) {
@@ -254,142 +245,17 @@ function Toast({ message, type }: { message: string; type: "error" | "info" }) {
   );
 }
 
-// ─── Set Row ──────────────────────────────────────────────────────────────────
+// ─── Records ──────────────────────────────────────────────────────────────────
 
-type SetRowState = "logged" | "cursor" | "future" | "skipped";
-
-interface SetRowProps {
-  setNumber: number;
-  rowState: SetRowState;
-  slot: PlannedSlot;
-  log?: SessionSetLog;
-  isCursor: boolean;
-  onClick: () => void;
-}
-
-function formatSetSummary(log: SessionSetLog, weightUnit: "kg" | "lb", distanceUnit: "m" | "km" | "mi"): string {
-  const parts: string[] = [];
-  if (log.durationSec != null) parts.push(formatHms(log.durationSec));
-  if (log.distanceM != null) parts.push(formatDistance(log.distanceM, distanceUnit));
-  if (log.weightKg != null && log.reps != null) parts.push(formatStrengthSet(log, weightUnit));
-  else if (log.reps != null) parts.push(formatStrengthSet(log, weightUnit));
-  if (parts.length === 0) return "—";
-  return parts.join(" · ");
-}
-
-function SetRow({ setNumber, rowState, slot, log, isCursor, onClick }: SetRowProps) {
-  const { weightUnit, distanceUnit } = useContext(SettingsContext);
-  const repsTarget = formatRepsTarget(slot);
-  const rpeTarget = formatRpeTarget(slot);
-
-  if (rowState === "logged" && log) {
-    if (isCursor) {
-      return (
-        <button
-          type="button"
-          onClick={onClick}
-          aria-label={`Set ${setNumber} — editing`}
-          className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/8 px-3 py-2.5 text-left"
-        >
-          <span className="w-5 text-xs font-bold text-[var(--accent)] tabular-nums">{setNumber}</span>
-          <div className="flex flex-1 items-center gap-2">
-            <span className="text-sm font-semibold text-[var(--text)]">
-              {formatSetSummary(log, weightUnit, distanceUnit)}
-            </span>
-          </div>
-          <span className="text-xs text-[var(--accent)]">editing</span>
-        </button>
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Set ${setNumber} — logged. Tap to edit.`}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
-      >
-        <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
-        <div className="flex flex-1 items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--text)]">
-            {formatSetSummary(log, weightUnit, distanceUnit)}
-          </span>
-          {log.rpe != null && (
-            <span className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
-              RPE {log.rpe}
-            </span>
-          )}
-        </div>
-        <CheckIcon className="text-green-500" />
-      </button>
-    );
-  }
-
-  if (rowState === "skipped") {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Set ${setNumber} — skipped. Tap to edit.`}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-elevated)]"
-      >
-        <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
-        <span className="text-sm text-[var(--text-subtle)]">— skipped</span>
-      </button>
-    );
-  }
-
-  if (isCursor) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Set ${setNumber} — active. Tap to log.`}
-        className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2.5 text-left"
-      >
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--accent-fg)]">
-          {setNumber}
-        </span>
-        <div className="flex flex-1 items-center gap-2">
-          {repsTarget && (
-            <span className="text-sm font-semibold text-[var(--accent)]">{repsTarget}</span>
-          )}
-          {rpeTarget && (
-            <span className="rounded bg-[var(--accent)]/20 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)]">
-              {rpeTarget}
-            </span>
-          )}
-          {!repsTarget && !rpeTarget && (
-            <span className="text-sm text-[var(--accent)]">—</span>
-          )}
-        </div>
-        <span className="text-xs text-[var(--accent)]">Tap to edit</span>
-      </button>
-    );
-  }
-
-  // future placeholder
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={`Set ${setNumber} — upcoming`}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
-    >
-      <span className="w-5 text-xs text-[var(--text-subtle)] tabular-nums">{setNumber}</span>
-      <div className="flex flex-1 items-center gap-2">
-        {repsTarget ? (
-          <span className="text-sm text-[var(--text-subtle)]">{repsTarget}</span>
-        ) : (
-          <span className="text-sm text-[var(--text-subtle)]">— —</span>
-        )}
-        {rpeTarget && (
-          <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-xs text-[var(--text-subtle)]">
-            {rpeTarget}
-          </span>
-        )}
-      </div>
-    </button>
-  );
+/** Looks records up once per exercise; the set rows are mapped inline, where a hook can't go. */
+function WithExerciseRecords({
+  exerciseId,
+  children,
+}: {
+  exerciseId: string;
+  children: (records: Map<string, ExerciseRecord[]>) => ReactNode;
+}) {
+  return <>{children(useExerciseRecords(exerciseId))}</>;
 }
 
 // ─── Last time summary ────────────────────────────────────────────────────────
@@ -632,6 +498,7 @@ function ExerciseCard({
             </div>
             <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} onViewHistory={() => onViewHistory(item.exerciseId, name)} />
 
+            <WithExerciseRecords exerciseId={item.exerciseId}>{(records) => (
             <div className="mt-3 space-y-1">
               {item.setTargets.map((slot, slotIdx) => {
                 const isCursor =
@@ -656,6 +523,7 @@ function ExerciseCard({
                         log={log}
                         isCursor={isCursor}
                         onClick={() => onSlotTap(blockIdx, itemIdx, slotIdx)}
+                        records={log ? records.get(log.id) : undefined}
                       />
                     </div>
                     <button
@@ -705,6 +573,7 @@ function ExerciseCard({
                         log={hasValues ? extraLog : undefined}
                         isCursor={isCursor}
                         onClick={() => onSlotTap(blockIdx, itemIdx, extraSlotIdx, true)}
+                        records={records.get(extraLog.id)}
                       />
                     </div>
                     <button
@@ -733,6 +602,7 @@ function ExerciseCard({
                 );
               })}
             </div>
+            )}</WithExerciseRecords>
 
             <div className="mt-4 flex gap-4">
               <button

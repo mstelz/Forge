@@ -117,3 +117,43 @@ test('each superset exercise loads its own previous values and keeps edits throu
   await page.getByRole('button', { name: 'LOG SET', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Set 1 — logged. Tap to edit.', exact: true })).toContainText('22 kg × 12');
 });
+
+test('a set note can be read from its row without entering edit', async ({ page }) => {
+  await page.getByRole('textbox').nth(0).fill('60');
+  await page.getByRole('textbox').nth(1).fill('8');
+  await page.getByRole('button', { name: 'Note', exact: true }).click();
+  await page.getByPlaceholder('Add a note…').fill('Left knee caved on rep 4');
+  await page.getByRole('button', { name: 'LOG SET', exact: true }).click();
+  const row = page.getByRole('button', { name: 'Set 1 — logged. Tap to edit.', exact: true });
+  await expect(row).toBeVisible();
+  await expect(page.getByText('Left knee caved on rep 4')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Read note for set 1', exact: true }).click();
+  await expect(page.getByText('Left knee caved on rep 4')).toBeVisible();
+  await expect(row).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Left knee caved on rep 4')).toHaveCount(0);
+});
+
+test('a set that beats the previous best shows a PR badge next to its note', async ({ page }) => {
+  await page.evaluate(async () => {
+    const { forgeDB } = await import('/db/forge-db.ts' as string);
+    const session = (await forgeDB.sessions.toArray())[0];
+    const item = JSON.parse(session.liveStructure).blocks[0].items[0];
+    await forgeDB.sessionSetLogs.add({
+      id: crypto.randomUUID(), sessionId: crypto.randomUUID(), performedExerciseId: item.performedExerciseId,
+      exerciseId: item.exerciseId, sessionItemId: item.sessionItemId, plannedSetId: null,
+      order: 0, weightKg: 50, reps: 8, rpe: null, notes: null,
+      durationSec: null, distanceM: null, setType: 'normal', status: 'logged', loggedAt: Date.now() - 86400000,
+      restAfterSec: null, enteredWeight: null, enteredWeightUnit: null, enteredDistance: null, enteredDistanceUnit: null,
+    });
+  });
+  await page.reload();
+  await page.getByRole('textbox').nth(0).fill('60');
+  await page.getByRole('textbox').nth(1).fill('8');
+  await page.getByRole('button', { name: 'Note', exact: true }).click();
+  await page.getByPlaceholder('Add a note…').fill('Felt strong');
+  await page.getByRole('button', { name: 'LOG SET', exact: true }).click();
+  const row = page.getByRole('button', { name: 'Set 1 — logged. Tap to edit.', exact: true });
+  await expect(row).toContainText(/PR/);
+  await expect(page.getByRole('button', { name: 'Read note for set 1', exact: true })).toBeVisible();
+});
