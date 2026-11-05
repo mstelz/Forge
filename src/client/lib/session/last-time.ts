@@ -1,6 +1,7 @@
 import type { SessionSetLog } from "../../../shared/session-log";
 import { formatWeight, formatDistance } from "../units";
 import { formatHms } from "../time";
+import { formatStrengthSet } from "./segments";
 
 type Units = {
   weightUnit: "kg" | "lb";
@@ -33,12 +34,16 @@ export function summarizeLastTime(
 
   const parts: string[] = [];
 
-  const weightKg = sessionLogs.find((l) => l.weightKg != null)?.weightKg;
-  const repsArr = sessionLogs.map((l) => l.reps).filter((r): r is number => r != null);
-  if (weightKg != null && repsArr.length > 0) {
-    parts.push(`${formatWeight(weightKg, weightUnit)} × ${repsArr.join(", ")}`);
-  } else if (repsArr.length > 0) {
-    parts.push(`${repsArr.join(", ")} reps`);
+  const strengthLogs = sessionLogs.filter((l) => l.reps != null || l.segments?.length);
+  const weightKg = strengthLogs[0]?.weightKg;
+  const sameWeight = strengthLogs.every((l) => l.weightKg === weightKg && !l.segments?.length);
+  if (strengthLogs.length > 0) {
+    if (sameWeight) {
+      const reps = strengthLogs.map((l) => l.reps).join(", ");
+      parts.push(weightKg != null ? `${formatWeight(weightKg, weightUnit)} × ${reps}` : `${reps} reps`);
+    } else {
+      parts.push(strengthLogs.map((l) => formatStrengthSet(l, weightUnit)).join(", "));
+    }
   }
 
   const totalDuration = sessionLogs.reduce((acc, l) => acc + (l.durationSec ?? 0), 0);

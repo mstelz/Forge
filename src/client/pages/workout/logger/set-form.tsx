@@ -1,3 +1,4 @@
+import { prepareRestAlertAudio } from "../../../lib/rest-alert";
 import {
   useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState,
   type MutableRefObject,
@@ -316,8 +317,7 @@ export function BottomPanel({
         const updatedExtraLog = { ...extraLog, ...metricFields(now) };
         const prevLogUpdate = computeRestBackfill(logs, now);
         // Unlock AudioContext via this user gesture so it can play at timer expiry
-        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-        else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+        prepareRestAlertAudio(audioCtxRef);
         await updateSetBatch(updatedExtraLog, restingSession(now), prevLogUpdate);
         dispatch({ type: "resetAfterLog" }); onCloseNote();
         prevSlotKey.current = null;
@@ -343,6 +343,7 @@ export function BottomPanel({
     }
     setValidationError(null);
 
+    prepareRestAlertAudio(audioCtxRef);
     setLogging(true);
     try {
       const now = Date.now();

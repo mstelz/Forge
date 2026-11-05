@@ -1,3 +1,4 @@
+import { notifyRestTimer, prepareRestAlertAudio } from "../../../lib/rest-alert";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { updateSession } from "../../../db/mutations";
 import { formatMmSs } from "../../../lib/time";
@@ -6,21 +7,6 @@ import { PauseIcon, PlayIcon } from "../icons";
 import { parseRestTimer } from "./structure";
 import type { Session } from "../../../../shared";
 import type { RestTimerData } from "./types";
-
-/** Two short beeps at timer expiry. Needs an AudioContext already unlocked by a gesture. */
-export function playBeep(ctx: AudioContext) {
-  [0, 0.35].forEach((offset) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.3, ctx.currentTime + offset);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.25);
-    osc.start(ctx.currentTime + offset);
-    osc.stop(ctx.currentTime + offset + 0.25);
-  });
-}
 
 export interface RestTimerState {
   timer: RestTimerData;
@@ -64,8 +50,7 @@ export function useRestTimer(session: Session | null | undefined): RestTimerStat
       setDisplaySecs(remaining);
       if (remaining <= 0 && session) {
         clearInterval(id);
-        navigator.vibrate?.([200, 100, 200]);
-        if (audioCtxRef.current) playBeep(audioCtxRef.current);
+        void notifyRestTimer(audioCtxRef);
         const expired: RestTimerData = { ...t, status: "idle", remainingSec: 0 };
         updateSession({
           ...session,
@@ -88,6 +73,7 @@ export function useRestTimer(session: Session | null | undefined): RestTimerStat
           : (t.remainingSec ?? t.durationSec);
       updated = { ...t, status: "paused", pausedAt: Date.now(), remainingSec: remaining };
     } else if (t.status === "paused") {
+      prepareRestAlertAudio(audioCtxRef);
       const alreadyElapsed = t.durationSec - (t.remainingSec ?? t.durationSec);
       updated = {
         ...t,

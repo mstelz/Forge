@@ -120,4 +120,41 @@ describe("summarizeLastTime", () => {
   it("returns null when there is no prior log at all", () => {
     expect(summarizeLastTime([], CURRENT, opts)).toBe(null);
   });
+
+  it("pairs each set's reps with its own weight when weights differ", () => {
+    expect(summarizeLastTime([
+      log({ order: 1, weightKg: 45, reps: 10 }),
+      log({ order: 0, weightKg: 50, reps: 8 }),
+    ], CURRENT, opts)).toBe("50 kg × 8, 45 kg × 10");
+  });
+
+  it("keeps the compact summary when all sets use the same weight", () => {
+    expect(summarizeLastTime([
+      log({ order: 0, weightKg: 50, reps: 8 }),
+      log({ order: 1, weightKg: 50, reps: 6 }),
+    ], CURRENT, opts)).toBe("50 kg × 8, 6");
+  });
+
+  it("converts each different weight to the selected unit", () => {
+    expect(summarizeLastTime([
+      log({ order: 0, weightKg: 50, reps: 8 }),
+      log({ order: 1, weightKg: 40, reps: 10 }),
+    ], CURRENT, { ...opts, weightUnit: "lb" })).toBe("110.2 lb × 8, 88.2 lb × 10");
+  });
+
+  it("does not assign a weighted set's load to a bodyweight set", () => {
+    expect(summarizeLastTime([
+      log({ order: 0, weightKg: null, reps: 12 }),
+      log({ order: 1, weightKg: 10, reps: 8 }),
+    ], CURRENT, opts)).toBe("12 reps, 10 kg × 8");
+  });
+
+  it("includes weight changes and pause efforts within a set", () => {
+    expect(summarizeLastTime([
+      log({ weightKg: 50, reps: 8, setType: "drop", segments: [
+        { weightKg: 40, reps: 6, pauseSec: 0 },
+        { weightKg: 30, reps: 5, pauseSec: 15 },
+      ] }),
+    ], CURRENT, opts)).toBe("50 kg × 8 → 40 kg × 6 → 15s pause → 30 kg × 5");
+  });
 });

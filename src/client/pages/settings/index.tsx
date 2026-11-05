@@ -8,6 +8,7 @@ import { triggerExport } from "../../export/trigger";
 import { importFromJson } from "../../export/import";
 import { forgeDB } from "../../db/forge-db";
 import { deviceTimeZone } from "../../lib/zoned-date";
+import { getRestAlertMode, setRestAlertMode, prepareRestAlertAudio, notifyRestTimer, REST_ALERT_OPTIONS, type RestAlertMode } from "../../lib/rest-alert";
 import { useToast } from "../../components/toast";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { SyncStatusSheet } from "../../sync/sync-status-sheet";
@@ -238,6 +239,25 @@ export function SettingsPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const deviceZone = deviceTimeZone();
   const toast = useToast();
+  const [restAlertMode, setAlertMode] = useState(getRestAlertMode);
+  const alertAudioRef = useRef<AudioContext | null>(null);
+
+  const changeRestAlert = (mode: RestAlertMode) => {
+    try {
+      setRestAlertMode(mode);
+      setAlertMode(mode);
+      prepareRestAlertAudio(alertAudioRef);
+    } catch {
+      toast("Could not save the rest timer alert setting.");
+    }
+  };
+
+  const testRestAlert = () => {
+    prepareRestAlertAudio(alertAudioRef);
+    void notifyRestTimer(alertAudioRef).then((delivered) => {
+      if (!delivered) toast("Alert unavailable. Check media volume and browser sound permissions.");
+    });
+  };
 
   const save = (patch: Partial<Settings>) => {
     void updateSettings({ ...settings, ...patch, updatedAt: Date.now() });
@@ -321,6 +341,25 @@ export function SettingsPage() {
 
         {/* ─── PROFILE (omitted in v1 — noisy with placeholder values) ─── */}
         {/* Profile section is not functional in v1; omitted to avoid placeholder noise. */}
+
+        <SectionHeader label="REST TIMER" />
+        <div className="rounded-[var(--radius-card)] overflow-hidden mx-4">
+          <SettingsRow>
+            <SettingsLabel>Countdown alert</SettingsLabel>
+            <select
+              aria-label="Countdown alert"
+              value={restAlertMode}
+              onChange={(e) => changeRestAlert(e.target.value as RestAlertMode)}
+              className="max-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-xs text-[var(--text-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              {REST_ALERT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </SettingsRow>
+          <SettingsRow>
+            <p className="text-xs text-[var(--text-muted)]">Saved on this device. Sound uses media volume and the current speaker or headphones.</p>
+            <button type="button" onClick={testRestAlert} disabled={restAlertMode === "silent"} className="ml-3 min-h-11 shrink-0 text-xs font-semibold text-[var(--accent)] disabled:opacity-40">Test alert</button>
+          </SettingsRow>
+        </div>
 
         {/* ─── UNITS & DISPLAY ─── */}
         <SectionHeader label="UNITS & DISPLAY" />

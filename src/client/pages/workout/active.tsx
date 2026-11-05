@@ -1,3 +1,4 @@
+import { notifyRestTimer, prepareRestAlertAudio } from "../../lib/rest-alert";
 import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type MutableRefObject, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -205,19 +206,6 @@ function countDoneSlots(
   return count;
 }
 
-function playBeep(ctx: AudioContext) {
-  [0, 0.35].forEach((offset) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.3, ctx.currentTime + offset);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.25);
-    osc.start(ctx.currentTime + offset);
-    osc.stop(ctx.currentTime + offset + 0.25);
-  });
-}
 
 function formatDaysAgo(ts: number): string {
   const days = Math.floor((Date.now() - ts) / 86_400_000);
@@ -900,8 +888,7 @@ function BottomPanel({
         const updatedExtraLog = { ...extraLog, ...metricFields(now), loggedAt: extraLog.loggedAt };
         const prevLogUpdate = savedExtra ? null : computeRestBackfill(now);
         // Unlock AudioContext via this user gesture so it can play at timer expiry
-        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-        else if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
+        prepareRestAlertAudio(audioCtxRef);
         if (savedExtra) await updateSessionLog(updatedExtraLog);
         else await updateSetBatch(updatedExtraLog, startRestTimer(now), prevLogUpdate);
         dispatch({ type: "resetAfterLog" }); onCloseNote();
@@ -924,6 +911,7 @@ function BottomPanel({
     }
     setValidationError(null);
 
+    prepareRestAlertAudio(audioCtxRef);
     setLogging(true);
     try {
       const now = Date.now();
@@ -1736,8 +1724,7 @@ export function ActiveWorkoutPage() {
       setTimerDisplaySecs(remaining);
       if (remaining <= 0 && session) {
         clearInterval(id);
-        navigator.vibrate?.([200, 100, 200]);
-        if (audioCtxRef.current) playBeep(audioCtxRef.current);
+        void notifyRestTimer(audioCtxRef);
         const expired: RestTimerData = { ...t, status: "idle", remainingSec: 0 };
         updateSession({
           ...session,
@@ -1760,6 +1747,7 @@ export function ActiveWorkoutPage() {
           : (t.remainingSec ?? t.durationSec);
       updated = { ...t, status: "paused", pausedAt: Date.now(), remainingSec: remaining };
     } else if (t.status === "paused") {
+      prepareRestAlertAudio(audioCtxRef);
       const alreadyElapsed = t.durationSec - (t.remainingSec ?? t.durationSec);
       updated = {
         ...t,
@@ -2079,7 +2067,11 @@ export function ActiveWorkoutPage() {
     cursor === null ? "All sets done" : `Set ${Math.min(done + 1, total)} of ${total}`;
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div
+      className="flex flex-1 flex-col"
+      onPointerDownCapture={() => prepareRestAlertAudio(audioCtxRef)}
+      onKeyDownCapture={() => prepareRestAlertAudio(audioCtxRef)}
+    >
       {/* Header */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-[var(--bg)] px-4 pt-4 pb-3">
         <button
