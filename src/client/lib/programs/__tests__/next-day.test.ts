@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeCascadeSchedule } from "../next-day";
-import type { Program, ProgramRun, ProgramRunDayState } from "../../../../shared";
+import type { Program, ProgramRun, ProgramRunDayState, Session } from "../../../../shared";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,6 +189,36 @@ describe("computeCascadeSchedule — normal flow", () => {
 });
 
 describe("computeCascadeSchedule — completedAt behavior", () => {
+  it("uses the recorded workout finish when sync omitted the completion timestamp", () => {
+    const start = new Date(2026, 9, 11).getTime();
+    const now = new Date(2026, 10, 4).getTime();
+    const program = makeProgram(start);
+    const run = makeRun(start, [makeDayState(0, 0, "completed", { sessionId: "upper-a" })]);
+    const finished = {
+      id: "upper-a", status: "finished", sourceType: "program_day",
+      sourceProgramId: program.id, sourceProgramWeekIndex: 0, sourceProgramDayIndex: 0,
+      startedAt: now + 20 * 3600000, endedAt: now + 21 * 3600000,
+    } as Session;
+    const schedule = computeCascadeSchedule(program, run, now, [finished]);
+    expect(schedule.slotToMs.get("0:0")).toBe(now);
+    expect(schedule.slotToMs.get("0:1")).toBe(new Date(2026, 10, 5).getTime());
+  });
+
+  it("uses November 2 for a workout marked finished on November 4", () => {
+    const start = new Date(2026, 9, 11).getTime();
+    const now = new Date(2026, 10, 4).getTime();
+    const endedAt = new Date(2026, 10, 2, 21, 7).getTime();
+    const program = makeProgram(start);
+    const run = makeRun(start, [makeDayState(0, 0, "completed", { sessionId: "lower-b", completedAt: now })]);
+    const finished = {
+      id: "lower-b", status: "finished", sourceType: "program_day",
+      sourceProgramId: program.id, sourceProgramWeekIndex: 0, sourceProgramDayIndex: 0,
+      startedAt: endedAt - 3600000, endedAt,
+    } as Session;
+    expect(computeCascadeSchedule(program, run, now, [finished]).slotToMs.get("0:0"))
+      .toBe(new Date(2026, 10, 2).getTime());
+  });
+
   it("keeps completed shifted slot on its completion date (not original date)", () => {
     // Program started 5 days ago; Upper A was shifted to today and completed today
     const startMs = today(-5);

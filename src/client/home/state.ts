@@ -390,6 +390,7 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
       .where("status")
       .equals("active")
       .toArray();
+    const calendarSessions = await forgeDB.sessions.toArray();
 
     for (const run of activeRuns) {
       const program = await forgeDB.programs.get(run.programId) ?? null;
@@ -397,7 +398,7 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
 
       // Use cascade schedule so tapping a calendar date shows the workout that
       // actually lands there after accounting for any days the user fell behind.
-      const cascade = computeCascadeSchedule(program, run, todayStart);
+      const cascade = computeCascadeSchedule(program, run, todayStart, calendarSessions);
       const dateKey = `${date.y}-${date.m - 1}-${date.d}`;
       const slot = cascade.dateToSlot.get(dateKey);
       if (!slot) continue;
@@ -579,7 +580,7 @@ export function useHomepageState(): { data: HomepageState | undefined; isLoading
 
           // Cascade schedule: pending slots push forward in sequence rather than
           // staying pinned to their original calendar dates.
-          const cascade = computeCascadeSchedule(program, run, todayStartMs);
+          const cascade = computeCascadeSchedule(program, run, todayStartMs, sessions);
 
           // Calendar dots — pending workout slots at their cascaded dates
           for (const [slotKey, effectiveMs] of cascade.slotToMs) {

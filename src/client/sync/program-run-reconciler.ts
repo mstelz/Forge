@@ -57,6 +57,7 @@ export async function reconcileProgramRuns(): Promise<void> {
 
       const weekIndex = session.sourceProgramWeekIndex;
       const dayIndex = session.sourceProgramDayIndex;
+      const completedAt = targetStatus === "completed" ? (session.endedAt ?? session.startedAt) : undefined;
 
       const existingStateIdx = run.dayStates.findIndex(
         (ds) => ds.weekIndex === weekIndex && ds.dayIndex === dayIndex,
@@ -73,7 +74,7 @@ export async function reconcileProgramRuns(): Promise<void> {
           dayIndex,
           status: targetStatus,
           sessionId: session.id,
-          completedAt: targetStatus === "completed" ? Date.now() : undefined,
+          completedAt,
           updatedAt: Date.now(),
         };
         updatedRun = {
@@ -85,13 +86,13 @@ export async function reconcileProgramRuns(): Promise<void> {
       } else {
         const existing = run.dayStates[existingStateIdx]!;
         // Only update if status needs changing, or sessionId needs linking
-        if (existing.status !== targetStatus || existing.sessionId !== session.id) {
+        if (existing.status !== targetStatus || existing.sessionId !== session.id || existing.completedAt !== completedAt) {
           const updated: ProgramRunDayState = {
             ...existing,
             status: targetStatus,
             sessionId: session.id,
-            // Preserve existing completedAt; only stamp it the first time we complete.
-            completedAt: existing.completedAt ?? (targetStatus === "completed" ? Date.now() : undefined),
+            // The recorded finish remains correct after a retroactive finish or time edit.
+            completedAt,
             updatedAt: Date.now(),
           };
           const newDayStates = [...run.dayStates];

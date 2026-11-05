@@ -12,6 +12,7 @@
  */
 
 import type { Program, ProgramRun } from "../../../shared";
+import { withSessionCompletionDates, type CompletionSession } from "../../../shared/program-completion";
 
 export type NextPlayableDay = {
   weekIndex: number;
@@ -158,7 +159,9 @@ export function computeCascadeSchedule(
   program: Program,
   run: ProgramRun,
   todayStartMs: number,
+  sessions: CompletionSession[] = [],
 ): CascadeSchedule {
+  run = withSessionCompletionDates(run, sessions);
   const addDays = (ms: number, days: number) => {
     const date = new Date(ms);
     date.setDate(date.getDate() + days);

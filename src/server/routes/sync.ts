@@ -7,6 +7,8 @@ import {
   profiles, weightLogs,
 } from "../../db/schema";
 import { PendingWriteSchema } from "../../shared/pending-write";
+import { withSessionCompletionDates } from "../../shared/program-completion";
+import type { ProgramRunDayState } from "../../shared/program-run";
 import { z } from "zod";
 
 export const syncRoute = new Hono();
@@ -362,8 +364,12 @@ function applySession(entry: { id: string; op: string; payload: Payload }): Item
 }
 
 function upsertDayStates(programRunId: string, dayStates: Payload[]): void {
+  const run = db.select().from(programRuns).where(eq(programRuns.id, programRunId)).get();
+  if (!run) throw new Error("Program run not found");
+  const history = db.select().from(sessions).where(eq(sessions.sourceProgramId, run.programId)).all();
+  const normalized = withSessionCompletionDates({ ...run, dayStates: dayStates as ProgramRunDayState[] }, history);
   db.delete(programRunDayStates).where(eq(programRunDayStates.programRunId, programRunId)).run();
-  for (const ds of dayStates) {
+  for (const ds of normalized.dayStates) {
     db.insert(programRunDayStates).values({
       id: ds.id,
       programRunId,
@@ -371,6 +377,7 @@ function upsertDayStates(programRunId: string, dayStates: Payload[]): void {
       dayIndex: ds.dayIndex,
       status: ds.status,
       sessionId: ds.sessionId ?? null,
+      completedAt: ds.completedAt ?? null,
       updatedAt: ds.updatedAt ?? Date.now(),
     }).run();
   }

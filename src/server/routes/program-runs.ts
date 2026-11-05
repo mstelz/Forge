@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { eq, gte } from "drizzle-orm";
 import { db, sqlite } from "../../db/client";
-import { programs, programRuns, programRunDayStates } from "../../db/schema";
+import { programs, programRuns, programRunDayStates, sessions } from "../../db/schema";
+import { withSessionCompletionDates } from "../../shared/program-completion";
 import {
   ProgramRunCreateInput,
   ProgramRunUpdateInput,
@@ -209,13 +210,17 @@ programRunsRoute.patch("/:id", async (c) => {
   const updatedAt = Math.max(input.updatedAt, now);
 
   const tx = sqlite.transaction(() => {
+    // Older clients may omit completion dates in full-document updates.
+    // Rebuild workout anchors from session history before persisting the run.
+    const history = db.select().from(sessions).where(eq(sessions.sourceProgramId, input.programId)).all();
+    const normalized = withSessionCompletionDates(input, history);
     // Delete existing day states
     db.delete(programRunDayStates)
       .where(eq(programRunDayStates.programRunId, id))
       .run();
 
     // Re-insert from payload
-    insertDayStates(id, input.dayStates);
+    insertDayStates(id, normalized.dayStates);
 
     // Update program_runs row
     db.update(programRuns)
