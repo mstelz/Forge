@@ -98,7 +98,7 @@ export function reorderBlocks(
 
 /**
  * Swaps the exerciseId on a specific item.
- * Keeps performedExerciseId/sessionItemId/setTargets unchanged.
+ * Keeps performedExerciseId/sessionItemId/setTargets unchanged and clears the old exercise cue.
  */
 export function swapExercise(
   structure: LiveStructure,
@@ -109,8 +109,8 @@ export function swapExercise(
   const blocks = structure.blocks.map((block, bIdx) => {
     if (bIdx !== blockIndex) return block;
     const items = block.items.map((item, iIdx) => {
-      if (iIdx !== itemIndex) return item;
-      return { ...item, exerciseId: newExerciseId };
+      if (iIdx !== itemIndex || item.exerciseId === newExerciseId) return item;
+      return { ...item, exerciseId: newExerciseId, notes: undefined };
     });
     return { ...block, items };
   });

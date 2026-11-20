@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readWorkoutGuidance, snapshotWorkoutTemplate } from "../../../lib/session/workout-guidance";
 import { buildLiveStructure } from "../start";
 import type { Routine } from "../../../../shared";
 import type { RoutineItemOverride } from "../../../../shared/program";
@@ -73,5 +74,49 @@ describe("buildLiveStructure", () => {
     expect(block.roundCount).toBe(4);
     expect(block.items.map((item) => item.setTargets)).toHaveLength(2);
     expect(block.items.every((item) => item.setTargets.length === 4)).toBe(true);
+  });
+
+  it("applies the scheduled exercise cue and keeps other routine cues", () => {
+    const routine = makeRoutine();
+    routine.blocks[0]!.items[0]!.notes = "Base press cue";
+    routine.blocks[0]!.items[1]!.notes = "Base row cue";
+
+    const structure = buildLiveStructure(routine, [
+      { routineItemId: ids.itemA, notes: "Pause on the chest today" },
+    ]);
+
+    expect(structure.blocks[0]!.items.map((item) => item.notes)).toEqual([
+      "Pause on the chest today",
+      "Base row cue",
+    ]);
+  });
+});
+
+describe("workout guidance snapshots", () => {
+  it("captures the scheduled day, routine and program guidance", () => {
+    const routine = { ...makeRoutine(), notes: "Start with pressing" };
+    const snapshot = snapshotWorkoutTemplate(routine, {
+      dayNotes: "  Leave two reps in reserve  ",
+      programDescription: "Build pressing strength",
+    });
+    routine.notes = "Edited later";
+
+    expect(readWorkoutGuidance(snapshot)).toEqual({
+      dayNotes: "Leave two reps in reserve",
+      routineNotes: "Start with pressing",
+      programDescription: "Build pressing strength",
+    });
+  });
+
+  it("reads older routine snapshots and tolerates a missing or invalid snapshot", () => {
+    const routine = { ...makeRoutine(), notes: "Start with pressing" };
+    expect(readWorkoutGuidance(JSON.stringify(routine))).toEqual({
+      dayNotes: "",
+      routineNotes: "Start with pressing",
+      programDescription: "",
+    });
+    const empty = { dayNotes: "", routineNotes: "", programDescription: "" };
+    expect(readWorkoutGuidance(null)).toEqual(empty);
+    expect(readWorkoutGuidance("{")).toEqual(empty);
   });
 });

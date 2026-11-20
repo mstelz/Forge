@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type Mut
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
+import { BookOpen } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +51,7 @@ import {
 } from "./icons";
 import { SetRow, type SetRowState } from "./logger/set-row";
 import { useExerciseRecords } from "./logger/use-records";
+import { WorkoutFocus } from "./logger/workout-focus";
 import type { ExerciseRecord } from "../../lib/session/records";
 import type { Session, SessionSetLog, ExerciseType } from "../../../shared";
 
@@ -391,6 +393,7 @@ function ExerciseCard({
 }: ExerciseCardProps) {
   const [blockNoteOpen, setBlockNoteOpen] = useState(!!block.notes);
   const [blockNoteText, setBlockNoteText] = useState(block.notes ?? "");
+  const [openCueIds, setOpenCueIds] = useState<string[]>([]);
 
   // Arm-to-confirm delete: first tap arms the button, second tap (within 2s) deletes.
   type ArmedDelete =
@@ -447,6 +450,9 @@ function ExerciseCard({
 
       {block.items.map((item, itemIdx) => {
         const name = exerciseNames.get(item.exerciseId) ?? "Exercise";
+        const cue = item.notes?.trim();
+        const cueId = `program-cue-${item.performedExerciseId}`;
+        const cueOpen = openCueIds.includes(cueId);
         const prefix = isSuperset
           ? `${String.fromCharCode(65 + blockIdx)}${itemIdx + 1}. `
           : "";
@@ -483,8 +489,31 @@ function ExerciseCard({
               >
                 <InfoIcon />
               </button>
+              {cue && (
+                <button
+                  type="button"
+                  title="Program cue"
+                  aria-label={`Program cue for ${name}`}
+                  aria-controls={cueId}
+                  aria-expanded={cueOpen}
+                  onClick={() => setOpenCueIds((ids) =>
+                    ids.includes(cueId) ? ids.filter((id) => id !== cueId) : [...ids, cueId],
+                  )}
+                  className="group ml-auto grid size-11 shrink-0 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                >
+                  <span className="grid size-7 place-items-center rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] group-hover:bg-[var(--accent)]/20 group-aria-expanded:bg-[var(--accent)] group-aria-expanded:text-[var(--accent-fg)]">
+                    <BookOpen size={15} aria-hidden="true" />
+                  </span>
+                </button>
+              )}
             </div>
             <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} onViewHistory={() => onViewHistory(item.exerciseId, name)} />
+            {cue && (
+              <div id={cueId} hidden={!cueOpen} className="mt-2 border-l-2 border-[var(--accent)] py-1 pl-2.5 text-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]">Program cue</p>
+                <p className="whitespace-pre-wrap wrap-break-word text-[var(--text)]">{cue}</p>
+              </div>
+            )}
 
             <WithExerciseRecords exerciseId={item.exerciseId}>{(records) => (
             <div className="mt-3 space-y-1">
@@ -2108,6 +2137,7 @@ export function ActiveWorkoutPage() {
 
       {/* Scrollable body */}
       <main className="flex-1 overflow-y-auto space-y-4 px-4 pb-4 pt-2">
+        <WorkoutFocus key={session.id} templateSnapshot={session.templateSnapshot} />
         {liveStructure.blocks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
             <p className="text-sm text-[var(--text-muted)]">No exercises planned.</p>

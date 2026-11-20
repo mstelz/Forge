@@ -4,9 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createSession, setProgramRunDayState } from "../../db/mutations";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
+import { snapshotWorkoutTemplate } from "../../lib/session/workout-guidance";
 import { buildLiveStructure } from "../workout/start";
 import type { Routine, Session } from "../../../shared";
-import type { RoutineItemOverride } from "../../../shared/program";
 import type { DayDetail, HomepageCalendarDot } from "../../home/state";
 
 // Day-detail bottom-sheet / popover surface, extracted from home/index.tsx (issue 09).
@@ -42,8 +42,11 @@ function DayDetailContent({
       sourceProgramId: programContext.programId,
       sourceProgramWeekIndex: programContext.weekIndex,
       sourceProgramDayIndex: programContext.dayIndex,
-      templateSnapshot: JSON.stringify(routine),
-      liveStructure: JSON.stringify(buildLiveStructure(routine, programContext.overrides as RoutineItemOverride[])),
+      templateSnapshot: snapshotWorkoutTemplate(routine, {
+        dayNotes: programContext.dayNotes,
+        programDescription: programContext.programDescription,
+      }),
+      liveStructure: JSON.stringify(buildLiveStructure(routine, programContext.overrides)),
       restTimer: null,
       title: routine.name,
       notes: null,

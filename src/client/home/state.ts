@@ -105,6 +105,8 @@ export type DayDetail = {
     weekIndex: number;
     dayIndex: number;
     overrides: RoutineItemOverride[] | null;
+    dayNotes?: string | null;
+    programDescription?: string | null;
   } | null;
   session: Session | null;
   sessionStats: { exerciseCount: number; setCount: number; durationMs: number } | null;
@@ -427,6 +429,8 @@ export async function getDayDetail(date: { y: number; m: number; d: number }): P
           weekIndex,
           dayIndex,
           overrides: primary.overrides ?? null,
+          dayNotes: primary.notes,
+          programDescription: program.description,
         };
       }
       break;

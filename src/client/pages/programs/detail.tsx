@@ -11,6 +11,7 @@ import {
   createSession,
 } from "../../db/mutations";
 import { buildLiveStructure } from "../workout/start";
+import { snapshotWorkoutTemplate } from "../../lib/session/workout-guidance";
 import { queryKeys } from "../../db/query-keys";
 import { computeRunProgress } from "../../lib/programs/run-progress";
 import { uuidv4 } from "../../lib/uuid";
@@ -458,7 +459,10 @@ export function ProgramDetailPage() {
       sourceProgramId: activeRun.programId,
       sourceProgramWeekIndex: weekIndex,
       sourceProgramDayIndex: dayIndex,
-      templateSnapshot: JSON.stringify(routine),
+      templateSnapshot: snapshotWorkoutTemplate(routine, {
+        dayNotes: primary.notes,
+        programDescription: program.description,
+      }),
       liveStructure: JSON.stringify(buildLiveStructure(routine, primary.overrides)),
       restTimer: null,
       title: routine.name,

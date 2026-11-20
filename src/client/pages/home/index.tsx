@@ -21,6 +21,7 @@ import { useProfiles } from "../../hooks/use-profile";
 import { queryKeys } from "../../db/query-keys";
 import { uuidv4 } from "../../lib/uuid";
 import { buildLiveStructure } from "../workout/start";
+import { snapshotWorkoutTemplate } from "../../lib/session/workout-guidance";
 import { computeNextPlayableDay } from "../../lib/programs/next-day";
 import type { Routine, Session } from "../../../shared";
 import { DayDetailSurface } from "./day-detail";
@@ -294,7 +295,10 @@ function RoutineVariant({
       sourceProgramId: run.programId,
       sourceProgramWeekIndex: nextDay.weekIndex,
       sourceProgramDayIndex: nextDay.dayIndex,
-      templateSnapshot: JSON.stringify(routine),
+      templateSnapshot: snapshotWorkoutTemplate(routine, {
+        dayNotes: primaryEntry.notes,
+        programDescription: program.description,
+      }),
       liveStructure: JSON.stringify(buildLiveStructure(routine, primaryEntry.overrides)),
       restTimer: null,
       title: routine.name,

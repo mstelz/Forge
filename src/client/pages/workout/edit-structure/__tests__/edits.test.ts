@@ -140,8 +140,8 @@ describe("removeExerciseFromSuperset", () => {
 // ─── Test 4: swapExercise updates exerciseId but leaves performedExerciseId ───
 
 describe("swapExercise", () => {
-  it("updates exerciseId on the slot but leaves performedExerciseId intact", () => {
-    const item = makeItem("pe-1", "ex-A");
+  it("swaps the exercise and clears its cue while preserving the slot identity", () => {
+    const item = { ...makeItem("pe-1", "ex-A"), notes: "Cue for the original exercise" };
     const block = makeSingleBlock("block-1", item);
     const structure: LiveStructure = { blocks: [block] };
 
@@ -149,6 +149,7 @@ describe("swapExercise", () => {
 
     const resultItem = result.blocks[0]!.items[0]!;
     expect(resultItem.exerciseId).toBe("ex-B");
+    expect(resultItem.notes).toBeUndefined();
     expect(resultItem.performedExerciseId).toBe("pe-1");
     // setTargets unchanged
     expect(resultItem.setTargets).toHaveLength(1);
