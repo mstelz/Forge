@@ -172,22 +172,32 @@ export function recordsByLogId(logs: SessionSetLog[]): Map<string, ExerciseRecor
 }
 
 /**
- * How many distinct exercises set at least one record this session.
+ * The best record of each kind earned during the session, grouped by exercise.
  *
  * `priorLogs` is everything logged before this session; the two are walked
  * together so a set is judged against real history rather than the session alone.
  */
-export function countSessionRecords(
+export function sessionRecordsByExercise(
   sessionLogs: SessionSetLog[],
   priorLogs: SessionSetLog[],
-): number {
+): Map<string, Map<RecordKind, ExerciseRecord>> {
   const sessionLogIds = new Set(sessionLogs.map((l) => l.id));
-  const records = recordsByLogId([...priorLogs, ...sessionLogs]);
+  const exerciseIds = new Set(sessionLogs.map((l) => l.exerciseId));
+  const history = priorLogs.filter((l) => exerciseIds.has(l.exerciseId));
+  const records = recordsByLogId([...history, ...sessionLogs]);
 
-  const exercisesWithRecords = new Set<string>();
+  const byExercise = new Map<string, Map<RecordKind, ExerciseRecord>>();
   for (const [logId, forLog] of records) {
     if (!sessionLogIds.has(logId)) continue;
-    for (const record of forLog) exercisesWithRecords.add(record.exerciseId);
+    for (const record of forLog) {
+      let byKind = byExercise.get(record.exerciseId);
+      if (!byKind) {
+        byKind = new Map();
+        byExercise.set(record.exerciseId, byKind);
+      }
+      // Records arrive in chronological order, so a later claim improves the last one.
+      byKind.set(record.kind, record);
+    }
   }
-  return exercisesWithRecords.size;
+  return byExercise;
 }

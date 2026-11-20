@@ -2,7 +2,9 @@ import { formatStrengthSet } from "../../lib/session/segments";
 import { useState, useEffect, useRef, useContext } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Trophy } from "lucide-react";
 import { useSession, useSessionLogs, useAllSessionLogs } from "../../hooks/use-sessions";
+import { formatRecordValue, recordBadge } from "../../lib/session/record-labels";
 import { summarizeSession } from "../../lib/session/summary";
 import { forgeDB } from "../../db/forge-db";
 import { SettingsContext } from "../../contexts/settings-context";
@@ -120,7 +122,7 @@ export function SessionDetailPage() {
   const durationMs = session.endedAt != null ? session.endedAt - session.startedAt : 0;
 
   const priorLogs = (allSessionLogs ?? []).filter((l) => l.sessionId !== session.id);
-  const { totalVolumeKg: volumeKg, totalLoggedSets: setCount, prCount } = summarizeSession(
+  const { totalVolumeKg: volumeKg, totalLoggedSets: setCount, prCount, recordsByExercise } = summarizeSession(
     session,
     allLogs,
     priorLogs,
@@ -340,6 +342,36 @@ export function SessionDetailPage() {
           <MetricTile label="Sets" value={String(setCount)} />
           <MetricTile label="PRs" value={String(prCount)} />
         </div>
+
+        {recordsByExercise.size > 0 && (
+          <section aria-labelledby="session-records-heading" className="rounded-[var(--radius-card)] bg-[var(--surface)] p-4">
+            <h3 id="session-records-heading" className="flex items-center gap-2 text-sm font-bold text-[var(--text)]">
+              <Trophy size={16} className="text-[var(--accent)]" aria-hidden="true" />
+              Personal records
+            </h3>
+            <ul className="mt-3 space-y-3">
+              {Array.from(recordsByExercise, ([exerciseId, records]) => (
+                <li key={exerciseId}>
+                  <p className="text-sm font-semibold text-[var(--text)]">
+                    {exerciseNamesRef.current.get(exerciseId) ?? "Unknown exercise"}
+                  </p>
+                  <ul className="mt-1.5 flex flex-wrap gap-2">
+                    {Array.from(records.values(), (record) => (
+                      <li key={record.kind} className="flex flex-wrap items-center gap-x-2 rounded-md bg-[var(--accent)]/15 px-2 py-1 text-xs">
+                        <span className="font-semibold text-[var(--accent)]">
+                          {record.kind === "estimated1RM" ? "Est. 1RM PR" : recordBadge(record)}
+                        </span>
+                        <span className="font-medium tabular-nums text-[var(--text)]">
+                          {formatRecordValue(record.kind, record.value, { weightUnit, distanceUnit })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Per-exercise blocks */}
         {itemOrder.map((sessionItemId, idx) => {

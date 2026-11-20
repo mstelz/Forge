@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   MAX_EPLEY_REPS,
-  countSessionRecords,
   recordsByLogId,
+  sessionRecordsByExercise,
 } from "../records";
 import type { SessionSetLog } from "../../../../shared";
 
@@ -213,12 +213,18 @@ describe("recordsByLogId — bookkeeping", () => {
   });
 });
 
-describe("countSessionRecords", () => {
-  it("counts each exercise once however many records it set", () => {
+describe("sessionRecordsByExercise", () => {
+  it("keeps the best of each badge when several sets break records", () => {
     const prior = [log({ exerciseId: "bench", weightKg: 100, reps: 5 })];
-    // Beats both weight and estimated 1RM, but it is still one exercise.
-    const session = [log({ exerciseId: "bench", weightKg: 110, reps: 5 })];
-    expect(countSessionRecords(session, prior)).toBe(1);
+    const firstPR = log({ exerciseId: "bench", weightKg: 110, reps: 8 });
+    const heaviest = log({ exerciseId: "bench", weightKg: 115, reps: 3 });
+    const records = sessionRecordsByExercise([heaviest, firstPR], prior);
+
+    expect(records.size).toBe(1);
+    const bench = records.get("bench");
+    expect(bench?.size).toBe(2);
+    expect(bench?.get("heaviestWeight")).toMatchObject({ logId: heaviest.id, value: 115 });
+    expect(bench?.get("estimated1RM")).toMatchObject({ logId: firstPR.id });
   });
 
   it("counts two exercises separately", () => {
@@ -230,17 +236,17 @@ describe("countSessionRecords", () => {
       log({ exerciseId: "bench", weightKg: 110, reps: 5 }),
       log({ exerciseId: "squat", weightKg: 150, reps: 5 }),
     ];
-    expect(countSessionRecords(session, prior)).toBe(2);
+    expect([...sessionRecordsByExercise(session, prior).keys()]).toEqual(["bench", "squat"]);
   });
 
   it("does not count an exercise with no prior history", () => {
     const session = [log({ exerciseId: "bench", weightKg: 110, reps: 5 })];
-    expect(countSessionRecords(session, [])).toBe(0);
+    expect(sessionRecordsByExercise(session, []).size).toBe(0);
   });
 
   it("does not count a session that beat nothing", () => {
     const prior = [log({ exerciseId: "bench", weightKg: 120, reps: 5 })];
     const session = [log({ exerciseId: "bench", weightKg: 100, reps: 5 })];
-    expect(countSessionRecords(session, prior)).toBe(0);
+    expect(sessionRecordsByExercise(session, prior).size).toBe(0);
   });
 });

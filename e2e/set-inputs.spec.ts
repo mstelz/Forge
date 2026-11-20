@@ -134,8 +134,8 @@ test('a set note can be read from its row without entering edit', async ({ page 
   await expect(page.getByText('Left knee caved on rep 4')).toHaveCount(0);
 });
 
-test('a set that beats the previous best shows a PR badge next to its note', async ({ page }) => {
-  await page.evaluate(async () => {
+test('a set that breaks records shows a badge by its note and both records on the workout summary', async ({ page }) => {
+  const { exerciseName, sessionId } = await page.evaluate(async () => {
     const { forgeDB } = await import('/db/forge-db.ts' as string);
     const session = (await forgeDB.sessions.toArray())[0];
     const item = JSON.parse(session.liveStructure).blocks[0].items[0];
@@ -146,6 +146,7 @@ test('a set that beats the previous best shows a PR badge next to its note', asy
       durationSec: null, distanceM: null, setType: 'normal', status: 'logged', loggedAt: Date.now() - 86400000,
       restAfterSec: null, enteredWeight: null, enteredWeightUnit: null, enteredDistance: null, enteredDistanceUnit: null,
     });
+    return { exerciseName: (await forgeDB.exercises.get(item.exerciseId))!.name, sessionId: session.id };
   });
   await page.reload();
   await page.getByRole('textbox').nth(0).fill('60');
@@ -156,4 +157,18 @@ test('a set that beats the previous best shows a PR badge next to its note', asy
   const row = page.getByRole('button', { name: 'Set 1 — logged. Tap to edit.', exact: true });
   await expect(row).toContainText(/PR/);
   await expect(page.getByRole('button', { name: 'Read note for set 1', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'More options' }).click();
+  await page.getByRole('menuitem', { name: 'Finish Workout' }).click();
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+  await expect.poll(() => page.evaluate(async (id) => {
+    const { forgeDB } = await import('/db/forge-db.ts' as string);
+    return (await forgeDB.sessions.get(id))?.status;
+  }, sessionId)).toBe('finished');
+  await page.goto(`/workout/sessions/${sessionId}`);
+  const records = page.getByRole('region', { name: 'Personal records' });
+  await expect(records.getByText(exerciseName, { exact: true })).toBeVisible();
+  await expect(records.getByRole('listitem').filter({ hasText: /^Weight PR\s*60 kg$/ })).toBeVisible();
+  await expect(records.getByRole('listitem').filter({ hasText: /^Est\. 1RM PR\s*76 kg$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
 });

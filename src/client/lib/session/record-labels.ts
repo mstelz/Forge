@@ -45,7 +45,7 @@ function formatPace(secPerM: number, distanceUnit: RecordUnits["distanceUnit"]):
   return `${formatHms(Math.round(secPerM * perUnit))}${suffix}`;
 }
 
-function formatValue(kind: RecordKind, value: number, units: RecordUnits): string {
+export function formatRecordValue(kind: RecordKind, value: number, units: RecordUnits): string {
   switch (kind) {
     case "estimated1RM":
     case "heaviestWeight":
@@ -66,8 +66,8 @@ function formatValue(kind: RecordKind, value: number, units: RecordUnits): strin
  * "Bench Press — Heaviest set — 110 kg" reads like a list of three things.
  */
 export function describeRecord(record: ExerciseRecord, units: RecordUnits): string {
-  const value = formatValue(record.kind, record.value, units);
-  const previous = formatValue(record.kind, record.previous, units);
+  const value = formatRecordValue(record.kind, record.value, units);
+  const previous = formatRecordValue(record.kind, record.previous, units);
   // A faster pace is a smaller number, so "up from" would read as a slowdown.
   const direction = record.kind === "fastestPace" ? "down from" : "up from";
   return `${KIND_LABELS[record.kind]}: ${value}, ${direction} ${previous}`;
