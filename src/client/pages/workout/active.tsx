@@ -1,9 +1,9 @@
 import { notifyRestTimer, prepareRestAlertAudio } from "../../lib/rest-alert";
-import { useState, useEffect, useRef, useCallback, useMemo, useReducer, type MutableRefObject, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useReducer, useId, type MutableRefObject, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveQuery } from "dexie";
-import { BookOpen } from "lucide-react";
+import { BookOpen, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -177,35 +177,33 @@ function supersetRoundCount(block: LiveBlock): number {
   return Math.max(0, ...block.items.map((item) => item.setTargets.length));
 }
 
-function totalSlotCount(liveStructure: LiveStructure): number {
-  let total = 0;
-  for (const block of liveStructure.blocks) {
-    for (const item of block.items) {
-      total += item.setTargets.length;
-    }
-  }
-  return total;
+interface BlockSetProgress {
+  total: number;
+  logged: number;
+  skipped: number;
 }
 
-function countDoneSlots(
+function getBlockSetProgress(
   liveStructure: LiveStructure,
   logs: SessionSetLog[],
-): number {
-  const doneIds = new Set<string>();
+): BlockSetProgress[] {
+  const statuses = new Map<string, "logged" | "skipped">();
   for (const log of logs) {
     if ((log.status === "logged" || log.status === "skipped") && log.plannedSetId) {
-      doneIds.add(`${log.performedExerciseId}:${log.plannedSetId}`);
+      statuses.set(`${log.performedExerciseId}:${log.plannedSetId}`, log.status);
     }
   }
-  let count = 0;
-  for (const block of liveStructure.blocks) {
+  return liveStructure.blocks.map((block) => {
+    const progress = { total: 0, logged: 0, skipped: 0 };
     for (const item of block.items) {
       for (const slot of item.setTargets) {
-        if (doneIds.has(`${item.performedExerciseId}:${slot.id}`)) count++;
+        progress.total++;
+        const status = statuses.get(`${item.performedExerciseId}:${slot.id}`);
+        if (status) progress[status]++;
       }
     }
-  }
-  return count;
+    return progress;
+  });
 }
 
 
@@ -363,6 +361,8 @@ function SupersetRoundPips({
 interface ExerciseCardProps {
   block: LiveBlock;
   blockIdx: number;
+  progress: BlockSetProgress;
+  autoCollapse: boolean;
   session: Session;
   logs: SessionSetLog[];
   cursor: CursorPos | null;
@@ -379,6 +379,8 @@ interface ExerciseCardProps {
 function ExerciseCard({
   block,
   blockIdx,
+  progress,
+  autoCollapse,
   session,
   logs,
   cursor,
@@ -394,6 +396,31 @@ function ExerciseCard({
   const [blockNoteOpen, setBlockNoteOpen] = useState(!!block.notes);
   const [blockNoteText, setBlockNoteText] = useState(block.notes ?? "");
   const [openCueIds, setOpenCueIds] = useState<string[]>([]);
+  const complete = progress.total > 0 && progress.logged + progress.skipped === progress.total;
+  const defaultExpanded = !autoCollapse || !complete;
+  const active = cursor?.blockIdx === blockIdx;
+  const [disclosure, setDisclosure] = useState({ defaultExpanded, active, expanded: defaultExpanded });
+  const completionChanged = disclosure.defaultExpanded !== defaultExpanded;
+  const becameActive = active && !disclosure.active;
+  const expanded = becameActive || (completionChanged ? defaultExpanded : disclosure.expanded);
+  if (completionChanged || disclosure.active !== active) {
+    setDisclosure({ defaultExpanded, active, expanded });
+  }
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const restoreToggleFocus = useRef(false);
+  const summaryId = useId();
+
+  useLayoutEffect(() => {
+    if (restoreToggleFocus.current) {
+      restoreToggleFocus.current = false;
+      toggleRef.current?.focus({ preventScroll: true });
+    }
+  }, [expanded]);
+
+  const toggleExpanded = () => {
+    restoreToggleFocus.current = true;
+    setDisclosure({ defaultExpanded, active, expanded: !expanded });
+  };
 
   // Arm-to-confirm delete: first tap arms the button, second tap (within 2s) deletes.
   type ArmedDelete =
@@ -430,6 +457,56 @@ function ExerciseCard({
   const isSuperset = block.type === "superset";
   const supersetLabel = `SUPERSET ${String.fromCharCode(65 + blockIdx)}`;
   const roundCount = isSuperset ? supersetRoundCount(block) : 0;
+  const blockLabel = isSuperset
+    ? `Superset ${String.fromCharCode(65 + blockIdx)}`
+    : exerciseNames.get(block.items[0]?.exerciseId ?? "") ?? "Exercise";
+  const toggleClass = "text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
+
+  if (!expanded) {
+    return (
+      <button
+        ref={toggleRef}
+        type="button"
+        onClick={toggleExpanded}
+        aria-expanded={false}
+        aria-label={`Expand ${blockLabel}`}
+        aria-describedby={summaryId}
+        className={`${toggleClass} flex w-full items-center justify-between gap-3 rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-3 text-left`}
+      >
+        <span>
+          <span className="block font-bold text-[var(--text)]">{blockLabel}</span>
+          {isSuperset && (
+            <span className="block text-xs">
+              {block.items.map((item) => exerciseNames.get(item.exerciseId) ?? "Exercise").join(" + ")}
+            </span>
+          )}
+          <span id={summaryId} className="mt-0.5 block text-xs">
+            {complete && (
+              <span className="text-[var(--success)]"><span aria-hidden="true">✓ </span>Complete · </span>
+            )}
+            {progress.logged}/{progress.total} logged
+            {progress.skipped > 0 && ` · ${progress.skipped} skipped`}
+          </span>
+        </span>
+        <span className="grid w-11 shrink-0 place-items-center">
+          <ChevronDown size={18} aria-hidden="true" />
+        </span>
+      </button>
+    );
+  }
+
+  const collapseButton = (
+    <button
+      ref={toggleRef}
+      type="button"
+      onClick={toggleExpanded}
+      aria-expanded={true}
+      aria-label={`Collapse ${blockLabel}`}
+      className={`${toggleClass} ml-auto grid size-11 shrink-0 place-items-center rounded-md`}
+    >
+      <ChevronDown size={18} className="rotate-180" aria-hidden="true" />
+    </button>
+  );
 
   return (
     <div className="rounded-[var(--radius-card)] bg-[var(--surface)] px-4 py-4">
@@ -445,6 +522,7 @@ function ExerciseCard({
             cursor={cursor}
             roundCount={roundCount}
           />
+          {collapseButton}
         </div>
       )}
 
@@ -499,13 +577,14 @@ function ExerciseCard({
                   onClick={() => setOpenCueIds((ids) =>
                     ids.includes(cueId) ? ids.filter((id) => id !== cueId) : [...ids, cueId],
                   )}
-                  className="group ml-auto grid size-11 shrink-0 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  className={`group grid size-11 shrink-0 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${isSuperset ? "ml-auto" : ""}`}
                 >
                   <span className="grid size-7 place-items-center rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] group-hover:bg-[var(--accent)]/20 group-aria-expanded:bg-[var(--accent)] group-aria-expanded:text-[var(--accent-fg)]">
                     <BookOpen size={15} aria-hidden="true" />
                   </span>
                 </button>
               )}
+              {!isSuperset && collapseButton}
             </div>
             <LastTimeLine exerciseId={item.exerciseId} sessionId={session.id} onViewHistory={() => onViewHistory(item.exerciseId, name)} />
             {cue && (
@@ -1716,6 +1795,10 @@ export function ActiveWorkoutPage() {
     () => deriveCursor(liveStructure, logs),
     [liveStructure, logs],
   );
+  const blockProgress = useMemo(
+    () => getBlockSetProgress(liveStructure, logs),
+    [liveStructure, logs],
+  );
 
   // ── User can tap any row to override the active editor slot ───────────────
   const [selectedPos, setSelectedPos] = useState<CursorPos | null>(null);
@@ -2090,8 +2173,8 @@ export function ActiveWorkoutPage() {
     return <PageSkeleton />;
   }
 
-  const total = totalSlotCount(liveStructure);
-  const done = countDoneSlots(liveStructure, logs);
+  const total = blockProgress.reduce((sum, progress) => sum + progress.total, 0);
+  const done = blockProgress.reduce((sum, progress) => sum + progress.logged + progress.skipped, 0);
   const headerLabel =
     cursor === null ? "All sets done" : `Set ${Math.min(done + 1, total)} of ${total}`;
 
@@ -2153,9 +2236,11 @@ export function ActiveWorkoutPage() {
           <>
             {liveStructure.blocks.map((block, blockIdx) => (
               <ExerciseCard
-                key={block.id}
+                key={`${session.id}:${block.id}`}
                 block={block}
                 blockIdx={blockIdx}
+                progress={blockProgress[blockIdx]!}
+                autoCollapse={!isReopenEdit}
                 session={session}
                 logs={logs}
                 cursor={activeCursor}

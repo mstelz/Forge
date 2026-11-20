@@ -36,4 +36,16 @@ test("logging a set records it, advances the cursor, and starts the rest timer",
   await expect(page.getByRole("heading", { name: "Set 2 of 3" })).toBeVisible();
   await expect(fields.nth(0)).toHaveValue("60");
   await expect(fields.nth(1)).toHaveValue("5");
+
+  await page.getByRole("button", { name: "LOG SET" }).click();
+  await expect(page.getByRole("heading", { name: "Set 3 of 3" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip", exact: true }).click();
+
+  const collapsed = page.getByRole("button", { name: "Expand Bench Press" });
+  await expect(collapsed).toContainText("2/3 logged · 1 skipped");
+  await expect(page.getByRole("button", { name: "FINISH WORKOUT" })).toBeVisible();
+  await collapsed.press("Enter");
+  await expect(page.getByRole("button", { name: "Collapse Bench Press" })).toBeFocused();
+  await expect(page.getByRole("button", { name: /Set 1 — logged/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "ADD SET", exact: true })).toBeVisible();
 });

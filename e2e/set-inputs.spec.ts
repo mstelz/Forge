@@ -40,6 +40,21 @@ test('logging a manually selected superset member advances away from that saved 
   await expect(page.getByRole('button', { name: 'LOG SET', exact: true })).toBeVisible();
 });
 
+test('a superset collapses as a group after its final planned set', async ({ page }) => {
+  const expanded = page.getByRole('button', { name: 'Collapse Superset A' });
+  const skip = page.getByRole('button', { name: 'Skip', exact: true });
+  for (const set of [2, 3, 4]) {
+    await skip.click();
+    await expect(page.getByRole('heading', { name: `Set ${set} of 4` })).toBeVisible();
+    await expect(expanded).toHaveAttribute('aria-expanded', 'true');
+  }
+  await skip.click();
+  const collapsed = page.getByRole('button', { name: 'Expand Superset A' });
+  await expect(collapsed).toContainText('0/4 logged · 4 skipped');
+  await collapsed.click();
+  await expect(page.getByRole('button', { name: /Set \d — skipped/ })).toHaveCount(4);
+});
+
 for (const kind of ['Drop', 'Rest-pause']) {
   test(`${kind} saves individual efforts as one set and restores them for editing`, async ({ page }) => {
     await page.getByRole('textbox').nth(0).fill('60');
