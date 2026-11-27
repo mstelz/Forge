@@ -16,6 +16,7 @@ import { queryKeys } from "../../db/query-keys";
 import { syncLog } from "../../sync/sync-logger";
 import type { SessionSetLog } from "../../../shared";
 import { useToast } from "../../components/toast";
+import { SessionMuscles } from "./session-muscles";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -342,6 +343,8 @@ export function SessionDetailPage() {
           <MetricTile label="Sets" value={String(setCount)} />
           <MetricTile label="PRs" value={String(prCount)} />
         </div>
+
+        <SessionMuscles logs={allLogs} />
 
         {recordsByExercise.size > 0 && (
           <section aria-labelledby="session-records-heading" className="rounded-[var(--radius-card)] bg-[var(--surface)] p-4">

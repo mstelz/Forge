@@ -10,6 +10,7 @@ import { InstructionalCard } from "./instructional-card";
 import { Instructions } from "./instructions";
 import { ExerciseHistorySection } from "./history-placeholder";
 import { DetailMenu } from "./detail-menu";
+import { MuscleCard } from "./muscle-card";
 
 export function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -62,6 +63,7 @@ export function ExerciseDetailPage() {
         ) : (
           <>
             <DetailHeader exercise={exercise} equipmentById={equipmentById} />
+            <MuscleCard exercise={exercise} />
             <InstructionalCard
               videoUrl={exercise.videoUrls[0] ?? null}
               description={exercise.description ?? null}
