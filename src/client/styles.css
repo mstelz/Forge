@@ -26,6 +26,15 @@
   --accent-fg: #0B0B0C;
   --danger: #EF4444;
   --success: #22C55E;
+
+  /* Muscle map: structure, gaps, then intensity 0 (untouched) → 4 (primary) */
+  --muscle-structure: #3F4045;
+  --muscle-gap: var(--surface);
+  --muscle-0: #2C2D31;
+  --muscle-1: #4A3614;
+  --muscle-2: #7A5418;
+  --muscle-3: #B87A12;
+  --muscle-4: #F59E0B;
 }
 
 :root[data-theme="light"] {
@@ -41,6 +50,14 @@
   --accent-fg: #0A0A0A;
   --danger: #DC2626;
   --success: #16A34A;
+
+  --muscle-structure: #D6D3D1;
+  --muscle-gap: var(--surface);
+  --muscle-0: #E7E5E4;
+  --muscle-1: #FDE9B8;
+  --muscle-2: #FAD07A;
+  --muscle-3: #F7B53C;
+  --muscle-4: #F59E0B;
 }
 
 html,

@@ -6,7 +6,7 @@ const TYPE_LABEL: Record<Exercise["type"], string> = {
   mixed: "MIXED",
 };
 
-const MUSCLE_LABEL: Record<string, string> = {
+export const MUSCLE_LABEL: Record<string, string> = {
   chest: "Chest",
   back: "Back",
   quadriceps: "Quads",
